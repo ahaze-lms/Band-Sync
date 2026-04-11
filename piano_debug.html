@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BandSync — Game</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 10px; }
+    h1 { font-size: 20px; font-weight: 500; letter-spacing: 4px; color: #fff; }
+    h1 span { color: #7F77DD; }
+    .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
+    .status-bar { display: flex; align-items: center; gap: 10px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 7px 14px; width: 100%; max-width: 1100px; }
+    .sdot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+    .sdot.green { background: #1D9E75; } .sdot.yellow { background: #BA7517; } .sdot.red { background: #E24B4A; }
+    .stext { font-size: 12px; color: #888; }
+    .main-row { display: flex; gap: 16px; width: 100%; max-width: 1100px; align-items: flex-start; }
+    .canvas-wrap { border: 0.5px solid #1e1e2a; border-radius: 8px; overflow: hidden; flex-shrink: 0; cursor: pointer; }
+    canvas { display: block; }
+
+    /* DEBUG PANEL */
+    .debug-panel { flex: 1; background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 8px; padding: 12px; font-family: 'Courier New', monospace; font-size: 11px; min-width: 280px; }
+    .debug-section { margin-bottom: 12px; }
+    .debug-title { font-size: 9px; letter-spacing: 2px; color: #555; margin-bottom: 6px; border-bottom: 0.5px solid #1a1a26; padding-bottom: 4px; }
+    .debug-row { display: flex; justify-content: space-between; margin-bottom: 3px; gap: 8px; }
+    .debug-key { color: #555; white-space: nowrap; }
+    .debug-val { color: #7F77DD; text-align: right; }
+    .debug-val.good { color: #1D9E75; } .debug-val.warn { color: #BA7517; } .debug-val.bad { color: #E24B4A; } .debug-val.neutral { color: #888; }
+    .note-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .note-table th { color: #444; font-weight: normal; text-align: left; padding: 2px 4px; border-bottom: 0.5px solid #1a1a26; }
+    .note-table td { padding: 2px 4px; border-bottom: 0.5px solid #111; }
+    .note-table tr.hit td { color: #1D9E75; } .note-table tr.missed td { color: #E24B4A; } .note-table tr.active td { color: #AFA9EC; } .note-table tr.upcoming td { color: #555; }
+    .offset-log { max-height: 90px; overflow-y: auto; background: #0a0a0f; border: 0.5px solid #1a1a26; border-radius: 4px; padding: 4px 6px; }
+    .offset-entry { font-size: 10px; margin-bottom: 2px; }
+    .offset-entry.perfect { color: #AFA9EC; } .offset-entry.good { color: #9FE1CB; } .offset-entry.miss { color: #E24B4A; } .offset-entry.miss_early { color: #BA7517; }
+
+    /* CONTROLS */
+    .controls-row { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; max-width: 1100px; justify-content: center; }
+    .file-btn { background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 7px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    .file-btn:hover { border-color: #7F77DD; color: #CECBF6; } .file-btn.ready { background: #3C3489; border-color: #7F77DD; color: #CECBF6; }
+    input[type=file] { display: none; }
+    .start-btn { background: #534AB7; border: none; border-radius: 6px; padding: 7px 20px; font-size: 12px; color: #fff; cursor: pointer; letter-spacing: 2px; opacity: 0.4; pointer-events: none; transition: all 0.2s; }
+    .start-btn.enabled { opacity: 1; pointer-events: all; } .start-btn.enabled:hover { background: #7F77DD; }
+    button { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 6px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    button:hover { border-color: #7F77DD; color: #CECBF6; } button.active { background: #3C3489; border-color: #7F77DD; color: #CECBF6; }
+    .hit-feedback { font-size: 15px; font-weight: 500; letter-spacing: 3px; min-height: 22px; text-align: center; }
+    .hit-feedback.perfect { color: #AFA9EC; } .hit-feedback.good { color: #9FE1CB; } .hit-feedback.miss { color: #E24B4A; } .hit-feedback.wrong { color: #BA7517; } .hit-feedback.complete { color: #7F77DD; } .hit-feedback.hidden { opacity: 0; }
+    .settings-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 11px; color: #555; }
+    input[type=range] { accent-color: #7F77DD; }
+    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; }
+
+    /* CALIBRATION OVERLAY */
+    .cal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100; flex-direction:column; align-items:center; justify-content:center; gap:24px; }
+    .cal-overlay.open { display:flex; }
+    .cal-title { font-size:11px; letter-spacing:3px; color:#555; }
+    .cal-heading { font-size:22px; font-weight:500; letter-spacing:4px; color:#fff; }
+    .cal-sub { font-size:12px; color:#666; letter-spacing:1px; text-align:center; line-height:1.8; }
+    .cal-flash-wrap { position:relative; width:160px; height:160px; display:flex; align-items:center; justify-content:center; }
+    .cal-ring { position:absolute; inset:0; border-radius:50%; border:1.5px solid #2a2a3a; }
+    .cal-circle { width:100px; height:100px; border-radius:50%; background:#1a1a26; border:1.5px solid #2a2a3a; transition:background 0.04s, border-color 0.04s, box-shadow 0.04s; display:flex; align-items:center; justify-content:center; }
+    .cal-circle.flash { background:#534AB7; border-color:#7F77DD; box-shadow:0 0 32px 8px rgba(127,119,221,0.5); }
+    .cal-circle-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-circle.flash .cal-circle-label { color:#CECBF6; }
+    .cal-timer { font-size:32px; font-weight:300; color:#7F77DD; letter-spacing:2px; min-width:40px; text-align:center; }
+    .cal-rounds { display:flex; gap:10px; }
+    .cal-round-dot { width:10px; height:10px; border-radius:50%; background:#1a1a26; border:1px solid #2a2a3a; transition:all 0.2s; }
+    .cal-round-dot.done { background:#534AB7; border-color:#7F77DD; }
+    .cal-round-dot.active { background:#7F77DD; border-color:#AFA9EC; box-shadow:0 0 8px rgba(127,119,221,0.6); }
+    .cal-tap-count { font-size:11px; color:#444; letter-spacing:1px; min-height:16px; }
+    .cal-results { display:none; flex-direction:column; align-items:center; gap:16px; }
+    .cal-results.show { display:flex; }
+    .cal-round-results { display:flex; gap:20px; }
+    .cal-round-result { background:#0d0d14; border:0.5px solid #1e1e2a; border-radius:8px; padding:12px 18px; text-align:center; }
+    .cal-round-result .rr-label { font-size:9px; letter-spacing:2px; color:#444; margin-bottom:6px; }
+    .cal-round-result .rr-val { font-size:20px; font-weight:500; color:#7F77DD; }
+    .cal-round-result .rr-taps { font-size:10px; color:#444; margin-top:4px; }
+    .cal-final { background:#1a1a26; border:1px solid #534AB7; border-radius:12px; padding:16px 32px; text-align:center; }
+    .cal-final .cf-label { font-size:9px; letter-spacing:3px; color:#7F77DD; margin-bottom:8px; }
+    .cal-final .cf-val { font-size:40px; font-weight:300; color:#fff; letter-spacing:2px; }
+    .cal-final .cf-unit { font-size:12px; color:#555; margin-top:4px; }
+    .cal-finetune { display:flex; align-items:center; gap:10px; }
+    .cal-finetune-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-nudge { background:#1a1a26; border:0.5px solid #2a2a3a; border-radius:6px; padding:6px 12px; font-size:11px; color:#888; cursor:pointer; letter-spacing:1px; transition:all 0.15s; }
+    .cal-nudge:hover { border-color:#7F77DD; color:#CECBF6; }
+    .cal-current { font-size:13px; color:#7F77DD; min-width:70px; text-align:center; font-family:'Courier New',monospace; }
+    .cal-actions { display:flex; gap:12px; }
+    .cal-apply { background:#534AB7; border:none; border-radius:6px; padding:9px 28px; font-size:12px; color:#fff; cursor:pointer; letter-spacing:2px; transition:all 0.2s; }
+    .cal-apply:hover { background:#7F77DD; }
+    .cal-cancel { background:transparent; border:0.5px solid #2a2a3a; border-radius:6px; padding:9px 20px; font-size:11px; color:#555; cursor:pointer; letter-spacing:1px; transition:all 0.15s; }
+    .cal-cancel:hover { border-color:#555; color:#888; }
+    .cal-device-note { font-size:10px; color:#333; letter-spacing:1px; }
+  </style>
+</head>
+<body>
+  <h1>BAND<span>SYNC</span></h1>
+  <div class="subtitle">PIANO · HIT DETECTION · DEBUG</div>
+  <div class="status-bar"><div class="sdot" id="sdot"></div><div class="stext" id="stext">Connecting...</div></div>
+
+  <div class="main-row">
+    <div class="canvas-wrap"><canvas id="highway"></canvas></div>
+
+    <div class="debug-panel">
+      <div class="debug-section">
+        <div class="debug-title">TIMING ENGINE</div>
+        <div class="debug-row"><span class="debug-key">song loaded</span><span class="debug-val" id="d-songname">—</span></div>
+        <div class="debug-row"><span class="debug-key">state</span><span class="debug-val" id="d-state">idle</span></div>
+        <div class="debug-row"><span class="debug-key">song time (ms)</span><span class="debug-val" id="d-songtime">—</span></div>
+        <div class="debug-row"><span class="debug-key">fall time (ms)</span><span class="debug-val" id="d-falltime">—</span></div>
+        <div class="debug-row"><span class="debug-key">song clock set?</span><span class="debug-val" id="d-songstart">NO</span></div>
+        <div class="debug-row"><span class="debug-key">speed</span><span class="debug-val" id="d-speed">—</span></div>
+        <div class="debug-row"><span class="debug-key">hit window</span><span class="debug-val" id="d-window">—</span></div>
+        <div class="debug-row"><span class="debug-key">latency offset</span><span class="debug-val" id="d-useroffset">0ms</span></div>
+        <div class="debug-row"><span class="debug-key">falling / spawned</span><span class="debug-val" id="d-blocks">0 / 0</span></div>
+      </div>
+
+      <div class="debug-section">
+        <div class="debug-title">NOTES (first 8)</div>
+        <table class="note-table" id="note-table">
+          <tr><th>note</th><th>startMs</th><th>hitAt</th><th>until</th><th>status</th><th>Y</th></tr>
+        </table>
+      </div>
+
+      <div class="debug-section">
+        <div class="debug-title">HIT OFFSET LOG</div>
+        <div class="offset-log" id="offset-log"><div style="color:#444;font-size:10px">— no hits yet —</div></div>
+        <div style="margin-top:6px;">
+          <div class="debug-row"><span class="debug-key">avg offset</span><span class="debug-val" id="d-avgoffset">—</span></div>
+          <div class="debug-row"><span class="debug-key">suggestion</span><span class="debug-val" id="d-suggestion" style="font-size:10px">—</span></div>
+        </div>
+      </div>
+
+      <div class="debug-section">
+        <div class="debug-title">SCORE</div>
+        <div class="debug-row"><span class="debug-key">perfect</span><span class="debug-val good" id="d-perfect">0</span></div>
+        <div class="debug-row"><span class="debug-key">good</span><span class="debug-val" id="d-good">0</span></div>
+        <div class="debug-row"><span class="debug-key">miss</span><span class="debug-val bad" id="d-miss">0</span></div>
+        <div class="debug-row"><span class="debug-key">wrong</span><span class="debug-val warn" id="d-wrong">0</span></div>
+        <div class="debug-row"><span class="debug-key">accuracy</span><span class="debug-val" id="d-acc">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hit-feedback hidden" id="hit-feedback">—</div>
+
+  <div class="controls-row">
+    <label class="file-btn" id="file-label">♪ LOAD MIDI<input type="file" id="file-input" accept=".mid,.midi" onchange="loadMIDIFile(event)"></label>
+    <button onclick="loadTest('metronome')">▶ METRONOME</button>
+    <button onclick="loadTest('scale')">▶ C SCALE</button>
+    <button onclick="loadTest('mary')">▶ MARY</button>
+    <button class="start-btn" id="start-btn" onclick="startSong()">START →</button>
+    <button onclick="togglePause()" id="btn-pause" style="display:none;">⏸ PAUSE</button>
+    <button onclick="resetSong()" id="btn-reset" style="display:none;">↺ RESET</button>
+    <button onclick="openCal()" id="btn-cal">⊙ CALIBRATE</button>
+  </div>
+
+  <div class="settings-row">
+    <span>NOTE SPEED</span>
+    <input type="range" id="speed" min="1" max="10" value="3" step="1" style="width:100px;" oninput="updateSpeed(this.value)">
+    <span id="speed-val" style="color:#7F77DD;min-width:60px;">3 — 3.0s</span>
+
+    <span style="margin-left:12px;">HIT WINDOW</span>
+    <input type="range" id="hitwin" min="1" max="5" value="2" step="1" style="width:80px;" oninput="updateHitWindow(this.value)">
+    <span id="hitwin-val" style="color:#7F77DD;min-width:80px;">Normal</span>
+
+    <span style="margin-left:12px;">SOUND</span>
+    <button id="sound-toggle" onclick="toggleAlwaysSound()" class="active">ALWAYS</button>
+  </div>
+
+  <div class="info">SPACE = pause · R = reset · Click piano keys or use MIDI · Load a song then START · C = calibrate</div>
+
+  <!-- CALIBRATION OVERLAY -->
+  <div class="cal-overlay" id="cal-overlay">
+    <!-- ACTIVE CALIBRATION STATE -->
+    <div id="cal-active">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div class="cal-title">LATENCY CALIBRATION</div>
+        <div class="cal-heading" id="cal-round-heading">ROUND 1 OF 3</div>
+        <div class="cal-sub" id="cal-instruction">Tap your instrument in time with each flash.<br>Keep going until the round ends.</div>
+        <div class="cal-flash-wrap">
+          <div class="cal-ring"></div>
+          <div class="cal-circle" id="cal-circle"><span class="cal-circle-label" id="cal-circle-label">TAP</span></div>
+        </div>
+        <div class="cal-timer" id="cal-timer">10</div>
+        <div class="cal-rounds">
+          <div class="cal-round-dot active" id="cal-dot-0"></div>
+          <div class="cal-round-dot" id="cal-dot-1"></div>
+          <div class="cal-round-dot" id="cal-dot-2"></div>
+        </div>
+        <div class="cal-tap-count" id="cal-tap-count"></div>
+      </div>
+    </div>
+    <!-- RESULTS STATE -->
+    <div class="cal-results" id="cal-results">
+      <div class="cal-title">CALIBRATION COMPLETE</div>
+      <div class="cal-round-results" id="cal-round-results"></div>
+      <div class="cal-final">
+        <div class="cf-label">YOUR LATENCY OFFSET</div>
+        <div class="cf-val" id="cal-final-val">—</div>
+        <div class="cf-unit">milliseconds</div>
+      </div>
+      <div class="cal-finetune">
+        <span class="cal-finetune-label">FINE TUNE</span>
+        <button class="cal-nudge" onclick="nudgeOffset(-10)">−10</button>
+        <button class="cal-nudge" onclick="nudgeOffset(-1)">−1</button>
+        <span class="cal-current" id="cal-current-val">0ms</span>
+        <button class="cal-nudge" onclick="nudgeOffset(+1)">+1</button>
+        <button class="cal-nudge" onclick="nudgeOffset(+10)">+10</button>
+      </div>
+      <div class="cal-actions">
+        <button class="cal-cancel" onclick="closeCal()">CANCEL</button>
+        <button class="cal-apply" onclick="applyOffset()">APPLY & SAVE</button>
+      </div>
+      <div class="cal-device-note" id="cal-device-note"></div>
+    </div>
+  </div>
+
+  <script>
+    // ════════════════════════════════════════════════════════════════════
+    // PIANO CONFIG
+    // ════════════════════════════════════════════════════════════════════
+    const KEY_PATTERN=[0,1,0,1,0,0,1,0,1,0,1,0];
+    const NOTE_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function midiToName(n){return NOTE_NAMES[n%12]+Math.floor(n/12-1);}
+    function isBlack(n){return KEY_PATTERN[n%12]===1;}
+    const NOTE_MIN=48,NOTE_MAX=84;
+    const WHITE_KEY_W=22,WHITE_KEY_H=72,BLACK_KEY_W=14,BLACK_KEY_H=44;
+    const HIGHWAY_H=400,HIT_Y=HIGHWAY_H-4,PREVIEW_ZONE=HIGHWAY_H*0.3;
+
+    let whiteKeys=[],noteXCenter={};
+    for(let n=NOTE_MIN;n<=NOTE_MAX;n++){if(!isBlack(n))whiteKeys.push(n);}
+    const CANVAS_W=whiteKeys.length*WHITE_KEY_W,CANVAS_H=HIGHWAY_H+WHITE_KEY_H;
+
+    function buildPositions(){
+      for(let i=0;i<whiteKeys.length;i++)noteXCenter[whiteKeys[i]]=i*WHITE_KEY_W+WHITE_KEY_W/2;
+      for(let n=NOTE_MIN;n<=NOTE_MAX;n++){if(isBlack(n)){const L=noteXCenter[n-1],R=noteXCenter[n+1];if(L!==undefined&&R!==undefined)noteXCenter[n]=(L+R)/2;}}
+    }
+    buildPositions();
+    function noteWidth(n){return isBlack(n)?BLACK_KEY_W*0.85:WHITE_KEY_W*0.8;}
+
+    const canvas=document.getElementById('highway');
+    const ctx=canvas.getContext('2d');
+    canvas.width=CANVAS_W;canvas.height=CANVAS_H;
+
+    // ════════════════════════════════════════════════════════════════════
+    // MOUSE CLICK ON KEYBOARD
+    // ════════════════════════════════════════════════════════════════════
+    let whiteKeyRects=[],blackKeyRects=[],mouseHeldNotes=new Set();
+    (function(){
+      for(let i=0;i<whiteKeys.length;i++)whiteKeyRects.push({note:whiteKeys[i],x:i*WHITE_KEY_W+1,y:HIGHWAY_H+1,w:WHITE_KEY_W-2,h:WHITE_KEY_H-4});
+      for(let n=NOTE_MIN;n<=NOTE_MAX;n++){if(!isBlack(n))continue;const cx=noteXCenter[n];if(!cx)continue;blackKeyRects.push({note:n,x:cx-BLACK_KEY_W/2,y:HIGHWAY_H,w:BLACK_KEY_W,h:BLACK_KEY_H});}
+    })();
+    canvas.addEventListener('mousedown',e=>{
+      const r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(CANVAS_W/r.width),my=(e.clientY-r.top)*(CANVAS_H/r.height);
+      if(my<HIGHWAY_H)return;
+      let hit=null;
+      for(const kr of blackKeyRects){if(mx>=kr.x&&mx<=kr.x+kr.w&&my>=kr.y&&my<=kr.y+kr.h){hit=kr.note;break;}}
+      if(hit===null)for(const kr of whiteKeyRects){if(mx>=kr.x&&mx<=kr.x+kr.w&&my>=kr.y&&my<=kr.y+kr.h){hit=kr.note;break;}}
+      if(hit!==null){
+        if(calOpen){registerCalTap();return;}
+        mouseHeldNotes.add(hit);heldNotes.add(hit);
+        if(alwaysSound) playNote(hit,80);
+        if(playing&&!paused&&countoffDone){ if(!alwaysSound) playNote(hit,80); checkHit(hit); }
+      }
+    });
+    canvas.addEventListener('mouseup',()=>{mouseHeldNotes.forEach(n=>heldNotes.delete(n));mouseHeldNotes.clear();});
+    canvas.addEventListener('mouseleave',()=>{mouseHeldNotes.forEach(n=>heldNotes.delete(n));mouseHeldNotes.clear();});
+
+    // ════════════════════════════════════════════════════════════════════
+    // SPEED SYSTEM
+    // fall time in ms per speed level 1-10
+    // ════════════════════════════════════════════════════════════════════
+    const FALL_TIMES_MS=[4000,3500,3000,2500,2000,1700,1400,1100,800,500];
+    let speedLevel=3;
+    function getFallTimeMs(){return FALL_TIMES_MS[speedLevel-1];}
+    function getPxPerFrame(){return HIGHWAY_H/(getFallTimeMs()/1000*60);}
+    function updateSpeed(val){
+      speedLevel=parseInt(val);
+      const s=(getFallTimeMs()/1000).toFixed(1);
+      document.getElementById('speed-val').textContent=val+' — '+s+'s';
+      document.getElementById('d-speed').textContent=val+' ('+s+'s fall)';
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // HIT WINDOW SYSTEM  — slider 1-5
+    // ════════════════════════════════════════════════════════════════════
+    // Level: 1=Very Easy, 2=Easy, 3=Normal, 4=Hard, 5=Expert
+    const HIT_WINDOWS=[
+      {name:'Very Easy', perfect:120, good:200},
+      {name:'Easy',      perfect:80,  good:160},
+      {name:'Normal',    perfect:40,  good:80 },
+      {name:'Hard',      perfect:25,  good:50 },
+      {name:'Expert',    perfect:15,  good:30 },
+    ];
+    let hitWindowLevel=2; // default Easy
+    function getHitWindow(){return HIT_WINDOWS[hitWindowLevel-1];}
+    function updateHitWindow(val){
+      hitWindowLevel=parseInt(val);
+      const w=getHitWindow();
+      document.getElementById('hitwin-val').textContent=w.name;
+      document.getElementById('d-window').textContent=w.name+' ±'+w.perfect+'/'+w.good+'ms';
+    }
+
+    function toggleAlwaysSound(){
+      alwaysSound=!alwaysSound;
+      const btn=document.getElementById('sound-toggle');
+      btn.textContent=alwaysSound?'ALWAYS':'ON HIT';
+      btn.className=alwaysSound?'active':'';
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // COUNT-OFF CONFIG
+    // ════════════════════════════════════════════════════════════════════
+    const COUNTOFF_BEATS=4;
+    const COUNTOFF_BPM=80;
+    const BEAT_MS=60000/COUNTOFF_BPM;          // 750ms per beat
+    const COUNTOFF_TOTAL_MS=BEAT_MS*COUNTOFF_BEATS; // 3000ms total
+
+    // ════════════════════════════════════════════════════════════════════
+    // TEST SONGS
+    // ════════════════════════════════════════════════════════════════════
+    function makeTestSongs(){
+      const B=BEAT_MS,E=B/2;
+      const metro=[];for(let i=0;i<8;i++)metro.push({note:60,startMs:i*B,durMs:E});
+      const scale=[60,62,64,65,67,69,71,72].map((note,i)=>({note,startMs:i*B,durMs:E}));
+      const mary=[
+        {note:64,startMs:0*B,durMs:E},{note:62,startMs:1*B,durMs:E},{note:60,startMs:2*B,durMs:E},{note:62,startMs:3*B,durMs:E},
+        {note:64,startMs:4*B,durMs:E},{note:64,startMs:5*B,durMs:E},{note:64,startMs:6*B,durMs:B},
+        {note:62,startMs:8*B,durMs:E},{note:62,startMs:9*B,durMs:E},{note:62,startMs:10*B,durMs:B},
+        {note:64,startMs:12*B,durMs:E},{note:67,startMs:13*B,durMs:E},{note:67,startMs:14*B,durMs:B},
+        {note:64,startMs:16*B,durMs:E},{note:62,startMs:17*B,durMs:E},{note:60,startMs:18*B,durMs:E},{note:62,startMs:19*B,durMs:E},
+        {note:64,startMs:20*B,durMs:E},{note:64,startMs:21*B,durMs:E},{note:64,startMs:22*B,durMs:E},{note:64,startMs:23*B,durMs:E},
+        {note:62,startMs:24*B,durMs:E},{note:62,startMs:25*B,durMs:E},{note:64,startMs:26*B,durMs:E},{note:62,startMs:27*B,durMs:E},
+        {note:60,startMs:28*B,durMs:B},
+      ];
+      return {metronome:metro,scale,mary};
+    }
+    const TEST_SONGS=makeTestSongs();
+    const SONG_NAMES={metronome:'Metronome — 8×C4',scale:'C Major Scale',mary:'Mary Had a Little Lamb'};
+
+    // ════════════════════════════════════════════════════════════════════
+    // STATE
+    // ════════════════════════════════════════════════════════════════════
+    let playing=false,paused=false;
+    let songDuration=0,songStart=0,pauseOffset=0,pauseStart=0,songStartSet=false;
+    let countoffActive=false,countoffDone=false,countoffStart=0;
+    let scheduledNotes=[],fallingBlocks=[],heldNotes=new Set(),notePreview={};
+    let offsetLog=[],score=0,combo=0,maxCombo=0,perfect=0,good=0,miss=0,wrong=0;
+    let feedbackTimer=null,lastTime=0;
+    const P1={fill:'#534AB7',stroke:'#7F77DD',key:'#7F77DD',keyStroke:'#AFA9EC'};
+
+    // ── LATENCY OFFSET ───────────────────────────────────────────────
+    // TODO: move userOffset into per-profile per-device storage when profiles are built
+    // For now stored globally in localStorage under 'bandsync_offset'
+    // Key: 'bandsync_offset_<deviceName>' — one offset per MIDI device
+    let userOffset = 0; // ms — applied to expectedHitTime in checkHit()
+    let activeMidiDevice = 'unknown';
+    let alwaysSound = true; // true = play on any keypress; false = only on scored hit
+
+    function loadOffsetForDevice(deviceName) {
+      activeMidiDevice = deviceName || 'unknown';
+      const key = 'bandsync_offset_' + activeMidiDevice.replace(/\s+/g,'_');
+      const saved = localStorage.getItem(key);
+      userOffset = saved !== null ? parseInt(saved) : 0;
+      updateOffsetDisplay();
+    }
+
+    function saveOffsetForDevice(val) {
+      const key = 'bandsync_offset_' + activeMidiDevice.replace(/\s+/g,'_');
+      localStorage.setItem(key, String(val));
+      userOffset = val;
+      updateOffsetDisplay();
+    }
+
+    function updateOffsetDisplay() {
+      // Show active offset in the debug panel
+      const el = document.getElementById('d-useroffset');
+      if (el) el.textContent = (userOffset > 0 ? '+' : '') + userOffset + 'ms';
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // MIDI
+    // ════════════════════════════════════════════════════════════════════
+    async function initMIDI(){
+      const dot=document.getElementById('sdot'),txt=document.getElementById('stext');
+      if(!navigator.requestMIDIAccess){dot.className='sdot red';txt.textContent='Web MIDI not supported — use Chrome';return;}
+      try{
+        const midi=await navigator.requestMIDIAccess({sysex:false});
+        const inputs=[...midi.inputs.values()];
+        dot.className=inputs.length>0?'sdot green':'sdot yellow';
+        txt.textContent=inputs.length>0?'Connected: '+inputs.map(i=>i.name).join(', '):'No MIDI devices — connect one and refresh';
+        inputs.forEach(i=>{i.onmidimessage=onMIDI;});
+        // Load saved offset for the first connected device
+        if(inputs.length>0) loadOffsetForDevice(inputs[0].name);
+        midi.onstatechange=()=>{const all=[...midi.inputs.values()];all.forEach(i=>{i.onmidimessage=onMIDI;});dot.className=all.length>0?'sdot green':'sdot yellow';txt.textContent=all.length>0?'Connected: '+all.map(i=>i.name).join(', '):'No devices';
+        if(all.length>0) loadOffsetForDevice(all[0].name);};
+      }catch(e){document.getElementById('sdot').className='sdot red';document.getElementById('stext').textContent='MIDI access denied — check Chrome permissions';}
+    }
+    function onMIDI(e){
+      const [status,note,vel]=e.data,type=status&0xF0;
+      if(type===0x90&&vel>0){
+        if(calOpen){registerCalTap();return;} // calibration captures all taps
+        heldNotes.add(note);
+        if(alwaysSound) playNote(note,vel);
+        if(playing&&!paused&&countoffDone){
+          if(!alwaysSound) playNote(note,vel);
+          checkHit(note);
+        }
+      }
+      if(type===0x80||(type===0x90&&vel===0))heldNotes.delete(note);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // MIDI FILE PARSER
+    // ════════════════════════════════════════════════════════════════════
+    function parseMIDI(buffer){
+      const data=new DataView(buffer);let pos=0;
+      function u32(){const v=data.getUint32(pos);pos+=4;return v;}
+      function u16(){const v=data.getUint16(pos);pos+=2;return v;}
+      function u8(){return data.getUint8(pos++);}
+      function vl(){let val=0,b;do{b=u8();val=(val<<7)|(b&0x7F);}while(b&0x80);return val;}
+      pos+=4;pos+=4;u16();const nTracks=u16(),tpb=u16();
+      let tempo=500000,allNotes=[];
+      for(let t=0;t<nTracks;t++){
+        pos+=4;const tLen=u32(),tEnd=pos+tLen;let tick=0,lastSt=0;const ons={};
+        while(pos<tEnd){
+          tick+=vl();let st=data.getUint8(pos);
+          if(st&0x80){lastSt=st;pos++;}else{st=lastSt;}
+          const type=st&0xF0;
+          if(type===0xFF){const mt=u8(),ml=vl();if(mt===0x51&&ml===3){tempo=(u8()<<16)|(u8()<<8)|u8();}else{pos+=ml;}}
+          else if(type===0xF0||type===0xF7){pos+=vl();}
+          else if(type===0x90&&data.getUint8(pos+1)>0){const note=u8(),vel=u8();ons[note]={tick,vel};}
+          else if(type===0x80||(type===0x90&&data.getUint8(pos+1)===0)){
+            const note=u8();pos++;
+            if(ons[note]){allNotes.push({note,vel:ons[note].vel,startMs:(ons[note].tick/tpb)*(tempo/1000),durMs:((tick-ons[note].tick)/tpb)*(tempo/1000),hit:false,missed:false,block:null,spawned:false});delete ons[note];}
+          }
+          else if(type===0xA0||type===0xB0||type===0xE0){pos+=2;}
+          else if(type===0xC0||type===0xD0){pos+=1;}
+          else{pos++;}
+        }
+        pos=tEnd;
+      }
+      allNotes.sort((a,b)=>a.startMs-b.startMs);return allNotes;
+    }
+
+    function loadMIDIFile(event){
+      const file=event.target.files[0];if(!file)return;
+      const reader=new FileReader();
+      reader.onload=e=>{
+        const notes=parseMIDI(e.target.result).filter(n=>n.note>=NOTE_MIN&&n.note<=NOTE_MAX);
+        if(!notes.length){alert('No playable notes found in range C3–C6. Try a different MIDI file.');return;}
+        setupSong(notes,file.name.replace(/\.midi?$/i,''));
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function loadTest(name){
+      const raw=TEST_SONGS[name];if(!raw)return;
+      setupSong(raw.map(n=>({...n,hit:false,missed:false,block:null,spawned:false})),SONG_NAMES[name]);
+    }
+
+    function setupSong(notes,name){
+      scheduledNotes=notes;
+      songDuration=Math.max(...notes.map(n=>n.startMs+n.durMs))+5000;
+      score=combo=maxCombo=perfect=good=miss=wrong=0;offsetLog=[];
+      fallingBlocks=[];notePreview={};songStartSet=false;
+      document.getElementById('file-label').className='file-btn ready';
+      document.getElementById('start-btn').className='start-btn enabled';
+      document.getElementById('start-btn').textContent='START →';
+      document.getElementById('offset-log').innerHTML='<div style="color:#444;font-size:10px">— no hits yet —</div>';
+      document.getElementById('d-songname').textContent=name;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // GAME CONTROL
+    // ════════════════════════════════════════════════════════════════════
+    function startSong(){
+      if(!scheduledNotes.length)return;
+      scheduledNotes.forEach(n=>{n.hit=false;n.missed=false;n.block=null;n.spawned=false;});
+      fallingBlocks=[];notePreview={};offsetLog=[];
+      score=combo=maxCombo=perfect=good=miss=wrong=0;
+
+      // ── MUSICAL COUNT-OFF + SONG CLOCK ───────────────────────────────
+      // The song clock starts NOW, offset back by (COUNTOFF_TOTAL_MS - fallTimeMs).
+      // This means:
+      //   - At count-off beat 1: songTime = -(COUNTOFF_TOTAL_MS - fallTimeMs)
+      //   - Notes with startMs=0 spawn when songTime >= 0, which happens
+      //     fallTimeMs before the count-off ends.
+      //   - That note falls for exactly fallTimeMs and arrives at the hit
+      //     zone right as the count-off ends / GO fires.
+      //   - Players see notes falling DURING the count-off. Beat 1 note
+      //     arrives at hit zone on GO. Musical and intuitive.
+      // ────────────────────────────────────────────────────────────────
+      const fallTimeMs=getFallTimeMs();
+      songStart=performance.now()-(COUNTOFF_TOTAL_MS-fallTimeMs);
+      songStartSet=true;
+
+      countoffActive=true;countoffDone=false;
+      countoffStart=performance.now();
+      playing=true;paused=false;pauseOffset=0;
+
+      document.getElementById('start-btn').style.display='none';
+      document.getElementById('btn-pause').style.display='inline-block';
+      document.getElementById('btn-reset').style.display='inline-block';
+      document.getElementById('hit-feedback').className='hit-feedback hidden';
+      document.getElementById('offset-log').innerHTML='<div style="color:#444;font-size:10px">— no hits yet —</div>';
+    }
+
+    function endCountoff(){
+      countoffActive=false;
+      countoffDone=true;
+      // Song clock is already running — no changes needed here
+    }
+
+    function togglePause(){
+      if(!playing)return;
+      paused=!paused;
+      if(paused){
+        pauseStart=performance.now();
+        document.getElementById('btn-pause').textContent='▶ RESUME';
+        document.getElementById('btn-pause').className='active';
+      } else {
+        const dur=performance.now()-pauseStart;
+        pauseOffset+=dur;
+        // Adjust countoff start too if still in countoff
+        if(countoffActive)countoffStart+=dur;
+        document.getElementById('btn-pause').textContent='⏸ PAUSE';
+        document.getElementById('btn-pause').className='';
+      }
+    }
+
+    function resetSong(){
+      playing=false;paused=false;countoffActive=false;countoffDone=false;songStartSet=false;
+      scheduledNotes.forEach(n=>{n.hit=false;n.missed=false;n.block=null;n.spawned=false;});
+      fallingBlocks=[];notePreview={};offsetLog=[];score=combo=maxCombo=perfect=good=miss=wrong=0;
+      document.getElementById('start-btn').style.display='inline-block';
+      document.getElementById('start-btn').className='start-btn enabled';
+      document.getElementById('start-btn').textContent='START →';
+      document.getElementById('btn-pause').style.display='none';
+      document.getElementById('btn-reset').style.display='none';
+      document.getElementById('btn-pause').textContent='⏸ PAUSE';
+      document.getElementById('btn-pause').className='';
+      document.getElementById('hit-feedback').className='hit-feedback hidden';
+      document.getElementById('offset-log').innerHTML='<div style="color:#444;font-size:10px">— no hits yet —</div>';
+    }
+
+    function getSongTime(){
+      if(!playing||!songStartSet)return -1;
+      return performance.now()-songStart-pauseOffset;
+    }
+
+    function formatTime(ms){
+      const s=Math.floor(Math.max(0,ms)/1000);
+      return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // HIT DETECTION
+    // ════════════════════════════════════════════════════════════════════
+    function checkHit(note){
+      const songTime=getSongTime();if(songTime<0)return;
+      const fallTimeMs=getFallTimeMs();
+      const hw=getHitWindow();
+      let best=null,bestDiff=Infinity;
+      for(const sn of scheduledNotes){
+        if(sn.note!==note||sn.hit||sn.missed||!sn.spawned)continue;
+        const expectedHitTime=sn.startMs+fallTimeMs+userOffset;
+        const diff=Math.abs(songTime-expectedHitTime);
+        if(diff<bestDiff){bestDiff=diff;best=sn;}
+      }
+      if(!best){
+        // No matching spawned note for this key — wrong note
+        wrong++;
+        showFeedback('WRONG','wrong');
+        return;
+      }
+      const expectedHitTime=best.startMs+fallTimeMs+userOffset;
+      const offset=Math.round(songTime-expectedHitTime);
+      const quality=bestDiff<=hw.perfect?'perfect':bestDiff<=hw.good?'good':null;
+      offsetLog.push({offset,note,quality:quality||'miss_early'});
+      if(offsetLog.length>10)offsetLog.shift();
+      updateOffsetLog();
+      if(quality)registerHit(best,quality);
+    }
+
+    function registerHit(sn,quality){
+      sn.hit=true;
+      playNote(sn.note, sn.vel || 80);
+      if(sn.block){sn.block.hitQuality=quality;sn.block.hitTime=performance.now();}
+      const mult=Math.max(1,Math.floor(combo/10)+1);
+      if(quality==='perfect'){score+=100*mult;perfect++;}else{score+=50*mult;good++;}
+      showFeedback(quality==='perfect'?'PERFECT':'GOOD',quality);
+      combo++;maxCombo=Math.max(maxCombo,combo);
+    }
+
+    function registerMiss(sn){
+      if(!sn.spawned)return;
+      sn.missed=true;miss++;combo=0;
+      showFeedback('MISS','miss');
+      offsetLog.push({offset:'MISS',note:sn.note,quality:'miss'});
+      if(offsetLog.length>10)offsetLog.shift();
+      updateOffsetLog();
+    }
+
+    function showFeedback(text,cls){
+      const el=document.getElementById('hit-feedback');
+      el.textContent=text;el.className='hit-feedback '+cls;
+      clearTimeout(feedbackTimer);
+      feedbackTimer=setTimeout(()=>{el.className='hit-feedback hidden';},600);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // KEY PREVIEW GLOW
+    // ════════════════════════════════════════════════════════════════════
+    function computePreview(){
+      notePreview={};
+      for(const block of fallingBlocks){
+        const dist=HIT_Y-block.y;
+        if(dist>=0&&dist<=PREVIEW_ZONE){
+          const i=1-(dist/PREVIEW_ZONE);
+          if(!notePreview[block.note]||i>notePreview[block.note])notePreview[block.note]=i;
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // DEBUG UPDATE
+    // ════════════════════════════════════════════════════════════════════
+    function updateDebug(){
+      const songTime=getSongTime();
+      const fallTimeMs=getFallTimeMs();
+      const hw=getHitWindow();
+      function set(id,val,cls){const el=document.getElementById(id);if(!el)return;el.textContent=val;if(cls)el.className='debug-val '+cls;}
+
+      const stateStr=countoffActive?'COUNT-OFF':countoffDone&&playing?'PLAYING':paused?'PAUSED':'IDLE';
+      set('d-state',stateStr,countoffActive?'warn':countoffDone&&playing?'good':'neutral');
+      set('d-songtime',songTime>=0?songTime.toFixed(0)+'ms':'—',songTime>=0?'good':'neutral');
+      set('d-falltime',fallTimeMs+'ms');
+      set('d-songstart',songStartSet?'YES ✓':'NO ✗',songStartSet?'good':'bad');
+      set('d-speed',speedLevel+' ('+(fallTimeMs/1000).toFixed(1)+'s fall)');
+      set('d-window',hw.name+' ±'+hw.perfect+'/'+hw.good+'ms');
+      const spawned=scheduledNotes.filter(n=>n.spawned).length;
+      set('d-blocks',fallingBlocks.length+' / '+spawned);
+
+      const tbody=document.getElementById('note-table');
+      tbody.innerHTML='<tr><th>note</th><th>startMs</th><th>hitAt</th><th>until</th><th>status</th><th>Y</th></tr>';
+      scheduledNotes.slice(0,8).forEach(sn=>{
+        const hitAt=(sn.startMs+fallTimeMs).toFixed(0);
+        const timeUntil=songTime>=0?((sn.startMs+fallTimeMs)-songTime).toFixed(0):'—';
+        const status=sn.hit?'HIT✓':sn.missed?'MISS':sn.block?'FALL':sn.spawned?'spawn':'wait';
+        const blockY=sn.block?sn.block.y.toFixed(0):'—';
+        const tr=document.createElement('tr');
+        tr.className=sn.hit?'hit':sn.missed?'missed':sn.block?'active':'upcoming';
+        tr.innerHTML=`<td>${midiToName(sn.note)}</td><td>${sn.startMs.toFixed(0)}</td><td>${hitAt}</td><td>${timeUntil}</td><td>${status}</td><td>${blockY}</td>`;
+        tbody.appendChild(tr);
+      });
+
+      set('d-perfect',perfect,'good');
+      set('d-good',good);
+      set('d-miss',miss,miss>0?'bad':'neutral');
+      set('d-wrong',wrong,wrong>0?'warn':'neutral');
+      const total=perfect+good+miss;
+      set('d-acc',total>0?Math.round((perfect+good)/total*100)+'%':'—');
+    }
+
+    function updateOffsetLog(){
+      const log=document.getElementById('offset-log');log.innerHTML='';
+      const nums=offsetLog.filter(e=>typeof e.offset==='number').map(e=>e.offset);
+      offsetLog.slice().reverse().forEach(e=>{
+        const div=document.createElement('div');
+        div.className='offset-entry '+(e.quality||'miss');
+        const offStr=typeof e.offset==='number'?(e.offset>0?'+':'')+e.offset+'ms':e.offset;
+        div.textContent=`${midiToName(e.note)}  ${offStr}  [${e.quality}]`;
+        log.appendChild(div);
+      });
+      if(nums.length>0){
+        const avg=Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
+        document.getElementById('d-avgoffset').textContent=(avg>0?'+':'')+avg+'ms';
+        document.getElementById('d-suggestion').textContent=
+          avg<-30?'hitting too early — wait longer':
+          avg>30?'hitting too late — press sooner':
+          'timing looks good! ✓';
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // DRAW
+    // ════════════════════════════════════════════════════════════════════
+    function drawHighway(){
+      ctx.fillStyle='#0d0d14';ctx.fillRect(0,0,CANVAS_W,HIGHWAY_H);
+      for(let i=0;i<whiteKeys.length;i++){ctx.fillStyle=i%2===0?'#0d0d14':'#0f0f18';ctx.fillRect(i*WHITE_KEY_W,0,WHITE_KEY_W,HIGHWAY_H);}
+      ctx.strokeStyle='#1a1a24';ctx.lineWidth=0.5;
+      for(let i=0;i<=whiteKeys.length;i++){ctx.beginPath();ctx.moveTo(i*WHITE_KEY_W,0);ctx.lineTo(i*WHITE_KEY_W,HIGHWAY_H);ctx.stroke();}
+      heldNotes.forEach(n=>{if(n<NOTE_MIN||n>NOTE_MAX)return;const cx=noteXCenter[n],nw=isBlack(n)?BLACK_KEY_W:WHITE_KEY_W;ctx.fillStyle='rgba(127,119,221,0.1)';ctx.fillRect(cx-nw/2,0,nw,HIGHWAY_H);});
+
+      const now=performance.now();
+      fallingBlocks.forEach(block=>{
+        let fill=block.black?'#7F77DD':P1.fill,stroke=block.black?'#AFA9EC':P1.stroke,alpha=0.9;
+        if(block.hitQuality){const age=now-block.hitTime;if(age<250){fill=block.hitQuality==='perfect'?'#1D9E75':'#5DCAA5';stroke='#9FE1CB';alpha=1-(age/250)*0.6;}}
+        ctx.globalAlpha=alpha;
+        ctx.fillStyle=fill;ctx.beginPath();ctx.roundRect(block.x,block.y,block.w,block.h,2);ctx.fill();
+        ctx.strokeStyle=stroke;ctx.lineWidth=0.5;ctx.beginPath();ctx.roundRect(block.x,block.y,block.w,block.h,2);ctx.stroke();
+        ctx.fillStyle='rgba(255,255,255,0.1)';ctx.beginPath();ctx.roundRect(block.x+1,block.y+1,block.w-2,3,1);ctx.fill();
+        ctx.globalAlpha=1;
+      });
+
+      ctx.fillStyle='rgba(127,119,221,0.35)';ctx.fillRect(0,HIT_Y,CANVAS_W,3);
+      ctx.fillStyle='rgba(127,119,221,0.3)';ctx.font='9px Segoe UI';ctx.textAlign='left';ctx.fillText('HIT ZONE',4,HIT_Y-4);
+      ctx.fillStyle='#1e1e2a';ctx.fillRect(0,HIGHWAY_H-1,CANVAS_W,1);
+    }
+
+    function drawKeyboard(){
+      const kyTop=HIGHWAY_H;
+      for(let i=0;i<whiteKeys.length;i++){
+        const n=whiteKeys[i],kx=i*WHITE_KEY_W,held=heldNotes.has(n),preview=notePreview[n]||0;
+        ctx.fillStyle=held?P1.key:'#e8e8e0';ctx.strokeStyle=held?P1.keyStroke:'#999';ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.roundRect(kx+1,kyTop+1,WHITE_KEY_W-2,WHITE_KEY_H-4,[0,0,3,3]);ctx.fill();ctx.stroke();
+        if(!held&&preview>0){
+          ctx.globalAlpha=preview*0.75;ctx.fillStyle='#7F77DD';
+          ctx.beginPath();ctx.roundRect(kx+1,kyTop+1,WHITE_KEY_W-2,WHITE_KEY_H-4,[0,0,3,3]);ctx.fill();ctx.globalAlpha=1;
+          if(preview>0.6){ctx.strokeStyle='#AFA9EC';ctx.lineWidth=preview;ctx.beginPath();ctx.roundRect(kx+1,kyTop+1,WHITE_KEY_W-2,WHITE_KEY_H-4,[0,0,3,3]);ctx.stroke();}
+        }
+        if(n%12===0){ctx.fillStyle=(held||preview>0.3)?'#3C3489':'#aaa';ctx.font='8px Segoe UI';ctx.textAlign='center';ctx.fillText(midiToName(n),kx+WHITE_KEY_W/2,kyTop+WHITE_KEY_H-8);}
+      }
+      for(let n=NOTE_MIN;n<=NOTE_MAX;n++){
+        if(!isBlack(n))continue;const cx=noteXCenter[n];if(!cx)continue;
+        const kx=cx-BLACK_KEY_W/2,held=heldNotes.has(n),preview=notePreview[n]||0;
+        ctx.fillStyle=held?P1.fill:'#111';ctx.strokeStyle=held?P1.stroke:'#333';ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.roundRect(kx,kyTop,BLACK_KEY_W,BLACK_KEY_H,[0,0,3,3]);ctx.fill();ctx.stroke();
+        if(!held&&preview>0){ctx.globalAlpha=preview*0.85;ctx.fillStyle='#7F77DD';ctx.beginPath();ctx.roundRect(kx,kyTop,BLACK_KEY_W,BLACK_KEY_H,[0,0,3,3]);ctx.fill();ctx.globalAlpha=1;}
+        if(!held&&preview===0){ctx.fillStyle='rgba(255,255,255,0.06)';ctx.beginPath();ctx.roundRect(kx+2,kyTop+2,BLACK_KEY_W-4,6,2);ctx.fill();}
+      }
+    }
+
+    function drawCountoff(beatNum,beatProgress){
+      // Dim the highway during countoff but notes are still visible falling
+      ctx.fillStyle='rgba(0,0,0,0.35)';ctx.fillRect(0,0,CANVAS_W,HIGHWAY_H);
+      const beatStr=beatNum<=COUNTOFF_BEATS?String(beatNum):'GO!';
+      const scale=1-beatProgress*0.25;
+      ctx.save();ctx.translate(CANVAS_W/2,HIGHWAY_H/2);ctx.scale(scale,scale);
+      ctx.fillStyle=beatNum<=COUNTOFF_BEATS?'#3C3489':'#085041';
+      ctx.font='500 108px Segoe UI';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(beatStr,3,3);
+      ctx.fillStyle=beatNum<=COUNTOFF_BEATS?'#AFA9EC':'#9FE1CB';
+      ctx.font='500 100px Segoe UI';ctx.fillText(beatStr,0,0);
+      ctx.restore();
+      // Beat dots
+      for(let i=0;i<COUNTOFF_BEATS;i++){
+        ctx.beginPath();ctx.arc(CANVAS_W/2-((COUNTOFF_BEATS-1)/2)*24+i*24,HIGHWAY_H-30,5,0,Math.PI*2);
+        ctx.fillStyle=i<beatNum?'#7F77DD':'#2a2a3a';ctx.fill();
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // GAME LOOP
+    // ════════════════════════════════════════════════════════════════════
+    function update(timestamp){
+      if(!lastTime)lastTime=timestamp;
+      const delta=timestamp-lastTime;lastTime=timestamp;
+      const pxPerFrame=getPxPerFrame();
+
+      ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+
+      if(playing&&!paused){
+        const songTime=getSongTime();
+        const fallTimeMs=getFallTimeMs();
+        const hw=getHitWindow();
+
+        // ── SPAWN BLOCKS ─────────────────────────────────────────────
+        // Notes spawn at y=0 when songTime reaches note.startMs
+        // They arrive at HIT_Y at songTime = startMs + fallTimeMs
+        // During count-off, songTime may be negative for early notes
+        // but we only spawn when songTime >= startMs (>= 0 for first note)
+        for(const sn of scheduledNotes){
+          if(sn.hit||sn.missed||sn.block)continue;
+          if(songTime>=sn.startMs){
+            const cx=noteXCenter[sn.note];if(!cx)continue;
+            const nw=noteWidth(sn.note),nh=isBlack(sn.note)?14:18;
+            const block={x:cx-nw/2,y:0,w:nw,h:nh,note:sn.note,black:isBlack(sn.note),alpha:0.9,hitQuality:null,hitTime:null};
+            sn.block=block;sn.spawned=true;
+            fallingBlocks.push(block);
+          }
+        }
+
+        // ── MOVE BLOCKS ───────────────────────────────────────────────
+        fallingBlocks.forEach(b=>{b.y+=pxPerFrame*(delta/16.67);});
+
+        // ── MISS DETECTION ────────────────────────────────────────────
+        for(const sn of scheduledNotes){
+          if(!sn.hit&&!sn.missed&&sn.spawned){
+            const expectedHitTime=sn.startMs+fallTimeMs;
+            if(songTime-expectedHitTime>hw.good)registerMiss(sn);
+          }
+        }
+
+        // ── CLEANUP ───────────────────────────────────────────────────
+        fallingBlocks=fallingBlocks.filter(b=>b.y<HIGHWAY_H+b.h);
+
+        // ── COUNT-OFF END ─────────────────────────────────────────────
+        if(countoffActive){
+          const elapsed=performance.now()-countoffStart;
+          if(elapsed>=COUNTOFF_TOTAL_MS)endCountoff();
+        }
+
+        // ── SONG END ──────────────────────────────────────────────────
+        if(countoffDone&&songTime>songDuration){playing=false;showSongComplete();}
+
+        // ── DRAW ──────────────────────────────────────────────────────
+        computePreview();
+        drawHighway();drawKeyboard();
+
+        if(countoffActive){
+          const elapsed=performance.now()-countoffStart;
+          const beatIndex=Math.floor(elapsed/BEAT_MS);
+          const beatProgress=(elapsed%BEAT_MS)/BEAT_MS;
+          drawCountoff(Math.min(beatIndex+1,COUNTOFF_BEATS+1),beatProgress);
+        }
+
+      } else {
+        computePreview();drawHighway();drawKeyboard();
+      }
+
+      updateDebug();
+      requestAnimationFrame(update);
+    }
+
+    function showSongComplete(){
+      const total=perfect+good+miss;const acc=total>0?Math.round((perfect+good)/total*100):0;
+      let grade='D';if(acc>=95)grade='S';else if(acc>=85)grade='A';else if(acc>=70)grade='B';else if(acc>=50)grade='C';
+      const fb=document.getElementById('hit-feedback');
+      fb.textContent='SONG COMPLETE!  '+grade+'  '+acc+'%';fb.className='hit-feedback complete';
+      document.getElementById('btn-pause').style.display='none';
+      document.getElementById('start-btn').style.display='inline-block';
+      document.getElementById('start-btn').textContent='↺ PLAY AGAIN';
+      document.getElementById('start-btn').className='start-btn enabled';
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // INIT
+    // ════════════════════════════════════════════════════════════════════
+    updateSpeed(3);
+    updateHitWindow(2);
+    document.getElementById('hitwin').value=2;
+
+    document.addEventListener('keydown',e=>{
+      if(e.code==='Space'){e.preventDefault();if(!calOpen)togglePause();}
+      if(e.code==='KeyR'){if(!calOpen)resetSong();}
+      if(e.code==='KeyC'){if(!calOpen)openCal();}
+      if(e.code==='Escape'){if(calOpen)closeCal();}
+    });
+
+    // ════════════════════════════════════════════════════════════════════
+    // CALIBRATION ENGINE
+    // ════════════════════════════════════════════════════════════════════
+    const CAL_ROUNDS      = 3;
+    const CAL_ROUND_MS    = 10000;   // 10 seconds per round
+    const CAL_BPM         = 80;
+    const CAL_BEAT_MS     = 60000 / CAL_BPM;  // 750ms — matches count-off
+    const CAL_FLASH_MS    = 80;      // how long the circle stays lit
+
+    let calOpen           = false;
+    let calRound          = 0;       // 0-based current round
+    let calRoundStart     = 0;       // performance.now() when round began
+    let calFlashTimes     = [];      // timestamps of each flash in current round
+    let calTaps           = [];      // timestamps of each MIDI tap in current round
+    let calRoundResults   = [];      // [{avg, taps}, ...] one per completed round
+    let calPendingOffset  = 0;       // the averaged result before user applies
+    let calAnimId         = null;
+    let calFlashIndex     = 0;       // which beat flash we're on
+    let calNextFlash      = 0;       // performance.now() of next scheduled flash
+    let calFlashActive    = false;
+
+    // Metronome click for calibration (short sine blip)
+    function playCalClick() {
+      try {
+        const osc  = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.06);
+      } catch(e){}
+    }
+
+    function openCal() {
+      calOpen = true;
+      calRound = 0;
+      calRoundResults = [];
+      document.getElementById('cal-overlay').classList.add('open');
+      document.getElementById('cal-active').style.display = '';
+      document.getElementById('cal-results').classList.remove('show');
+      startCalRound();
+    }
+
+    function closeCal() {
+      calOpen = false;
+      document.getElementById('cal-overlay').classList.remove('open');
+      stopCalRound();
+    }
+
+    function startCalRound() {
+      calFlashTimes = [];
+      calTaps = [];
+      calFlashIndex = 0;
+      calFlashActive = false;
+
+      // Update round indicator dots
+      for(let i=0;i<CAL_ROUNDS;i++){
+        const dot = document.getElementById('cal-dot-'+i);
+        if(dot) dot.className = 'cal-round-dot' + (i < calRound ? ' done' : i === calRound ? ' active' : '');
+      }
+      document.getElementById('cal-round-heading').textContent = 'ROUND '+(calRound+1)+' OF '+CAL_ROUNDS;
+      document.getElementById('cal-tap-count').textContent = '';
+
+      // Schedule first flash slightly ahead so the user has a moment
+      calRoundStart = performance.now() + 500; // 500ms lead-in
+      calNextFlash  = calRoundStart;
+
+      if(calAnimId) cancelAnimationFrame(calAnimId);
+      calAnimLoop(performance.now());
+    }
+
+    function calAnimLoop(now) {
+      if(!calOpen) return;
+
+      const elapsed = now - calRoundStart;
+      const remaining = Math.max(0, CAL_ROUND_MS - elapsed);
+
+      // Update countdown timer
+      document.getElementById('cal-timer').textContent = Math.ceil(remaining / 1000);
+
+      // Schedule flash beats
+      if(now >= calNextFlash && elapsed < CAL_ROUND_MS) {
+        // Fire a flash
+        calFlashTimes.push(calNextFlash);
+        calFlashIndex++;
+        calNextFlash += CAL_BEAT_MS;
+        calFlashActive = true;
+        playCalClick();
+        const circle = document.getElementById('cal-circle');
+        const label  = document.getElementById('cal-circle-label');
+        if(circle){ circle.classList.add('flash'); }
+        if(label) { label.textContent = 'TAP'; }
+        setTimeout(()=>{
+          const c = document.getElementById('cal-circle');
+          if(c) c.classList.remove('flash');
+        }, CAL_FLASH_MS);
+      }
+
+      // Update tap count
+      document.getElementById('cal-tap-count').textContent =
+        calTaps.length > 0 ? calTaps.length + ' taps recorded' : 'waiting for taps…';
+
+      // Round over
+      if(elapsed >= CAL_ROUND_MS) {
+        finishCalRound();
+        return;
+      }
+
+      calAnimId = requestAnimationFrame(calAnimLoop);
+    }
+
+    function finishCalRound() {
+      stopCalRound();
+      const result = calcRoundOffset(calFlashTimes, calTaps);
+      calRoundResults.push(result);
+
+      // Dot becomes done
+      const dot = document.getElementById('cal-dot-'+calRound);
+      if(dot) dot.className = 'cal-round-dot done';
+
+      calRound++;
+
+      if(calRound < CAL_ROUNDS) {
+        // Brief pause then next round
+        document.getElementById('cal-round-heading').textContent = 'ROUND '+(calRound)+' DONE — get ready…';
+        document.getElementById('cal-instruction').textContent = 'Round '+calRound+': avg '+
+          (result.avg !== null ? (result.avg > 0 ? '+' : '') + result.avg + 'ms' : 'not enough taps') +
+          ' · Starting next round…';
+        document.getElementById('cal-timer').textContent = '3';
+        setTimeout(startCalRound, 3000);
+      } else {
+        showCalResults();
+      }
+    }
+
+    function stopCalRound() {
+      if(calAnimId){ cancelAnimationFrame(calAnimId); calAnimId=null; }
+    }
+
+    // Match each tap to its nearest flash, compute offset, return avg
+    function calcRoundOffset(flashes, taps) {
+      if(flashes.length < 2 || taps.length < 2) return { avg: null, taps: taps.length };
+      const offsets = [];
+      for(const tap of taps) {
+        // Find nearest flash
+        let nearest = flashes[0], nearestDiff = Math.abs(tap - flashes[0]);
+        for(const f of flashes){
+          const d = Math.abs(tap - f);
+          if(d < nearestDiff){ nearestDiff = d; nearest = f; }
+        }
+        // Only count if within half a beat (not a wild miss)
+        if(nearestDiff < CAL_BEAT_MS / 2) offsets.push(Math.round(tap - nearest));
+      }
+      if(offsets.length < 2) return { avg: null, taps: taps.length };
+      const avg = Math.round(offsets.reduce((a,b)=>a+b,0) / offsets.length);
+      return { avg, taps: taps.length, offsets };
+    }
+
+    function showCalResults() {
+      document.getElementById('cal-active').style.display = 'none';
+      const results = document.getElementById('cal-results');
+      results.classList.add('show');
+
+      // Build round result cards
+      const container = document.getElementById('cal-round-results');
+      container.innerHTML = '';
+      let validAvgs = [];
+      calRoundResults.forEach((r, i) => {
+        const div = document.createElement('div');
+        div.className = 'cal-round-result';
+        const avgStr = r.avg !== null ? (r.avg > 0 ? '+' : '') + r.avg + 'ms' : '—';
+        div.innerHTML = `<div class="rr-label">ROUND ${i+1}</div><div class="rr-val">${avgStr}</div><div class="rr-taps">${r.taps} taps</div>`;
+        container.appendChild(div);
+        if(r.avg !== null) validAvgs.push(r.avg);
+      });
+
+      // Overall average
+      let overall = 0;
+      if(validAvgs.length > 0) {
+        overall = Math.round(validAvgs.reduce((a,b)=>a+b,0) / validAvgs.length);
+      }
+      calPendingOffset = overall;
+
+      document.getElementById('cal-final-val').textContent = (overall > 0 ? '+' : '') + overall;
+      document.getElementById('cal-current-val').textContent = (overall > 0 ? '+' : '') + overall + 'ms';
+
+      // Device note
+      document.getElementById('cal-device-note').textContent =
+        'Will be saved for: ' + activeMidiDevice;
+    }
+
+    function nudgeOffset(delta) {
+      calPendingOffset = Math.max(-200, Math.min(200, calPendingOffset + delta));
+      const el = document.getElementById('cal-current-val');
+      if(el) el.textContent = (calPendingOffset > 0 ? '+' : '') + calPendingOffset + 'ms';
+    }
+
+    function applyOffset() {
+      saveOffsetForDevice(calPendingOffset);
+      closeCal();
+    }
+
+    // Called from onMIDI and mouse — register a tap during calibration
+    function registerCalTap() {
+      if(!calOpen || calRound >= CAL_ROUNDS) return;
+      calTaps.push(performance.now());
+    }
+
+// ── AUDIO ────────────────────────────────────────────────────────
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playNote(midiNote, velocity) {
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  const vol = (velocity / 127) * 0.3;
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.8);
+}
+    initMIDI();
+    loadOffsetForDevice('unknown'); // will be overwritten when MIDI device connects
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>

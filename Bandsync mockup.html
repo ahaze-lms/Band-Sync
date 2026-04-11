@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BandSync — Mockup</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #07070f;
+    --bg2: #0d0d1a;
+    --bg3: #111120;
+    --border: #1e1e30;
+    --border2: #2a2a40;
+    --purple: #534AB7;
+    --purple2: #7F77DD;
+    --purple3: #AFA9EC;
+    --purple4: #3C3489;
+    --purple5: #26215C;
+    --teal: #1D9E75;
+    --teal2: #5DCAA5;
+    --amber: #BA7517;
+    --amber2: #EF9F27;
+    --red: #E24B4A;
+    --text: #c8c8d8;
+    --text2: #888898;
+    --text3: #44445a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; }
+
+  /* TOP NAV */
+  .topbar { background: var(--bg2); border-bottom: 0.5px solid var(--border); padding: 0 20px; height: 44px; display: flex; align-items: center; gap: 4px; flex-shrink: 0; overflow-x: auto; }
+  .topbar::-webkit-scrollbar { height: 0; }
+  .nb { background: transparent; border: none; border-radius: 5px; padding: 5px 10px; font-size: 11px; font-family: 'Space Mono', monospace; color: var(--text3); cursor: pointer; white-space: nowrap; letter-spacing: 0.5px; transition: all 0.15s; }
+  .nb:hover { color: var(--purple3); background: var(--bg3); }
+  .nb.on { background: var(--purple5); color: var(--purple3); }
+  .topbar-logo { font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 3px; color: #fff; margin-right: 16px; flex-shrink: 0; }
+  .topbar-logo span { color: var(--purple2); }
+  .sep { width: 0.5px; height: 18px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
+
+  /* MAIN CONTENT */
+  .content { flex: 1; overflow-y: auto; display: flex; justify-content: center; padding: 32px 20px 40px; }
+  .screen { display: none; width: 100%; max-width: 640px; flex-direction: column; align-items: center; gap: 0; }
+  .screen.on { display: flex; }
+
+  /* SHARED COMPONENTS */
+  .logo-big { font-family: 'Space Mono', monospace; font-size: 36px; letter-spacing: 8px; color: #fff; }
+  .logo-big span { color: var(--purple2); }
+  .logo-sub { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 4px; color: var(--text3); margin-top: 2px; }
+
+  .page-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 3px; color: var(--text3); margin-bottom: 6px; }
+  .page-title { font-size: 22px; font-weight: 600; color: #fff; margin-bottom: 24px; }
+
+  .card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: 12px; padding: 18px; }
+  .card-sm { background: var(--bg2); border: 0.5px solid var(--border); border-radius: 10px; padding: 14px; }
+
+  .btn-p { background: var(--purple); border: none; border-radius: 8px; padding: 12px 28px; font-size: 12px; font-family: 'Space Mono', monospace; color: #fff; cursor: pointer; letter-spacing: 2px; transition: all 0.2s; }
+  .btn-p:hover { background: var(--purple2); }
+  .btn-g { background: transparent; border: 0.5px solid var(--border2); border-radius: 8px; padding: 10px 20px; font-size: 11px; font-family: 'Space Mono', monospace; color: var(--text2); cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+  .btn-g:hover { border-color: var(--purple2); color: var(--purple3); }
+
+  .av { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; border: 1.5px solid var(--border); flex-shrink: 0; }
+  .av-lg { width: 60px; height: 60px; font-size: 26px; }
+
+  .pill { display: inline-flex; align-items: center; border-radius: 20px; padding: 3px 10px; font-size: 10px; font-family: 'Space Mono', monospace; letter-spacing: 1px; }
+  .pp { background: var(--purple5); color: var(--purple3); border: 0.5px solid var(--purple); }
+  .pg { background: #04342C; color: var(--teal2); border: 0.5px solid var(--teal); }
+  .pa { background: #412402; color: var(--amber2); border: 0.5px solid var(--amber); }
+  .pr { background: #501313; color: #F09595; border: 0.5px solid #A32D2D; }
+
+  .stat-grid { display: flex; gap: 8px; width: 100%; }
+  .stat-box { flex: 1; background: var(--bg2); border: 0.5px solid var(--border); border-radius: 8px; padding: 12px 8px; text-align: center; }
+  .stat-v { font-size: 22px; font-weight: 600; color: var(--purple2); }
+  .stat-k { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: 2px; color: var(--text3); margin-top: 3px; }
+
+  .divider { width: 100%; height: 0.5px; background: var(--border); margin: 12px 0; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+  /* HIGHWAY */
+  .highway { background: var(--bg2); border: 0.5px solid var(--border); border-radius: 10px; width: 100%; height: 280px; position: relative; overflow: hidden; }
+  .lane-bg { position: absolute; inset: 0; display: flex; }
+  .lane { flex: 1; border-right: 0.5px solid #0e0e1c; }
+  .lane:nth-child(even) { background: #0b0b16; }
+  .hit-line { position: absolute; bottom: 38px; left: 0; right: 0; height: 2px; background: rgba(127,119,221,0.5); }
+  .hit-label { position: absolute; bottom: 42px; left: 6px; font-family: 'Space Mono', monospace; font-size: 8px; color: rgba(127,119,221,0.4); letter-spacing: 1px; }
+  .keys-row { position: absolute; bottom: 0; left: 0; right: 0; height: 38px; background: #060610; border-top: 0.5px solid var(--border); display: flex; }
+  .key { flex: 1; border-right: 0.5px solid #111; }
+  .key.lit { background: var(--purple5); }
+  .block { position: absolute; border-radius: 3px; background: var(--purple); border: 0.5px solid var(--purple2); }
+  .block.hit { background: var(--teal); border-color: var(--teal2); }
+
+  /* SETTINGS FIELD */
+  .field-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 2px; color: var(--text2); margin-bottom: 7px; }
+  .field-input { background: var(--bg); border: 0.5px solid var(--border2); border-radius: 6px; padding: 10px 12px; font-size: 13px; color: var(--text2); width: 100%; }
+  .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .color-swatch.sel { border-color: #fff; }
+
+  /* PROGRESS BAR */
+  .progress-wrap { width: 100%; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--purple); border-radius: 1px; }
+
+  /* PERSONAL BEST ROW */
+  .pb-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 8px 0; border-bottom: 0.5px solid var(--border); }
+  .pb-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+  /* ACCURACY GRAPH placeholder */
+  .acc-graph { width: 100%; height: 60px; background: var(--bg); border-radius: 6px; border: 0.5px solid var(--border); position: relative; overflow: hidden; }
+  .acc-graph-line { position: absolute; bottom: 0; left: 0; right: 0; }
+
+  /* GRADE */
+  .grade-big { font-family: 'Space Mono', monospace; font-size: 52px; font-weight: 700; color: var(--purple2); line-height: 1; }
+
+  /* COUNTOFF */
+  .countoff-num { font-family: 'Space Mono', monospace; font-size: 120px; font-weight: 700; line-height: 1; color: var(--purple3); }
+  .beat-dots { display: flex; gap: 14px; }
+  .beat-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border2); border: 1px solid var(--border2); }
+  .beat-dot.on { background: var(--purple); border-color: var(--purple2); }
+
+  /* MIDI STATUS */
+  .midi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .midi-green { background: var(--teal); }
+  .midi-yellow { background: var(--amber); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">BAND<span>SYNC</span></div>
+  <div class="sep"></div>
+  <button class="nb on" onclick="go(1)">1. Home</button>
+  <button class="nb" onclick="go(2)">2. Profiles</button>
+  <button class="nb" onclick="go(3)">3. New Profile</button>
+  <button class="nb" onclick="go(4)">4. Devices</button>
+  <button class="nb" onclick="go(5)">5. Song Select</button>
+  <button class="nb" onclick="go(6)">6. Count-off</button>
+  <button class="nb" onclick="go(7)">7. Gameplay</button>
+  <button class="nb" onclick="go(8)">8. Complete</button>
+  <button class="nb" onclick="go(9)">9. Results</button>
+  <button class="nb" onclick="go(10)">10. Replay</button>
+  <button class="nb" onclick="go(11)">11. Profile</button>
+</div>
+
+<div class="content">
+
+  <!-- 1. HOME -->
+  <div class="screen on" id="s1">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;min-height:480px;">
+      <div>
+        <div class="logo-big">BAND<span>SYNC</span></div>
+        <div class="logo-sub">MULTIPLAYER RHYTHM GAME</div>
+      </div>
+      <div style="width:48px;height:0.5px;background:var(--border);"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;width:220px;">
+        <button class="btn-p" onclick="go(2)">NEW SESSION</button>
+        <button class="btn-g" onclick="go(11)">VIEW PROFILES</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <div class="midi-dot midi-green"></div>
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">AKAI MPK MINI 3 CONNECTED</div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;margin-top:-16px;">UP TO 4 PLAYERS · MIDI · WEB AUDIO</div>
+    </div>
+  </div>
+
+  <!-- 2. PROFILE SELECTION -->
+  <div class="screen" id="s2">
+    <div style="width:100%;">
+      <div class="page-label">WHO'S PLAYING TODAY</div>
+      <div class="page-title">Select Players</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+        <div class="card" style="cursor:pointer;border-color:var(--purple);">
+          <div class="row" style="margin-bottom:10px;">
+            <div class="av" style="background:var(--purple5);border-color:var(--purple);">🎹</div>
+            <div><div style="color:#fff;font-size:14px;font-weight:500;">Alex</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">Akai MPK Mini 3</div></div>
+          </div>
+          <span class="pill pp">PLAYING ✓</span>
+        </div>
+        <div class="card" style="cursor:pointer;">
+          <div class="row" style="margin-bottom:10px;">
+            <div class="av" style="background:#04342C;border-color:#0F6E56;">🥁</div>
+            <div><div style="color:#fff;font-size:14px;font-weight:500;">Sam</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">Simmons SD5X</div></div>
+          </div>
+          <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">TAP TO ADD</span>
+        </div>
+        <div class="card" style="cursor:pointer;opacity:0.4;border-style:dashed;" onclick="go(3)">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;min-height:60px;">
+            <div style="font-size:24px;color:var(--text3);">+</div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text3);">ADD PLAYER</div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;opacity:0.4;border-style:dashed;" onclick="go(3)">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;min-height:60px;">
+            <div style="font-size:24px;color:var(--text3);">+</div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text3);">ADD PLAYER</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-g" onclick="go(1)">BACK</button>
+        <button class="btn-p" onclick="go(4)">CONTINUE →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. PROFILE CREATION -->
+  <div class="screen" id="s3">
+    <div style="width:100%;">
+      <div class="page-label">NEW PLAYER</div>
+      <div class="page-title">Create Profile</div>
+      <div class="card" style="display:flex;flex-direction:column;gap:16px;margin-bottom:16px;">
+        <div>
+          <div class="field-label">NAME</div>
+          <div class="field-input" style="color:var(--text3);">Enter your name...</div>
+        </div>
+        <div>
+          <div class="field-label">AVATAR</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div class="av" style="background:var(--purple5);border-color:var(--purple2);cursor:pointer;">🎹</div>
+            <div class="av" style="cursor:pointer;">🎸</div>
+            <div class="av" style="cursor:pointer;">🥁</div>
+            <div class="av" style="cursor:pointer;">🎺</div>
+            <div class="av" style="cursor:pointer;">🎻</div>
+            <div class="av" style="cursor:pointer;">🎤</div>
+            <div class="av" style="cursor:pointer;">🎷</div>
+            <div class="av" style="cursor:pointer;">🎵</div>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">ACCENT COLOR</div>
+          <div style="display:flex;gap:8px;">
+            <div class="color-swatch sel" style="background:#534AB7;"></div>
+            <div class="color-swatch" style="background:#0F6E56;"></div>
+            <div class="color-swatch" style="background:#BA7517;"></div>
+            <div class="color-swatch" style="background:#993556;"></div>
+            <div class="color-swatch" style="background:#185FA5;"></div>
+            <div class="color-swatch" style="background:#993C1D;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">TAGLINE <span style="color:var(--text3);font-size:8px;">OPTIONAL</span></div>
+          <div class="field-input" style="color:var(--text3);">Something fun...</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-g" onclick="go(2)">BACK</button>
+        <button class="btn-p" onclick="go(2)">CREATE →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. DEVICE ASSIGNMENT -->
+  <div class="screen" id="s4">
+    <div style="width:100%;">
+      <div class="page-label">STEP 1 OF 2</div>
+      <div class="page-title">Device Assignment</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <div class="card">
+          <div class="flex-between">
+            <div class="row">
+              <div class="av" style="background:var(--purple5);border-color:var(--purple);">🎹</div>
+              <div><div style="color:#fff;font-size:14px;font-weight:500;">Alex</div><div style="font-size:11px;color:var(--purple2);margin-top:2px;">Akai MPK Mini 3 ✓</div></div>
+            </div>
+            <div style="text-align:right;">
+              <div class="field-label" style="margin-bottom:3px;">RANGE</div>
+              <div style="font-size:13px;color:var(--purple3);font-family:'Space Mono',monospace;">C3 — C6</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="opacity:0.45;">
+          <div class="flex-between">
+            <div class="row">
+              <div class="av" style="background:#04342C;border-color:#0F6E56;">🥁</div>
+              <div><div style="color:#fff;font-size:14px;font-weight:500;">Sam</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">No device assigned</div></div>
+            </div>
+            <button class="btn-g" style="font-size:10px;padding:6px 12px;">ASSIGN</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="field-label" style="margin-bottom:10px;">DETECTED MIDI DEVICES</div>
+        <div class="flex-between" style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;"><div class="midi-dot midi-green"></div><span style="font-size:12px;color:var(--purple2);">Akai MPK Mini 3</span></div>
+          <span class="pill pg">ASSIGNED</span>
+        </div>
+        <div class="flex-between">
+          <div style="display:flex;align-items:center;gap:8px;"><div class="midi-dot" style="background:var(--text3);"></div><span style="font-size:12px;color:var(--text2);">PreSonus FirePod</span></div>
+          <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">audio only</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-g" onclick="go(2)">BACK</button>
+        <button class="btn-p" onclick="go(5)">NEXT →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. SONG SELECTION -->
+  <div class="screen" id="s5">
+    <div style="width:100%;">
+      <div class="page-label">STEP 2 OF 2</div>
+      <div class="page-title">Song Selection</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <div class="card" style="cursor:pointer;border-color:var(--purple);" onclick="go(6)">
+          <div class="flex-between">
+            <div><div style="color:#fff;font-size:14px;font-weight:500;">Mary Had a Little Lamb</div><div style="font-size:11px;color:var(--text3);margin-top:3px;">80 BPM · Easy · mary.mid</div></div>
+            <span class="pill pp">SELECTED</span>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;">
+          <div class="flex-between">
+            <div><div style="color:var(--text);font-size:14px;font-weight:500;">Für Elise</div><div style="font-size:11px;color:var(--text3);margin-top:3px;">72 BPM · Medium · fur_elise.mid</div></div>
+            <span style="color:var(--text3);font-size:18px;">›</span>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;">
+          <div class="flex-between">
+            <div><div style="color:var(--text);font-size:14px;font-weight:500;">C Major Scale</div><div style="font-size:11px;color:var(--text3);margin-top:3px;">80 BPM · Beginner · scale.mid</div></div>
+            <span style="color:var(--text3);font-size:18px;">›</span>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer;text-align:center;border-style:dashed;">
+          <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;padding:4px 0;">+ LOAD MIDI FILE</div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="field-label" style="margin-bottom:10px;">TRACK ASSIGNMENT</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+          <span style="color:var(--purple3);">Track 1 — Piano</span>
+          <span style="color:var(--text3);">→</span>
+          <span class="pill pp">Alex</span>
+          <span style="margin-left:8px;color:var(--text3);">Track 2 — Drums</span>
+          <span style="color:var(--text3);">→</span>
+          <span class="pill pg">Sam</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-g" onclick="go(4)">BACK</button>
+        <button class="btn-p" onclick="go(6)">START →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. COUNT-OFF -->
+  <div class="screen" id="s6">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;min-height:480px;text-align:center;width:100%;">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--text3);">MARY HAD A LITTLE LAMB</div>
+      <div class="countoff-num">3</div>
+      <div class="beat-dots">
+        <div class="beat-dot on"></div>
+        <div class="beat-dot on"></div>
+        <div class="beat-dot"></div>
+        <div class="beat-dot"></div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;">NOTES FALLING · GET READY</div>
+      <div style="width:100%;max-width:400px;height:90px;background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;overflow:hidden;position:relative;">
+        <div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(127,119,221,0.4);"></div>
+        <div class="block" style="top:10px;left:42%;width:13px;height:20px;opacity:0.75;"></div>
+        <div class="block" style="top:38px;left:28%;width:13px;height:20px;opacity:0.5;"></div>
+        <div class="block" style="top:58px;left:60%;width:11px;height:18px;opacity:0.35;"></div>
+      </div>
+      <button class="btn-p" onclick="go(7)">GO! →</button>
+    </div>
+  </div>
+
+  <!-- 7. GAMEPLAY -->
+  <div class="screen" id="s7">
+    <div style="width:100%;">
+      <div class="flex-between" style="margin-bottom:10px;">
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:1px;">MARY HAD A LITTLE LAMB</div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:20px;padding:5px 14px;text-align:center;">
+            <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--text3);">ALEX</div>
+            <div style="font-size:17px;color:var(--purple2);font-weight:600;">2,400</div>
+            <div style="font-family:'Space Mono',monospace;font-size:8px;color:var(--purple);letter-spacing:1px;">x4 COMBO</div>
+          </div>
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);">80 BPM</div>
+          <button class="btn-g" style="font-size:11px;padding:5px 10px;" onclick="go(8)">⏸</button>
+        </div>
+      </div>
+
+      <div class="highway" style="margin-bottom:8px;">
+        <div class="lane-bg">
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+        </div>
+        <div class="hit-line"></div>
+        <div class="hit-label">HIT ZONE</div>
+        <div class="block" style="top:22px;left:34%;width:14px;height:22px;box-shadow:0 0 8px rgba(127,119,221,0.4);"></div>
+        <div class="block" style="top:68px;left:22%;width:14px;height:22px;opacity:0.85;"></div>
+        <div class="block" style="top:120px;left:48%;width:12px;height:20px;opacity:0.7;"></div>
+        <div class="block" style="top:172px;left:58%;width:14px;height:22px;opacity:0.6;"></div>
+        <div class="block hit" style="top:214px;left:34%;width:14px;height:22px;opacity:0.9;"></div>
+        <div style="position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);font-family:'Space Mono',monospace;font-size:16px;font-weight:700;letter-spacing:3px;color:var(--teal);">PERFECT</div>
+        <div class="keys-row">
+          <div class="key"></div><div class="key lit"></div><div class="key"></div><div class="key"></div>
+          <div class="key"></div><div class="key"></div><div class="key"></div><div class="key"></div>
+          <div class="key lit"></div><div class="key"></div><div class="key"></div><div class="key"></div>
+          <div class="key"></div><div class="key"></div><div class="key"></div><div class="key"></div>
+          <div class="key"></div><div class="key"></div><div class="key"></div><div class="key"></div>
+        </div>
+      </div>
+
+      <div class="flex-between">
+        <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">0:12</span>
+        <div style="flex:1;margin:0 10px;" class="progress-wrap"><div class="progress-fill" style="width:28%;"></div></div>
+        <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">0:42</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. SONG COMPLETE -->
+  <div class="screen" id="s8">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;min-height:480px;text-align:center;width:100%;">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--text3);">MARY HAD A LITTLE LAMB</div>
+      <div style="font-family:'Space Mono',monospace;font-size:28px;font-weight:700;letter-spacing:4px;color:var(--purple2);">SONG COMPLETE</div>
+      <div style="display:flex;gap:6px;">
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--purple);"></div>
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--purple);"></div>
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--purple);"></div>
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--purple);"></div>
+        <div style="width:6px;height:6px;border-radius:50%;background:var(--purple);"></div>
+      </div>
+      <button class="btn-p" onclick="go(9)">VIEW RESULTS →</button>
+    </div>
+  </div>
+
+  <!-- 9. RESULTS -->
+  <div class="screen" id="s9">
+    <div style="width:100%;">
+      <div class="page-label">RESULTS</div>
+      <div class="page-title">Mary Had a Little Lamb</div>
+      <div class="card" style="margin-bottom:12px;">
+        <div class="flex-between" style="margin-bottom:14px;">
+          <div class="row">
+            <div class="av" style="background:var(--purple5);border-color:var(--purple);">🎹</div>
+            <div><div style="color:#fff;font-size:15px;font-weight:500;">Alex</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Normal · Akai MPK Mini 3</div></div>
+          </div>
+          <div style="text-align:center;">
+            <div class="grade-big">A</div>
+            <div style="font-family:'Space Mono',monospace;font-size:8px;color:var(--purple);letter-spacing:1px;">GRADE</div>
+          </div>
+        </div>
+        <div class="stat-grid" style="margin-bottom:12px;">
+          <div class="stat-box"><div class="stat-v" style="color:var(--purple3);">24</div><div class="stat-k">PERFECT</div></div>
+          <div class="stat-box"><div class="stat-v" style="color:var(--teal2);">6</div><div class="stat-k">GOOD</div></div>
+          <div class="stat-box"><div class="stat-v" style="color:var(--red);">2</div><div class="stat-k">MISS</div></div>
+          <div class="stat-box"><div class="stat-v" style="color:var(--amber2);">1</div><div class="stat-k">WRONG</div></div>
+        </div>
+        <div class="divider"></div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:7px;"><span style="color:var(--text2);">Accuracy</span><span style="color:#fff;">90.9%</span></div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:7px;"><span style="color:var(--text2);">Score</span><span style="color:var(--purple2);font-weight:600;">4,850</span></div>
+        <div class="flex-between" style="font-size:13px;margin-bottom:12px;"><span style="color:var(--text2);">Best combo</span><span style="color:#fff;">18x</span></div>
+        <span class="pill pg">NEW PERSONAL BEST ★</span>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button class="btn-g" onclick="go(10)">REPLAY</button>
+        <button class="btn-g" onclick="go(5)">SONG SELECT</button>
+        <button class="btn-p" onclick="go(6)">PLAY AGAIN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. REPLAY -->
+  <div class="screen" id="s10">
+    <div style="width:100%;">
+      <div class="flex-between" style="margin-bottom:20px;">
+        <div><div class="page-label">REPLAY</div><div style="font-size:18px;font-weight:600;color:#fff;">Mary Had a Little Lamb</div></div>
+        <span class="pill pp">ALEX</span>
+      </div>
+      <div class="highway" style="height:200px;margin-bottom:12px;">
+        <div class="lane-bg">
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+          <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+        </div>
+        <div class="hit-line"></div>
+        <div class="block hit" style="top:25px;left:20%;width:13px;height:20px;"></div>
+        <div class="block hit" style="top:70px;left:38%;width:13px;height:20px;"></div>
+        <div class="block" style="top:112px;left:54%;width:13px;height:20px;background:var(--red);border-color:#F09595;">
+          <div style="position:absolute;top:-14px;left:-4px;font-family:'Space Mono',monospace;font-size:8px;color:var(--red);white-space:nowrap;">MISS</div>
+        </div>
+        <div class="block hit" style="top:55px;left:70%;width:13px;height:20px;"></div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div class="progress-wrap" style="margin-bottom:5px;height:3px;"><div class="progress-fill" style="width:44%;"></div></div>
+        <div class="flex-between"><span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">0:00</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);">0:42</span></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">
+        <button class="btn-g" style="font-size:13px;padding:8px 16px;">⏮</button>
+        <button class="btn-p" style="padding:10px 24px;">▶ PLAY</button>
+        <button class="btn-g" style="font-size:13px;padding:8px 16px;">⏭</button>
+      </div>
+      <div style="text-align:center;"><button class="btn-g" onclick="go(9)">← BACK TO RESULTS</button></div>
+    </div>
+  </div>
+
+  <!-- 11. PLAYER PROFILE -->
+  <div class="screen" id="s11">
+    <div style="width:100%;">
+      <div class="row" style="margin-bottom:20px;align-items:flex-start;">
+        <div class="av av-lg" style="background:var(--purple5);border-color:var(--purple);">🎹</div>
+        <div>
+          <div style="font-size:22px;font-weight:600;color:#fff;">Alex</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;">Piano · Akai MPK Mini 3</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px;font-style:italic;">"here to vibe"</div>
+          <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+            <div class="midi-dot midi-green"></div>
+            <span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--teal);letter-spacing:1px;">LATENCY: −111ms</span>
+          </div>
+        </div>
+      </div>
+      <div class="stat-grid" style="margin-bottom:14px;">
+        <div class="stat-box"><div class="stat-v">14</div><div class="stat-k">SONGS</div></div>
+        <div class="stat-box"><div class="stat-v">88%</div><div class="stat-k">AVG ACC</div></div>
+        <div class="stat-box"><div class="stat-v">3</div><div class="stat-k">STREAK</div></div>
+        <div class="stat-box"><div class="stat-v">18x</div><div class="stat-k">BEST COMBO</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px;">
+        <div class="field-label" style="margin-bottom:12px;">PERSONAL BESTS</div>
+        <div class="pb-row">
+          <div><div style="color:var(--text);font-size:13px;">Mary Had a Little Lamb</div><div style="font-size:10px;color:var(--text3);">Normal</div></div>
+          <div style="display:flex;gap:12px;align-items:center;"><span style="font-size:12px;color:var(--text2);">90.9%</span><span style="font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--purple2);">A</span></div>
+        </div>
+        <div class="pb-row">
+          <div><div style="color:var(--text);font-size:13px;">C Major Scale</div><div style="font-size:10px;color:var(--text3);">Easy</div></div>
+          <div style="display:flex;gap:12px;align-items:center;"><span style="font-size:12px;color:var(--text2);">98.2%</span><span style="font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--purple2);">S</span></div>
+        </div>
+        <div class="pb-row">
+          <div><div style="color:var(--text);font-size:13px;">Für Elise</div><div style="font-size:10px;color:var(--text3);">Hard</div></div>
+          <div style="display:flex;gap:12px;align-items:center;"><span style="font-size:12px;color:var(--text2);">74.1%</span><span style="font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--purple2);">B</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-g" onclick="go(1)">HOME</button>
+        <button class="btn-p" onclick="go(2)">NEW SESSION →</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var screens = ['s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11'];
+  function go(n) {
+    screens.forEach(function(id, i) {
+      document.getElementById(id).classList.toggle('on', i === n-1);
+      document.querySelectorAll('.nb')[i].classList.toggle('on', i === n-1);
+    });
+    document.querySelector('.content').scrollTop = 0;
+  }
+</script>
+</body>
+</html>

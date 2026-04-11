@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BandSync — Game</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0f;
+      color: #ccc;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      gap: 16px;
+    }
+    h1 { font-size: 24px; font-weight: 500; letter-spacing: 4px; color: #fff; }
+    h1 span { color: #7F77DD; }
+    .subtitle { font-size: 11px; letter-spacing: 2px; color: #555; margin-top: -10px; }
+    .status-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: #1a1a26; border: 0.5px solid #2a2a3a;
+      border-radius: 8px; padding: 8px 16px;
+      width: 100%; max-width: 460px;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+    .status-dot.green  { background: #1D9E75; }
+    .status-dot.yellow { background: #BA7517; }
+    .status-dot.red    { background: #E24B4A; }
+    .status-text { font-size: 12px; color: #888; }
+    .canvas-wrap { border: 0.5px solid #1e1e2a; border-radius: 8px; overflow: hidden; }
+    canvas { display: block; background: #0d0d14; }
+    .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    button {
+      background: transparent; border: 0.5px solid #2a2a3a;
+      border-radius: 6px; padding: 7px 16px; font-size: 11px;
+      color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s;
+    }
+    button:hover  { border-color: #7F77DD; color: #CECBF6; }
+    button.active { background: #3C3489; border-color: #7F77DD; color: #CECBF6; }
+    .speed-row { display: flex; align-items: center; gap: 12px; font-size: 11px; color: #555; }
+    input[type=range] { width: 120px; accent-color: #7F77DD; }
+    .speed-val { font-size: 12px; color: #888; min-width: 24px; }
+    .stat-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .stat {
+      background: #1a1a26; border: 0.5px solid #2a2a3a;
+      border-radius: 8px; padding: 8px 14px; text-align: center; min-width: 72px;
+    }
+    .stat-val   { font-size: 18px; font-weight: 500; color: #fff; }
+    .stat-label { font-size: 10px; color: #555; letter-spacing: 1px; margin-top: 2px; }
+    .last-note  { font-size: 13px; color: #7F77DD; letter-spacing: 2px; min-height: 20px; text-align: center; }
+    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h1>BAND<span>SYNC</span></h1>
+  <div class="subtitle">MIDI → CANVAS</div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <div class="status-text" id="status-text">Connecting to MIDI...</div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="highway" width="460" height="520"></canvas>
+  </div>
+
+  <div class="last-note" id="last-note">— press a key on your MPK Mini —</div>
+
+  <div class="controls">
+    <button id="btn-play" class="active" onclick="togglePlay()">⏸ PAUSE</button>
+    <button onclick="clearBlocks()">✕ CLEAR</button>
+  </div>
+
+  <div class="speed-row">
+    <span>SPEED</span>
+    <input type="range" id="speed" min="1" max="10" value="3" step="1"
+           oninput="updateSpeed(this.value)">
+    <span class="speed-val" id="speed-val">3</span>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-val" id="stat-hits">0</div>
+      <div class="stat-label">KEYS HIT</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="stat-active">0</div>
+      <div class="stat-label">FALLING</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="stat-fps">60</div>
+      <div class="stat-label">FPS</div>
+    </div>
+  </div>
+
+  <div class="info">SPACE = pause &nbsp;·&nbsp; MIDI keys spawn blocks in their lane</div>
+
+  <script>
+    // ─── CONFIG ──────────────────────────────────────────────────────────
+    const LANE_COUNT = 25;    // MPK Mini has 25 keys
+    const NOTE_MIN   = 48;    // C3 — lowest key on MPK Mini at default octave
+    const NOTE_MAX   = NOTE_MIN + LANE_COUNT - 1;
+
+    const COLORS = {
+      purple: { fill: '#534AB7', stroke: '#7F77DD' },
+      teal:   { fill: '#0F6E56', stroke: '#1D9E75' },
+    };
+
+    const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function midiToName(n) {
+      return NOTE_NAMES[n % 12] + Math.floor(n / 12 - 1);
+    }
+
+    // ─── CANVAS ──────────────────────────────────────────────────────────
+    const canvas  = document.getElementById('highway');
+    const ctx     = canvas.getContext('2d');
+    const W       = canvas.width;
+    const H       = canvas.height;
+    const HIT_Y   = H - 90;
+    const LANE_W  = W / LANE_COUNT;
+
+    // ─── STATE ───────────────────────────────────────────────────────────
+    let playing    = true;
+    let speed      = 3;
+    let blocks     = [];
+    let hitCount   = 0;
+    let lastTime   = 0;
+    let frameCount = 0;
+    let fpsTimer   = 0;
+    let heldLanes  = new Set();
+
+    // ─── MIDI INIT ───────────────────────────────────────────────────────
+    async function initMIDI() {
+      const dot  = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+
+      if (!navigator.requestMIDIAccess) {
+        dot.className = 'status-dot red';
+        text.textContent = 'Web MIDI not supported — use Chrome';
+        return;
+      }
+
+      try {
+        const midi   = await navigator.requestMIDIAccess({ sysex: false });
+        const inputs = [...midi.inputs.values()];
+
+        if (inputs.length > 0) {
+          dot.className    = 'status-dot green';
+          text.textContent = 'Connected: ' + inputs.map(i => i.name).join(', ');
+          inputs.forEach(input => { input.onmidimessage = onMIDI; });
+        } else {
+          dot.className    = 'status-dot yellow';
+          text.textContent = 'No MIDI devices found — connect one and refresh';
+        }
+
+        // Handle hot-plug
+        midi.onstatechange = () => {
+          const all = [...midi.inputs.values()];
+          all.forEach(i => { i.onmidimessage = onMIDI; });
+          dot.className    = all.length > 0 ? 'status-dot green' : 'status-dot yellow';
+          text.textContent = all.length > 0
+            ? 'Connected: ' + all.map(i => i.name).join(', ')
+            : 'No devices — connect one';
+        };
+
+      } catch (err) {
+        dot.className    = 'status-dot red';
+        text.textContent = 'MIDI access denied — check Chrome permissions';
+      }
+    }
+
+    // ─── MIDI HANDLER ────────────────────────────────────────────────────
+    function onMIDI(event) {
+      const [status, note, velocity] = event.data;
+      const msgType = status & 0xF0;
+
+      if (msgType === 0x90 && velocity > 0) {
+        onNoteOn(note, velocity);
+      }
+      if (msgType === 0x80 || (msgType === 0x90 && velocity === 0)) {
+        onNoteOff(note);
+      }
+    }
+
+    function onNoteOn(note, velocity) {
+      // Clamp note to our 25-key range — handles octave shifts gracefully
+      const clamped = Math.max(NOTE_MIN, Math.min(NOTE_MAX, note));
+      const lane    = clamped - NOTE_MIN;
+
+      spawnBlock(lane, velocity);
+      heldLanes.add(lane);
+
+      hitCount++;
+      document.getElementById('stat-hits').textContent = hitCount;
+      document.getElementById('last-note').textContent =
+        midiToName(note) + '  ·  note ' + note + '  ·  velocity ' + velocity;
+    }
+
+    function onNoteOff(note) {
+      const clamped = Math.max(NOTE_MIN, Math.min(NOTE_MAX, note));
+      heldLanes.delete(clamped - NOTE_MIN);
+    }
+
+    // ─── SPAWN BLOCK ─────────────────────────────────────────────────────
+    function spawnBlock(lane, velocity) {
+      const noteW = Math.max(2, LANE_W * 0.8);
+      const noteH = 18;
+      const x     = lane * LANE_W + (LANE_W - noteW) / 2;
+
+      // Velocity subtly affects opacity — harder hit = slightly more vivid
+      const alpha = 0.65 + (velocity / 127) * 0.35;
+
+      blocks.push({
+        x, y: -noteH,
+        w: noteW, h: noteH,
+        lane, alpha, velocity,
+        color: 'purple',
+      });
+    }
+
+    function clearBlocks() {
+      blocks = [];
+      document.getElementById('stat-active').textContent = 0;
+    }
+
+    // ─── DRAW ────────────────────────────────────────────────────────────
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Lane backgrounds
+      for (let i = 0; i < LANE_COUNT; i++) {
+        ctx.fillStyle = heldLanes.has(i)
+          ? 'rgba(127,119,221,0.1)'
+          : (i % 2 === 0 ? '#0d0d14' : '#0f0f17');
+        ctx.fillRect(i * LANE_W, 0, LANE_W, HIT_Y);
+      }
+
+      // Subtle lane dividers every 5 lanes (C notes)
+      ctx.strokeStyle = '#1e1e28';
+      ctx.lineWidth   = 0.5;
+      for (let i = 0; i <= LANE_COUNT; i++) {
+        if (i % 5 === 0) {
+          ctx.beginPath();
+          ctx.moveTo(i * LANE_W, 0);
+          ctx.lineTo(i * LANE_W, HIT_Y);
+          ctx.stroke();
+        }
+      }
+
+      // Hit zone line
+      ctx.fillStyle = 'rgba(127,119,221,0.2)';
+      ctx.fillRect(0, HIT_Y, W, 2);
+      ctx.fillStyle = 'rgba(127,119,221,0.2)';
+      ctx.font      = '9px Segoe UI';
+      ctx.fillText('HIT ZONE', 4, HIT_Y - 4);
+
+      // Falling blocks
+      blocks.forEach(block => {
+        const col = COLORS[block.color];
+        ctx.globalAlpha = block.alpha;
+
+        ctx.fillStyle = col.fill;
+        ctx.beginPath();
+        ctx.roundRect(block.x, block.y, block.w, block.h, 2);
+        ctx.fill();
+
+        ctx.strokeStyle = col.stroke;
+        ctx.lineWidth   = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(block.x, block.y, block.w, block.h, 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = 1;
+      });
+
+      // Bottom keyboard area
+      ctx.fillStyle = '#0f0f18';
+      ctx.fillRect(0, HIT_Y + 2, W, H - HIT_Y - 2);
+
+      // Key indicators — light up on held lanes
+      const keyH = H - HIT_Y - 8;
+      const keyY = HIT_Y + 4;
+
+      for (let i = 0; i < LANE_COUNT; i++) {
+        const kx = i * LANE_W + 1;
+        const kw = LANE_W - 2;
+
+        ctx.fillStyle   = heldLanes.has(i) ? '#7F77DD' : '#1a1a26';
+        ctx.strokeStyle = heldLanes.has(i) ? '#AFA9EC' : '#252535';
+        ctx.lineWidth   = 0.5;
+
+        ctx.beginPath();
+        ctx.roundRect(kx, keyY, kw, keyH, 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // ─── GAME LOOP ───────────────────────────────────────────────────────
+    function update(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime;
+      lastTime    = timestamp;
+
+      frameCount++;
+      fpsTimer += delta;
+      if (fpsTimer >= 1000) {
+        document.getElementById('stat-fps').textContent = frameCount;
+        frameCount = 0;
+        fpsTimer   = 0;
+      }
+
+      if (playing) {
+        blocks.forEach(b => { b.y += speed * (delta / 16); });
+        blocks = blocks.filter(b => b.y < H + b.h);
+        document.getElementById('stat-active').textContent = blocks.length;
+      }
+
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    // ─── UI ──────────────────────────────────────────────────────────────
+    function togglePlay() {
+      playing = !playing;
+      const btn = document.getElementById('btn-play');
+      btn.textContent = playing ? '⏸ PAUSE' : '▶ PLAY';
+      btn.className   = playing ? 'active' : '';
+    }
+
+    function updateSpeed(val) {
+      speed = parseInt(val);
+      document.getElementById('speed-val').textContent = val;
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    });
+
+    // ─── BOOT ────────────────────────────────────────────────────────────
+    initMIDI();
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>

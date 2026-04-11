@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BandSync — Drum Debug</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 10px; }
+    h1 { font-size: 20px; font-weight: 500; letter-spacing: 4px; color: #fff; }
+    h1 span { color: #1D9E75; }
+    .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
+
+    .status-bar { display: flex; align-items: center; gap: 10px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 7px 14px; width: 100%; max-width: 1200px; }
+    .sdot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+    .sdot.green { background: #1D9E75; } .sdot.yellow { background: #BA7517; } .sdot.red { background: #E24B4A; }
+    .stext { font-size: 12px; color: #888; flex: 1; }
+    .device-select { background: #0d0d18; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 4px 10px; font-size: 11px; color: #1D9E75; cursor: pointer; letter-spacing: 1px; font-family: 'Segoe UI', sans-serif; }
+    .device-select:focus { outline: none; border-color: #1D9E75; }
+
+    .main-row { display: flex; gap: 16px; width: 100%; max-width: 1200px; align-items: flex-start; }
+    .canvas-wrap { border: 0.5px solid #1e1e2a; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+    canvas { display: block; }
+
+    /* DEBUG PANEL */
+    .debug-panel { flex: 1; background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 8px; padding: 12px; font-family: 'Courier New', monospace; font-size: 11px; min-width: 240px; }
+    .debug-section { margin-bottom: 12px; }
+    .debug-title { font-size: 9px; letter-spacing: 2px; color: #555; margin-bottom: 6px; border-bottom: 0.5px solid #1a1a26; padding-bottom: 4px; }
+    .debug-row { display: flex; justify-content: space-between; margin-bottom: 3px; gap: 8px; }
+    .debug-key { color: #555; white-space: nowrap; }
+    .debug-val { color: #1D9E75; text-align: right; }
+    .debug-val.warn { color: #BA7517; } .debug-val.bad { color: #E24B4A; } .debug-val.neutral { color: #888; } .debug-val.purple { color: #7F77DD; }
+
+    /* CONTROLS */
+    .controls-row { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; max-width: 1200px; justify-content: center; }
+    .start-btn { background: #0F6E56; border: none; border-radius: 6px; padding: 7px 20px; font-size: 12px; color: #fff; cursor: pointer; letter-spacing: 2px; opacity: 0.4; pointer-events: none; transition: all 0.2s; }
+    .start-btn.enabled { opacity: 1; pointer-events: all; } .start-btn.enabled:hover { background: #1D9E75; }
+    button { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 6px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    button:hover { border-color: #1D9E75; color: #5DCAA5; } button.active { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
+
+    .hit-feedback { font-size: 15px; font-weight: 500; letter-spacing: 3px; min-height: 22px; text-align: center; }
+    .hit-feedback.perfect { color: #AFA9EC; } .hit-feedback.good { color: #9FE1CB; }
+    .hit-feedback.miss { color: #E24B4A; } .hit-feedback.wrong { color: #BA7517; }
+    .hit-feedback.complete { color: #1D9E75; } .hit-feedback.hidden { opacity: 0; }
+
+    .settings-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 11px; color: #555; }
+    input[type=range] { accent-color: #1D9E75; }
+    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; }
+
+    /* MAPPING WARNING */
+    .map-warn { background: #412402; border: 0.5px solid #854F0B; border-radius: 6px; padding: 6px 12px; font-size: 11px; color: #EF9F27; display: none; }
+
+    /* CALIBRATION OVERLAY */
+    .cal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100; flex-direction:column; align-items:center; justify-content:center; gap:24px; }
+    .cal-overlay.open { display:flex; }
+    .cal-title { font-size:11px; letter-spacing:3px; color:#555; }
+    .cal-heading { font-size:22px; font-weight:500; letter-spacing:4px; color:#fff; }
+    .cal-sub { font-size:12px; color:#666; letter-spacing:1px; text-align:center; line-height:1.8; }
+    .cal-flash-wrap { position:relative; width:160px; height:160px; display:flex; align-items:center; justify-content:center; }
+    .cal-ring { position:absolute; inset:0; border-radius:50%; border:1.5px solid #2a2a3a; }
+    .cal-circle { width:100px; height:100px; border-radius:50%; background:#1a1a26; border:1.5px solid #2a2a3a; transition:background 0.04s, border-color 0.04s, box-shadow 0.04s; display:flex; align-items:center; justify-content:center; }
+    .cal-circle.flash { background:#0F6E56; border-color:#1D9E75; box-shadow:0 0 32px 8px rgba(29,158,117,0.5); }
+    .cal-circle-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-circle.flash .cal-circle-label { color:#9FE1CB; }
+    .cal-timer { font-size:32px; font-weight:300; color:#1D9E75; letter-spacing:2px; min-width:40px; text-align:center; }
+    .cal-rounds { display:flex; gap:10px; }
+    .cal-round-dot { width:10px; height:10px; border-radius:50%; background:#1a1a26; border:1px solid #2a2a3a; transition:all 0.2s; }
+    .cal-round-dot.done { background:#0F6E56; border-color:#1D9E75; }
+    .cal-round-dot.active { background:#1D9E75; border-color:#5DCAA5; box-shadow:0 0 8px rgba(29,158,117,0.6); }
+    .cal-tap-count { font-size:11px; color:#444; letter-spacing:1px; min-height:16px; }
+    .cal-results { display:none; flex-direction:column; align-items:center; gap:16px; }
+    .cal-results.show { display:flex; }
+    .cal-round-results { display:flex; gap:20px; }
+    .cal-round-result { background:#0d0d14; border:0.5px solid #1e1e2a; border-radius:8px; padding:12px 18px; text-align:center; }
+    .cal-round-result .rr-label { font-size:9px; letter-spacing:2px; color:#444; margin-bottom:6px; }
+    .cal-round-result .rr-val { font-size:20px; font-weight:500; color:#1D9E75; }
+    .cal-round-result .rr-taps { font-size:10px; color:#444; margin-top:4px; }
+    .cal-final { background:#0d0d14; border:1px solid #0F6E56; border-radius:12px; padding:16px 32px; text-align:center; }
+    .cal-final .cf-label { font-size:9px; letter-spacing:3px; color:#1D9E75; margin-bottom:8px; }
+    .cal-final .cf-val { font-size:40px; font-weight:300; color:#fff; letter-spacing:2px; }
+    .cal-final .cf-unit { font-size:12px; color:#555; margin-top:4px; }
+    .cal-finetune { display:flex; align-items:center; gap:10px; }
+    .cal-finetune-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-nudge { background:#1a1a26; border:0.5px solid #2a2a3a; border-radius:6px; padding:6px 12px; font-size:11px; color:#888; cursor:pointer; letter-spacing:1px; transition:all 0.15s; }
+    .cal-nudge:hover { border-color:#1D9E75; color:#5DCAA5; }
+    .cal-current { font-size:13px; color:#1D9E75; min-width:70px; text-align:center; font-family:'Courier New',monospace; }
+    .cal-actions { display:flex; gap:12px; }
+    .cal-apply { background:#0F6E56; border:none; border-radius:6px; padding:9px 28px; font-size:12px; color:#fff; cursor:pointer; letter-spacing:2px; transition:all 0.2s; }
+    .cal-apply:hover { background:#1D9E75; }
+    .cal-cancel { background:transparent; border:0.5px solid #2a2a3a; border-radius:6px; padding:9px 20px; font-size:11px; color:#555; cursor:pointer; letter-spacing:1px; }
+    .cal-cancel:hover { border-color:#555; color:#888; }
+    .cal-device-note { font-size:10px; color:#333; letter-spacing:1px; }
+  </style>
+</head>
+<body>
+  <h1>BAND<span>SYNC</span></h1>
+  <div class="subtitle">DRUM DEBUG · HIT DETECTION · LANE VIEW</div>
+
+  <div class="status-bar">
+    <div class="sdot" id="sdot"></div>
+    <div class="stext" id="stext">Connecting...</div>
+    <div id="signal-flash" style="font-family:'Courier New',monospace;font-size:10px;color:#1a1a26;letter-spacing:1px;transition:color 0.1s;">● SIGNAL</div>
+    <select class="device-select" id="device-select" onchange="switchDevice(this.value)" style="display:none;"></select>
+  </div>
+
+  <div class="map-warn" id="map-warn">⚠ No saved mapping found for this device — go to drum_monitor.html to create one</div>
+
+  <div class="main-row">
+    <div class="canvas-wrap"><canvas id="highway"></canvas></div>
+
+    <div class="debug-panel">
+      <div class="debug-section">
+        <div class="debug-title">TIMING ENGINE</div>
+        <div class="debug-row"><span class="debug-key">state</span><span class="debug-val" id="d-state">idle</span></div>
+        <div class="debug-row"><span class="debug-key">song time (ms)</span><span class="debug-val" id="d-songtime">—</span></div>
+        <div class="debug-row"><span class="debug-key">fall time (ms)</span><span class="debug-val" id="d-falltime">—</span></div>
+        <div class="debug-row"><span class="debug-key">speed</span><span class="debug-val" id="d-speed">—</span></div>
+        <div class="debug-row"><span class="debug-key">hit window</span><span class="debug-val" id="d-window">—</span></div>
+        <div class="debug-row"><span class="debug-key">latency offset</span><span class="debug-val" id="d-offset">0ms</span></div>
+        <div class="debug-row"><span class="debug-key">blocks / spawned</span><span class="debug-val" id="d-blocks">0 / 0</span></div>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">SCORE</div>
+        <div class="debug-row"><span class="debug-key">perfect</span><span class="debug-val" id="d-perfect">0</span></div>
+        <div class="debug-row"><span class="debug-key">good</span><span class="debug-val" id="d-good">0</span></div>
+        <div class="debug-row"><span class="debug-key">miss</span><span class="debug-val bad" id="d-miss">0</span></div>
+        <div class="debug-row"><span class="debug-key">wrong</span><span class="debug-val warn" id="d-wrong">0</span></div>
+        <div class="debug-row"><span class="debug-key">combo</span><span class="debug-val purple" id="d-combo">0</span></div>
+        <div class="debug-row"><span class="debug-key">accuracy</span><span class="debug-val" id="d-acc">—</span></div>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">LAST HIT</div>
+        <div class="debug-row"><span class="debug-key">midi note</span><span class="debug-val purple" id="d-lastnote">—</span></div>
+        <div class="debug-row"><span class="debug-key">abstract name</span><span class="debug-val" id="d-lastname">—</span></div>
+        <div class="debug-row"><span class="debug-key">offset</span><span class="debug-val" id="d-lastoffset">—</span></div>
+        <div class="debug-row"><span class="debug-key">quality</span><span class="debug-val" id="d-lastquality">—</span></div>
+      </div>
+      <div class="debug-section">
+        <div class="debug-title">MAPPING (<span id="d-mapcount">0</span> pads)</div>
+        <div id="d-maplist" style="font-size:10px;color:#444;line-height:1.8;"></div>
+        <div style="margin-top:8px;">
+          <button onclick="window.open('drum_monitor.html')" style="font-size:10px;padding:4px 10px;border-color:#1D9E75;color:#5DCAA5;">OPEN MAPPING TOOL ↗</button>
+          <button onclick="reloadMapping()" style="font-size:10px;padding:4px 10px;margin-top:4px;">↺ RELOAD MAPPING</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hit-feedback hidden" id="hit-feedback">—</div>
+
+  <div class="controls-row">
+    <button onclick="loadPattern('rock')">▶ ROCK BEAT</button>
+    <button onclick="loadPattern('hihat')">▶ HI-HAT DRILL</button>
+    <button onclick="loadPattern('fills')">▶ FILLS</button>
+    <button class="start-btn" id="start-btn" onclick="startSong()">START →</button>
+    <button onclick="togglePause()" id="btn-pause" style="display:none;">⏸ PAUSE</button>
+    <button onclick="resetSong()" id="btn-reset" style="display:none;">↺ RESET</button>
+    <button onclick="openCal()" id="btn-cal">⊙ CALIBRATE</button>
+  </div>
+
+  <div class="settings-row">
+    <span>NOTE SPEED</span>
+    <input type="range" id="speed" min="1" max="10" value="3" step="1" style="width:100px;" oninput="updateSpeed(this.value)">
+    <span id="speed-val" style="color:#1D9E75;min-width:60px;">3 — 3.0s</span>
+    <span style="margin-left:12px;">HIT WINDOW</span>
+    <input type="range" id="hitwin" min="1" max="5" value="2" step="1" style="width:80px;" oninput="updateHitWindow(this.value)">
+    <span id="hitwin-val" style="color:#1D9E75;min-width:80px;">Easy</span>
+    <span style="margin-left:12px;">SOUND</span>
+    <button id="sound-toggle" onclick="toggleAlwaysSound()" class="active">ALWAYS</button>
+  </div>
+
+  <div class="info">SPACE = pause · R = reset · C = calibrate · Load a pattern then START</div>
+
+  <!-- CALIBRATION OVERLAY -->
+  <div class="cal-overlay" id="cal-overlay">
+    <div id="cal-active">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div class="cal-title">LATENCY CALIBRATION — DRUMS</div>
+        <div class="cal-heading" id="cal-round-heading">ROUND 1 OF 3</div>
+        <div class="cal-sub" id="cal-instruction">Hit any drum pad in time with each flash.<br>Keep going until the round ends.</div>
+        <div class="cal-flash-wrap">
+          <div class="cal-ring"></div>
+          <div class="cal-circle" id="cal-circle"><span class="cal-circle-label" id="cal-circle-label">HIT</span></div>
+        </div>
+        <div class="cal-timer" id="cal-timer">10</div>
+        <div class="cal-rounds">
+          <div class="cal-round-dot active" id="cal-dot-0"></div>
+          <div class="cal-round-dot" id="cal-dot-1"></div>
+          <div class="cal-round-dot" id="cal-dot-2"></div>
+        </div>
+        <div class="cal-tap-count" id="cal-tap-count"></div>
+      </div>
+    </div>
+    <div class="cal-results" id="cal-results">
+      <div class="cal-title">CALIBRATION COMPLETE</div>
+      <div class="cal-round-results" id="cal-round-results"></div>
+      <div class="cal-final">
+        <div class="cf-label">YOUR LATENCY OFFSET</div>
+        <div class="cf-val" id="cal-final-val">—</div>
+        <div class="cf-unit">milliseconds</div>
+      </div>
+      <div class="cal-finetune">
+        <span class="cal-finetune-label">FINE TUNE</span>
+        <button class="cal-nudge" onclick="nudgeOffset(-10)">−10</button>
+        <button class="cal-nudge" onclick="nudgeOffset(-1)">−1</button>
+        <span class="cal-current" id="cal-current-val">0ms</span>
+        <button class="cal-nudge" onclick="nudgeOffset(+1)">+1</button>
+        <button class="cal-nudge" onclick="nudgeOffset(+10)">+10</button>
+      </div>
+      <div class="cal-actions">
+        <button class="cal-cancel" onclick="closeCal()">CANCEL</button>
+        <button class="cal-apply" onclick="applyOffset()">APPLY & SAVE</button>
+      </div>
+      <div class="cal-device-note" id="cal-device-note"></div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════
+    // LANES — left to right, physical kit order
+    // ═══════════════════════════════════════════════════════════
+    const LANES = [
+      { name: 'HH_PEDAL',   color: '#5DCAA5', stroke: '#9FE1CB', label: 'HH\nPED' },
+      { name: 'KICK',       color: '#E24B4A', stroke: '#F09595', label: 'KICK' },
+      { name: 'SNARE',      color: '#7F77DD', stroke: '#AFA9EC', label: 'SNR' },
+      { name: 'SNARE_RIM',  color: '#534AB7', stroke: '#7F77DD', label: 'RIM' },
+      { name: 'HH_CLOSED',  color: '#5DCAA5', stroke: '#9FE1CB', label: 'HH\nCLS' },
+      { name: 'HH_OPEN',    color: '#1D9E75', stroke: '#5DCAA5', label: 'HH\nOPN' },
+      { name: 'TOM_1',      color: '#EF9F27', stroke: '#FAC775', label: 'T1' },
+      { name: 'TOM_2',      color: '#BA7517', stroke: '#EF9F27', label: 'T2' },
+      { name: 'TOM_3',      color: '#854F0B', stroke: '#BA7517', label: 'T3' },
+      { name: 'CRASH',      color: '#AFA9EC', stroke: '#CECBF6', label: 'CRS' },
+      { name: 'RIDE',       color: '#888898', stroke: '#aaaabc', label: 'RIDE' },
+      { name: 'RIDE_BELL',  color: '#555566', stroke: '#888898', label: 'BELL' },
+    ];
+
+    const LANE_W = 60;
+    const HIGHWAY_H = 400;
+    const HIT_Y = HIGHWAY_H - 4;
+    const NOTE_R = 10;       // dot radius for normal pads
+    const KICK_H = 16;       // kick bar height
+    const CANVAS_W = LANES.length * LANE_W;
+    const CANVAS_H = HIGHWAY_H + 48; // +48 for lane labels at bottom
+
+    const canvas = document.getElementById('highway');
+    const ctx = canvas.getContext('2d');
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
+
+    // Lane x-center
+    function laneX(i) { return i * LANE_W + LANE_W / 2; }
+    function laneIndex(name) { return LANES.findIndex(l => l.name === name); }
+
+    // ═══════════════════════════════════════════════════════════
+    // SPEED + HIT WINDOW
+    // ═══════════════════════════════════════════════════════════
+    const FALL_TIMES_MS = [4000,3500,3000,2500,2000,1700,1400,1100,800,500];
+    let speedLevel = 3;
+    function getFallTimeMs() { return FALL_TIMES_MS[speedLevel-1]; }
+    function updateSpeed(val) {
+      speedLevel = parseInt(val);
+      const s = (getFallTimeMs()/1000).toFixed(1);
+      document.getElementById('speed-val').textContent = val + ' — ' + s + 's';
+    }
+
+    const HIT_WINDOWS = [
+      {name:'Very Easy', perfect:120, good:200},
+      {name:'Easy',      perfect:80,  good:160},
+      {name:'Normal',    perfect:40,  good:80 },
+      {name:'Hard',      perfect:25,  good:50 },
+      {name:'Expert',    perfect:15,  good:30 },
+    ];
+    let hitWindowLevel = 2;
+    function getHitWindow() { return HIT_WINDOWS[hitWindowLevel-1]; }
+    function updateHitWindow(val) {
+      hitWindowLevel = parseInt(val);
+      const w = getHitWindow();
+      document.getElementById('hitwin-val').textContent = w.name;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // COUNT-OFF
+    // ═══════════════════════════════════════════════════════════
+    const COUNTOFF_BEATS = 4;
+    const COUNTOFF_BPM = 80;
+    const BEAT_MS = 60000 / COUNTOFF_BPM;
+    const COUNTOFF_TOTAL_MS = BEAT_MS * COUNTOFF_BEATS;
+
+    // ═══════════════════════════════════════════════════════════
+    // DRUM MAPPING — loaded from localStorage
+    // TODO: migrate into per-profile storage when profiles are built
+    // ═══════════════════════════════════════════════════════════
+    let drumMapping = {};   // { midiNote: abstractName }
+    let activeMidiDevice = 'unknown';
+    let allMidiInputs = {};
+
+    function mappingKey(device) {
+      return 'bandsync_drummap_' + (device || 'unknown').replace(/\s+/g, '_');
+    }
+
+    // ── LATENCY OFFSET ──────────────────────────────────────────
+    // TODO: move into per-profile per-device storage when profiles are built
+    let userOffset = 0;
+
+    function offsetKey(device) {
+      return 'bandsync_offset_' + (device || 'unknown').replace(/\s+/g, '_');
+    }
+
+    function loadOffsetForDevice(deviceName) {
+      const key = offsetKey(deviceName);
+      const saved = localStorage.getItem(key);
+      userOffset = saved !== null ? parseInt(saved) : 0;
+      updateOffsetDisplay();
+    }
+
+    function saveOffsetForDevice(val) {
+      const key = offsetKey(activeMidiDevice);
+      localStorage.setItem(key, String(val));
+      userOffset = val;
+      updateOffsetDisplay();
+    }
+
+    function updateOffsetDisplay() {
+      const el = document.getElementById('d-offset');
+      if(el) el.textContent = (userOffset > 0 ? '+' : '') + userOffset + 'ms';
+    }
+
+    function loadMappingForDevice(deviceName) {
+      activeMidiDevice = deviceName || 'unknown';
+      const key = mappingKey(activeMidiDevice);
+      const saved = localStorage.getItem(key);
+      const warn = document.getElementById('map-warn');
+      if(saved) {
+        try { drumMapping = JSON.parse(saved); warn.style.display='none'; }
+        catch(e) { drumMapping = {}; }
+      } else {
+        drumMapping = {};
+        warn.style.display = 'block';
+      }
+      loadOffsetForDevice(activeMidiDevice);
+      updateMappingDebug();
+    }
+
+    function getAbstractName(midiNote) {
+      return drumMapping[midiNote] || null;
+    }
+
+    function updateMappingDebug() {
+      document.getElementById('d-mapcount').textContent = Object.keys(drumMapping).length;
+      const list = document.getElementById('d-maplist');
+      if(Object.keys(drumMapping).length === 0) {
+        list.innerHTML = '<span style="color:#E24B4A;">no mapping — open mapping tool →</span>';
+        return;
+      }
+      list.innerHTML = Object.entries(drumMapping)
+        .map(([note, name]) => `<span style="color:#444;">note ${note}</span> → <span style="color:#1D9E75;">${name}</span>`)
+        .join('<br>');
+    }
+
+    function reloadMapping() {
+      loadMappingForDevice(activeMidiDevice);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // TEST PATTERNS
+    // ═══════════════════════════════════════════════════════════
+    function makePattern(name) {
+      const B = BEAT_MS;       // one beat = 750ms
+      const E = B / 2;         // 8th note
+      const S = B / 4;         // 16th note
+      const notes = [];
+
+      if(name === 'rock') {
+        // 4 bars of standard rock beat
+        for(let bar = 0; bar < 4; bar++) {
+          const o = bar * 4 * B;
+          // Hi-hat every 8th note
+          for(let i = 0; i < 8; i++) notes.push({abstractName:'HH_CLOSED', startMs: o + i*E, durMs: S});
+          // Kick on beats 1 & 3
+          notes.push({abstractName:'KICK',  startMs: o + 0*B, durMs: S});
+          notes.push({abstractName:'KICK',  startMs: o + 2*B, durMs: S});
+          // Snare on beats 2 & 4
+          notes.push({abstractName:'SNARE', startMs: o + 1*B, durMs: S});
+          notes.push({abstractName:'SNARE', startMs: o + 3*B, durMs: S});
+          // Crash on bar 1 beat 1 only
+          if(bar === 0) notes.push({abstractName:'CRASH', startMs: 0, durMs: S});
+        }
+      } else if(name === 'hihat') {
+        // 4 bars hi-hat drill — closed, open alternating
+        for(let bar = 0; bar < 4; bar++) {
+          const o = bar * 4 * B;
+          for(let i = 0; i < 8; i++) {
+            const hhName = i % 2 === 0 ? 'HH_CLOSED' : 'HH_OPEN';
+            notes.push({abstractName: hhName, startMs: o + i*E, durMs: S});
+          }
+          notes.push({abstractName:'KICK',  startMs: o + 0*B, durMs: S});
+          notes.push({abstractName:'KICK',  startMs: o + 2*B, durMs: S});
+          notes.push({abstractName:'SNARE', startMs: o + 1*B, durMs: S});
+          notes.push({abstractName:'SNARE', startMs: o + 3*B, durMs: S});
+          // Pedal hi-hat on offbeats
+          notes.push({abstractName:'HH_PEDAL', startMs: o + 1*B, durMs: S});
+          notes.push({abstractName:'HH_PEDAL', startMs: o + 3*B, durMs: S});
+        }
+      } else if(name === 'fills') {
+        // 3 bars of rock + 1 bar fill across all toms
+        for(let bar = 0; bar < 3; bar++) {
+          const o = bar * 4 * B;
+          for(let i = 0; i < 8; i++) notes.push({abstractName:'HH_CLOSED', startMs: o + i*E, durMs: S});
+          notes.push({abstractName:'KICK',  startMs: o + 0*B, durMs: S});
+          notes.push({abstractName:'KICK',  startMs: o + 2*B, durMs: S});
+          notes.push({abstractName:'SNARE', startMs: o + 1*B, durMs: S});
+          notes.push({abstractName:'SNARE', startMs: o + 3*B, durMs: S});
+        }
+        // Bar 4 — tom fill
+        const o = 3 * 4 * B;
+        const tomFill = ['TOM_1','TOM_1','TOM_2','TOM_2','TOM_3','TOM_3','SNARE','SNARE'];
+        tomFill.forEach((t, i) => notes.push({abstractName: t, startMs: o + i*E, durMs: S}));
+        notes.push({abstractName:'CRASH', startMs: o + 8*E, durMs: S});
+        notes.push({abstractName:'KICK',  startMs: o + 8*E, durMs: S});
+      }
+
+      // Sort and attach game state
+      notes.sort((a,b) => a.startMs - b.startMs);
+      return notes.map(n => ({...n, hit:false, missed:false, block:null, spawned:false}));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════
+    let playing=false, paused=false;
+    let songStart=0, songStartSet=false, pauseOffset=0, pauseStart=0;
+    let countoffActive=false, countoffDone=false, countoffStart=0;
+    let scheduledNotes=[], fallingBlocks=[];
+    let score=0, combo=0, maxCombo=0, perfect=0, good=0, miss=0, wrong=0;
+    let feedbackTimer=null, lastTime=0;
+    let songDuration=0;
+    let laneFlash = {}; // { laneName: timestamp } for hit flash
+
+    function getSongTime() {
+      if(!playing || !songStartSet) return -1;
+      return performance.now() - songStart - pauseOffset;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // MIDI
+    // ═══════════════════════════════════════════════════════════
+    function populateDeviceSelector(inputs) {
+      const sel = document.getElementById('device-select');
+      const current = sel.value;
+      sel.innerHTML = '';
+      inputs.forEach(i => {
+        const opt = document.createElement('option');
+        opt.value = i.name;
+        opt.textContent = i.name;
+        if(i.name === activeMidiDevice) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.style.display = inputs.length > 1 ? 'block' : 'none';
+    }
+
+    function switchDevice(name) {
+      // Detach all
+      Object.values(allMidiInputs).forEach(i => { i.onmidimessage = null; });
+      // Attach only to selected
+      if(allMidiInputs[name]) {
+        allMidiInputs[name].onmidimessage = onMIDI;
+        loadMappingForDevice(name);
+        document.getElementById('stext').textContent = 'Listening: ' + name;
+      }
+    }
+
+    async function initMIDI() {
+      const dot = document.getElementById('sdot');
+      const txt = document.getElementById('stext');
+      if(!navigator.requestMIDIAccess) { dot.className='sdot red'; txt.textContent='Web MIDI not supported — use Chrome'; return; }
+      try {
+        const midi = await navigator.requestMIDIAccess({sysex:false});
+        const inputs = [...midi.inputs.values()];
+        allMidiInputs = {};
+        inputs.forEach(i => { allMidiInputs[i.name] = i; });
+        dot.className = inputs.length > 0 ? 'sdot green' : 'sdot yellow';
+
+        if(inputs.length > 0) {
+          // Prefer device that has a saved drum mapping
+          let preferred = inputs.find(i => localStorage.getItem(mappingKey(i.name))) || inputs[0];
+          // Detach all, attach only preferred
+          inputs.forEach(i => { i.onmidimessage = null; });
+          preferred.onmidimessage = onMIDI;
+          loadMappingForDevice(preferred.name);
+          txt.textContent = inputs.length === 1
+            ? 'Connected: ' + preferred.name
+            : inputs.length + ' devices — listening: ' + preferred.name;
+        } else {
+          txt.textContent = 'No MIDI devices — connect one and refresh';
+        }
+
+        populateDeviceSelector(inputs);
+
+        midi.onstatechange = () => {
+          const all = [...midi.inputs.values()];
+          allMidiInputs = {};
+          all.forEach(i => { allMidiInputs[i.name] = i; });
+          // Re-attach to currently active device
+          all.forEach(i => { i.onmidimessage = i.name === activeMidiDevice ? onMIDI : null; });
+          dot.className = all.length > 0 ? 'sdot green' : 'sdot yellow';
+          txt.textContent = all.length > 0
+            ? all.length === 1 ? 'Connected: ' + all[0].name : all.length + ' devices — listening: ' + activeMidiDevice
+            : 'No devices';
+          populateDeviceSelector(all);
+        };
+      } catch(e) {
+        document.getElementById('sdot').className='sdot red';
+        document.getElementById('stext').textContent='MIDI access denied — check Chrome permissions';
+      }
+    }
+
+    function onMIDI(e) {
+      const [status, note, vel] = e.data, type = status & 0xF0;
+      if(type === 0x90 && vel > 0) {
+        // Flash signal indicator
+        const sig = document.getElementById('signal-flash');
+        if(sig) { sig.style.color='#1D9E75'; setTimeout(()=>{ sig.style.color='#1a1a26'; }, 100); }
+
+        if(calOpen) { registerCalTap(); return; }
+
+        const abstractName = getAbstractName(note);
+        document.getElementById('d-lastnote').textContent = note;
+        document.getElementById('d-lastname').textContent = abstractName || 'unmapped';
+
+        if(alwaysSound && abstractName) playDrumSound(abstractName, vel);
+
+        if(playing && !paused && countoffDone) {
+          if(abstractName) checkHit(abstractName, note, vel);
+          else { wrong++; showFeedback('WRONG','wrong'); }
+        }
+        if(abstractName) laneFlash[abstractName] = performance.now();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // GAME CONTROL
+    // ═══════════════════════════════════════════════════════════
+    function loadPattern(name) {
+      scheduledNotes = makePattern(name);
+      songDuration = Math.max(...scheduledNotes.map(n => n.startMs + (n.durMs||0))) + 4000;
+      score=combo=maxCombo=perfect=good=miss=wrong=0;
+      fallingBlocks=[];
+      document.getElementById('start-btn').className = 'start-btn enabled';
+      document.getElementById('start-btn').textContent = 'START →';
+    }
+
+    function startSong() {
+      if(!scheduledNotes.length) return;
+      scheduledNotes.forEach(n => { n.hit=false; n.missed=false; n.block=null; n.spawned=false; });
+      fallingBlocks=[]; score=combo=maxCombo=perfect=good=miss=wrong=0;
+      const fallTimeMs = getFallTimeMs();
+      songStart = performance.now() - (COUNTOFF_TOTAL_MS - fallTimeMs);
+      songStartSet = true;
+      countoffActive=true; countoffDone=false;
+      countoffStart = performance.now();
+      playing=true; paused=false; pauseOffset=0;
+      document.getElementById('start-btn').style.display='none';
+      document.getElementById('btn-pause').style.display='inline-block';
+      document.getElementById('btn-reset').style.display='inline-block';
+    }
+
+    function togglePause() {
+      if(!playing) return;
+      paused = !paused;
+      if(paused) {
+        pauseStart = performance.now();
+        document.getElementById('btn-pause').textContent = '▶ RESUME';
+        document.getElementById('btn-pause').className = 'active';
+      } else {
+        const dur = performance.now() - pauseStart;
+        pauseOffset += dur;
+        if(countoffActive) countoffStart += dur;
+        document.getElementById('btn-pause').textContent = '⏸ PAUSE';
+        document.getElementById('btn-pause').className = '';
+      }
+    }
+
+    function resetSong() {
+      playing=false; paused=false; countoffActive=false; countoffDone=false; songStartSet=false;
+      scheduledNotes.forEach(n => { n.hit=false; n.missed=false; n.block=null; n.spawned=false; });
+      fallingBlocks=[]; score=combo=maxCombo=perfect=good=miss=wrong=0;
+      document.getElementById('start-btn').style.display='inline-block';
+      document.getElementById('start-btn').className='start-btn enabled';
+      document.getElementById('start-btn').textContent='START →';
+      document.getElementById('btn-pause').style.display='none';
+      document.getElementById('btn-reset').style.display='none';
+      document.getElementById('btn-pause').textContent='⏸ PAUSE';
+      document.getElementById('btn-pause').className='';
+      document.getElementById('hit-feedback').className='hit-feedback hidden';
+    }
+
+    function endCountoff() { countoffActive=false; countoffDone=true; }
+
+    function showSongComplete() {
+      const total=perfect+good+miss;
+      const acc=total>0?Math.round((perfect+good)/total*100):0;
+      let grade='D'; if(acc>=95)grade='S'; else if(acc>=85)grade='A'; else if(acc>=70)grade='B'; else if(acc>=50)grade='C';
+      const fb=document.getElementById('hit-feedback');
+      fb.textContent='SONG COMPLETE!  '+grade+'  '+acc+'%'; fb.className='hit-feedback complete';
+      document.getElementById('btn-pause').style.display='none';
+      document.getElementById('start-btn').style.display='inline-block';
+      document.getElementById('start-btn').textContent='↺ PLAY AGAIN';
+      document.getElementById('start-btn').className='start-btn enabled';
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // HIT DETECTION
+    // ═══════════════════════════════════════════════════════════
+    function checkHit(abstractName, midiNote, vel) {
+      const songTime = getSongTime(); if(songTime < 0) return;
+      const fallTimeMs = getFallTimeMs();
+      const hw = getHitWindow();
+      let best=null, bestDiff=Infinity;
+      for(const sn of scheduledNotes) {
+        if(sn.abstractName !== abstractName || sn.hit || sn.missed || !sn.spawned) continue;
+        const expectedHitTime = sn.startMs + fallTimeMs + userOffset;
+        const diff = Math.abs(songTime - expectedHitTime);
+        if(diff < bestDiff) { bestDiff=diff; best=sn; }
+      }
+      if(!best) { wrong++; showFeedback('WRONG','wrong'); return; }
+      const expectedHitTime = best.startMs + fallTimeMs + userOffset;
+      const offset = Math.round(songTime - expectedHitTime);
+      document.getElementById('d-lastoffset').textContent = (offset>0?'+':'')+offset+'ms';
+      const quality = bestDiff<=hw.perfect?'perfect':bestDiff<=hw.good?'good':null;
+      document.getElementById('d-lastquality').textContent = quality || 'outside window';
+      if(quality) registerHit(best, quality, abstractName, vel);
+    }
+
+    function registerHit(sn, quality, abstractName, vel) {
+      sn.hit = true;
+      if(sn.block) { sn.block.hitQuality=quality; sn.block.hitTime=performance.now(); }
+      laneFlash[abstractName] = performance.now();
+      // Play sound on hit if ON HIT mode (ALWAYS mode already played in onMIDI)
+      if(!alwaysSound) playDrumSound(abstractName, vel || 80);
+      const mult = Math.max(1, Math.floor(combo/10)+1);
+      if(quality==='perfect') { score+=100*mult; perfect++; } else { score+=50*mult; good++; }
+      combo++; maxCombo=Math.max(maxCombo,combo);
+      showFeedback(quality==='perfect'?'PERFECT':'GOOD', quality);
+    }
+
+    function registerMiss(sn) {
+      if(!sn.spawned) return;
+      sn.missed=true; miss++; combo=0;
+      showFeedback('MISS','miss');
+    }
+
+    function showFeedback(text, cls) {
+      const el=document.getElementById('hit-feedback');
+      el.textContent=text; el.className='hit-feedback '+cls;
+      clearTimeout(feedbackTimer);
+      feedbackTimer=setTimeout(()=>{ el.className='hit-feedback hidden'; }, 500);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // AUDIO — drum synthesis per abstract name + ALWAYS/ON HIT toggle
+    // ═══════════════════════════════════════════════════════════
+    let alwaysSound = true; // true = play on any hit; false = only on scored hit
+
+    function toggleAlwaysSound() {
+      alwaysSound = !alwaysSound;
+      const btn = document.getElementById('sound-toggle');
+      btn.textContent = alwaysSound ? 'ALWAYS' : 'ON HIT';
+      btn.className = alwaysSound ? 'active' : '';
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playDrumSound(abstractName, velocity) {
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      const vol = (velocity / 127) * 0.6;
+      const t = audioCtx.currentTime;
+
+      if(abstractName === 'KICK') {
+        // Kick — low sine sweep down
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, t);
+        osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+        gain.gain.setValueAtTime(vol, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        osc.start(t); osc.stop(t + 0.35);
+
+      } else if(abstractName === 'SNARE' || abstractName === 'SNARE_RIM') {
+        // Snare — noise burst + tone
+        const bufSize = audioCtx.sampleRate * 0.2;
+        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for(let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const nGain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass'; filter.frequency.value = abstractName === 'SNARE_RIM' ? 1200 : 2500;
+        noise.connect(filter); filter.connect(nGain); nGain.connect(audioCtx.destination);
+        nGain.gain.setValueAtTime(vol * 0.8, t);
+        nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        noise.start(t); noise.stop(t + 0.18);
+
+      } else if(abstractName === 'HH_CLOSED' || abstractName === 'HH_PEDAL') {
+        // Hi-hat closed — short metallic noise
+        const bufSize = audioCtx.sampleRate * 0.08;
+        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for(let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = 8000;
+        const gain = audioCtx.createGain();
+        noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(vol * 0.5, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+        noise.start(t); noise.stop(t + 0.08);
+
+      } else if(abstractName === 'HH_OPEN') {
+        // Hi-hat open — longer metallic noise
+        const bufSize = audioCtx.sampleRate * 0.4;
+        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for(let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = 7000;
+        const gain = audioCtx.createGain();
+        noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(vol * 0.45, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        noise.start(t); noise.stop(t + 0.4);
+
+      } else if(abstractName === 'CRASH') {
+        // Crash — long noisy shimmer
+        const bufSize = audioCtx.sampleRate * 0.8;
+        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for(let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass'; filter.frequency.value = 5000; filter.Q.value = 0.5;
+        const gain = audioCtx.createGain();
+        noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(vol * 0.5, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+        noise.start(t); noise.stop(t + 0.8);
+
+      } else if(abstractName === 'RIDE' || abstractName === 'RIDE_BELL') {
+        // Ride — ping tone
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'triangle';
+        osc.frequency.value = abstractName === 'RIDE_BELL' ? 1200 : 800;
+        gain.gain.setValueAtTime(vol * 0.4, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + (abstractName === 'RIDE_BELL' ? 0.6 : 0.3));
+        osc.start(t); osc.stop(t + 0.6);
+
+      } else if(abstractName.startsWith('TOM')) {
+        // Toms — pitched thud
+        const freq = abstractName === 'TOM_1' ? 180 : abstractName === 'TOM_2' ? 130 : 90;
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq * 1.5, t);
+        osc.frequency.exponentialRampToValueAtTime(freq, t + 0.08);
+        gain.gain.setValueAtTime(vol * 0.7, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+        osc.start(t); osc.stop(t + 0.25);
+      }
+    }
+
+    function playClick() {
+      if(audioCtx.state==='suspended') audioCtx.resume();
+      const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type='sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.05);
+      osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime+0.05);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DRAW
+    // ═══════════════════════════════════════════════════════════
+    function drawHighway() {
+      // Background
+      ctx.fillStyle = '#0d0d14';
+      ctx.fillRect(0, 0, CANVAS_W, HIGHWAY_H);
+
+      // Lane backgrounds
+      LANES.forEach((lane, i) => {
+        ctx.fillStyle = i%2===0 ? '#0d0d14' : '#0f0f18';
+        ctx.fillRect(i*LANE_W, 0, LANE_W, HIGHWAY_H);
+        // Lane dividers
+        ctx.strokeStyle = '#1a1a24';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(i*LANE_W, 0); ctx.lineTo(i*LANE_W, HIGHWAY_H); ctx.stroke();
+      });
+
+      // Hit line
+      ctx.fillStyle = 'rgba(29,158,117,0.4)';
+      ctx.fillRect(0, HIT_Y, CANVAS_W, 3);
+
+      // Falling blocks
+      const now = performance.now();
+      fallingBlocks.forEach(block => {
+        const lane = LANES[block.laneIndex];
+        let fill = lane.color, stroke = lane.stroke, alpha = 0.9;
+        if(block.hitQuality) {
+          const age = now - block.hitTime;
+          if(age < 200) {
+            fill = '#1D9E75'; stroke = '#5DCAA5'; alpha = 1-(age/200)*0.5;
+          }
+        }
+        ctx.globalAlpha = alpha;
+        if(block.isKick) {
+          // Kick = wide horizontal bar
+          ctx.fillStyle = fill;
+          ctx.beginPath(); ctx.roundRect(block.x - LANE_W*0.4, block.y - KICK_H/2, LANE_W*0.8, KICK_H, 3); ctx.fill();
+          ctx.strokeStyle = stroke; ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.roundRect(block.x - LANE_W*0.4, block.y - KICK_H/2, LANE_W*0.8, KICK_H, 3); ctx.stroke();
+        } else {
+          // All other pads = dot
+          ctx.fillStyle = fill;
+          ctx.beginPath(); ctx.arc(block.x, block.y, NOTE_R, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = stroke; ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.arc(block.x, block.y, NOTE_R, 0, Math.PI*2); ctx.stroke();
+          // Shine
+          ctx.fillStyle = 'rgba(255,255,255,0.15)';
+          ctx.beginPath(); ctx.arc(block.x-3, block.y-3, NOTE_R*0.4, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      });
+
+      // Hit zone label
+      ctx.fillStyle = 'rgba(29,158,117,0.3)';
+      ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
+      ctx.fillText('HIT ZONE', 4, HIT_Y-4);
+
+      // Bottom lane labels + flash
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, HIGHWAY_H, CANVAS_W, 48);
+      ctx.strokeStyle = '#1a1a26'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(0, HIGHWAY_H); ctx.lineTo(CANVAS_W, HIGHWAY_H); ctx.stroke();
+
+      LANES.forEach((lane, i) => {
+        const cx = laneX(i);
+        const flashAge = laneFlash[lane.name] ? now - laneFlash[lane.name] : 999999;
+        const flashing = flashAge < 120;
+
+        // Lane indicator dot
+        ctx.fillStyle = flashing ? lane.color : '#1a1a26';
+        ctx.beginPath(); ctx.arc(cx, HIGHWAY_H + 10, 5, 0, Math.PI*2); ctx.fill();
+
+        // Lane label
+        const lines = lane.label.split('\n');
+        ctx.fillStyle = flashing ? lane.stroke : '#444';
+        ctx.font = '8px Segoe UI'; ctx.textAlign = 'center';
+        lines.forEach((line, li) => {
+          ctx.fillText(line, cx, HIGHWAY_H + 24 + li*11);
+        });
+
+        // Lane divider in label area
+        ctx.strokeStyle = '#1a1a26'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(i*LANE_W, HIGHWAY_H); ctx.lineTo(i*LANE_W, HIGHWAY_H+48); ctx.stroke();
+      });
+    }
+
+    function drawCountoff(beatNum, beatProgress) {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, CANVAS_W, HIGHWAY_H);
+      const beatStr = beatNum <= COUNTOFF_BEATS ? String(beatNum) : 'GO!';
+      const scale = 1 - beatProgress * 0.2;
+      ctx.save(); ctx.translate(CANVAS_W/2, HIGHWAY_H/2); ctx.scale(scale, scale);
+      ctx.fillStyle = beatNum <= COUNTOFF_BEATS ? '#04342C' : '#085041';
+      ctx.font = '500 90px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(beatStr, 2, 2);
+      ctx.fillStyle = beatNum <= COUNTOFF_BEATS ? '#1D9E75' : '#5DCAA5';
+      ctx.font = '500 86px Segoe UI';
+      ctx.fillText(beatStr, 0, 0);
+      ctx.restore();
+      // Beat dots
+      for(let i=0; i<COUNTOFF_BEATS; i++) {
+        ctx.beginPath(); ctx.arc(CANVAS_W/2-((COUNTOFF_BEATS-1)/2)*24+i*24, HIGHWAY_H-24, 5, 0, Math.PI*2);
+        ctx.fillStyle = i<beatNum ? '#1D9E75' : '#1a1a26'; ctx.fill();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // GAME LOOP
+    // ═══════════════════════════════════════════════════════════
+    let lastClickBeat = -1;
+    function update(timestamp) {
+      if(!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime; lastTime = timestamp;
+      const pxPerFrame = HIGHWAY_H / (getFallTimeMs() / 1000 * 60);
+
+      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+      if(playing && !paused) {
+        const songTime = getSongTime();
+        const fallTimeMs = getFallTimeMs();
+        const hw = getHitWindow();
+
+        // Spawn blocks
+        for(const sn of scheduledNotes) {
+          if(sn.hit || sn.missed || sn.block) continue;
+          if(songTime >= sn.startMs) {
+            const li = laneIndex(sn.abstractName);
+            if(li < 0) continue;
+            const block = {
+              x: laneX(li), y: 0,
+              laneIndex: li,
+              isKick: sn.abstractName === 'KICK',
+              hitQuality: null, hitTime: null
+            };
+            sn.block = block; sn.spawned = true;
+            fallingBlocks.push(block);
+          }
+        }
+
+        // Move blocks
+        fallingBlocks.forEach(b => { b.y += pxPerFrame * (delta/16.67); });
+
+        // Miss detection
+        for(const sn of scheduledNotes) {
+          if(!sn.hit && !sn.missed && sn.spawned) {
+            const expectedHitTime = sn.startMs + fallTimeMs;
+            if(songTime - expectedHitTime > hw.good) registerMiss(sn);
+          }
+        }
+
+        // Cleanup
+        fallingBlocks = fallingBlocks.filter(b => b.y < HIGHWAY_H + 20);
+
+        // Count-off
+        if(countoffActive) {
+          const elapsed = performance.now() - countoffStart;
+          // Metronome click
+          const beatIndex = Math.floor(elapsed / BEAT_MS);
+          if(beatIndex !== lastClickBeat && beatIndex < COUNTOFF_BEATS) {
+            lastClickBeat = beatIndex;
+            playClick();
+          }
+          if(elapsed >= COUNTOFF_TOTAL_MS) { endCountoff(); lastClickBeat=-1; }
+        }
+
+        // Song end
+        if(countoffDone && songTime > songDuration) { playing=false; showSongComplete(); }
+
+        // Draw
+        drawHighway();
+        if(countoffActive) {
+          const elapsed = performance.now() - countoffStart;
+          drawCountoff(Math.min(Math.floor(elapsed/BEAT_MS)+1, COUNTOFF_BEATS+1), (elapsed%BEAT_MS)/BEAT_MS);
+        }
+
+      } else {
+        drawHighway();
+      }
+
+      // Update debug
+      const songTime = getSongTime();
+      const hw = getHitWindow();
+      function dset(id, val, cls) { const el=document.getElementById(id); if(!el)return; el.textContent=val; if(cls)el.className='debug-val '+cls; }
+      const stateStr = countoffActive?'COUNT-OFF':countoffDone&&playing?'PLAYING':paused?'PAUSED':'IDLE';
+      dset('d-state', stateStr, countoffActive?'warn':countoffDone&&playing?null:'neutral');
+      dset('d-songtime', songTime>=0?songTime.toFixed(0)+'ms':'—');
+      dset('d-falltime', getFallTimeMs()+'ms');
+      dset('d-speed', speedLevel+' ('+(getFallTimeMs()/1000).toFixed(1)+'s)');
+      dset('d-window', hw.name+' ±'+hw.perfect+'/'+hw.good+'ms');
+      dset('d-blocks', fallingBlocks.length+' / '+scheduledNotes.filter(n=>n.spawned).length);
+      dset('d-perfect', perfect);
+      dset('d-good', good);
+      dset('d-miss', miss, miss>0?'bad':'neutral');
+      dset('d-wrong', wrong, wrong>0?'warn':'neutral');
+      dset('d-combo', combo, 'purple');
+      const total=perfect+good+miss;
+      dset('d-acc', total>0?Math.round((perfect+good)/total*100)+'%':'—');
+
+      requestAnimationFrame(update);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════
+    updateSpeed(3); updateHitWindow(2);
+    document.getElementById('hitwin').value = 2;
+    document.addEventListener('keydown', e => {
+      if(e.code==='Space') { e.preventDefault(); if(!calOpen) togglePause(); }
+      if(e.code==='KeyR') { if(!calOpen) resetSong(); }
+      if(e.code==='KeyC') { if(!calOpen) openCal(); }
+      if(e.code==='Escape') { if(calOpen) closeCal(); }
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // CLICK ON LANE — click a lane label area to trigger that drum
+    // ═══════════════════════════════════════════════════════════
+    canvas.addEventListener('click', e => {
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left) * (CANVAS_W / r.width);
+      const my = (e.clientY - r.top) * (CANVAS_H / r.height);
+      // Only respond to clicks in the label area at the bottom
+      if(my < HIGHWAY_H) return;
+      const laneI = Math.floor(mx / LANE_W);
+      if(laneI < 0 || laneI >= LANES.length) return;
+      const lane = LANES[laneI];
+      if(calOpen) { registerCalTap(); return; }
+      // Simulate a hit on this lane
+      laneFlash[lane.name] = performance.now();
+      if(alwaysSound) playDrumSound(lane.name, 80);
+      document.getElementById('d-lastnote').textContent = '(click)';
+      document.getElementById('d-lastname').textContent = lane.name;
+      if(playing && !paused && countoffDone) checkHit(lane.name, null, 80);
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // CALIBRATION ENGINE
+    // TODO: migrate userOffset into per-profile storage when profiles are built
+    // ═══════════════════════════════════════════════════════════
+    const CAL_ROUNDS     = 3;
+    const CAL_ROUND_MS   = 10000;
+    const CAL_BPM        = 80;
+    const CAL_BEAT_MS    = 60000 / CAL_BPM;
+    const CAL_FLASH_MS   = 80;
+
+    let calOpen          = false;
+    let calRound         = 0;
+    let calRoundStart    = 0;
+    let calFlashTimes    = [];
+    let calTaps          = [];
+    let calRoundResults  = [];
+    let calPendingOffset = 0;
+    let calAnimId        = null;
+    let calNextFlash     = 0;
+
+    function playCalClick() {
+      try {
+        if(audioCtx.state==='suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.06);
+        osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime+0.06);
+      } catch(e){}
+    }
+
+    function openCal() {
+      calOpen=true; calRound=0; calRoundResults=[];
+      document.getElementById('cal-overlay').classList.add('open');
+      document.getElementById('cal-active').style.display='';
+      document.getElementById('cal-results').classList.remove('show');
+      startCalRound();
+    }
+
+    function closeCal() {
+      calOpen=false;
+      document.getElementById('cal-overlay').classList.remove('open');
+      if(calAnimId){ cancelAnimationFrame(calAnimId); calAnimId=null; }
+    }
+
+    function startCalRound() {
+      calFlashTimes=[]; calTaps=[];
+      for(let i=0;i<CAL_ROUNDS;i++){
+        const dot=document.getElementById('cal-dot-'+i);
+        if(dot) dot.className='cal-round-dot'+(i<calRound?' done':i===calRound?' active':'');
+      }
+      document.getElementById('cal-round-heading').textContent='ROUND '+(calRound+1)+' OF '+CAL_ROUNDS;
+      document.getElementById('cal-instruction').textContent='Hit any drum pad in time with each flash.\nKeep going until the round ends.';
+      document.getElementById('cal-tap-count').textContent='';
+      calRoundStart=performance.now()+500;
+      calNextFlash=calRoundStart;
+      if(calAnimId) cancelAnimationFrame(calAnimId);
+      calAnimLoop(performance.now());
+    }
+
+    function calAnimLoop(now) {
+      if(!calOpen) return;
+      const elapsed=now-calRoundStart;
+      const remaining=Math.max(0,CAL_ROUND_MS-elapsed);
+      document.getElementById('cal-timer').textContent=Math.ceil(remaining/1000);
+      if(now>=calNextFlash && elapsed<CAL_ROUND_MS){
+        calFlashTimes.push(calNextFlash);
+        calNextFlash+=CAL_BEAT_MS;
+        playCalClick();
+        const circle=document.getElementById('cal-circle');
+        const label=document.getElementById('cal-circle-label');
+        if(circle) circle.classList.add('flash');
+        if(label) label.textContent='HIT';
+        setTimeout(()=>{ const c=document.getElementById('cal-circle'); if(c) c.classList.remove('flash'); }, CAL_FLASH_MS);
+      }
+      document.getElementById('cal-tap-count').textContent=
+        calTaps.length>0?calTaps.length+' hits recorded':'waiting for hits…';
+      if(elapsed>=CAL_ROUND_MS){ finishCalRound(); return; }
+      calAnimId=requestAnimationFrame(calAnimLoop);
+    }
+
+    function finishCalRound() {
+      if(calAnimId){ cancelAnimationFrame(calAnimId); calAnimId=null; }
+      const result=calcRoundOffset(calFlashTimes,calTaps);
+      calRoundResults.push(result);
+      const dot=document.getElementById('cal-dot-'+calRound);
+      if(dot) dot.className='cal-round-dot done';
+      calRound++;
+      if(calRound<CAL_ROUNDS){
+        document.getElementById('cal-round-heading').textContent='ROUND '+calRound+' DONE — get ready…';
+        document.getElementById('cal-instruction').textContent='Round '+calRound+': avg '+
+          (result.avg!==null?(result.avg>0?'+':'')+result.avg+'ms':'not enough hits')+' · Starting next round…';
+        document.getElementById('cal-timer').textContent='3';
+        setTimeout(startCalRound,3000);
+      } else { showCalResults(); }
+    }
+
+    function calcRoundOffset(flashes,taps){
+      if(flashes.length<2||taps.length<2) return {avg:null,taps:taps.length};
+      const offsets=[];
+      for(const tap of taps){
+        let nearest=flashes[0],nearestDiff=Math.abs(tap-flashes[0]);
+        for(const f of flashes){ const d=Math.abs(tap-f); if(d<nearestDiff){nearestDiff=d;nearest=f;} }
+        if(nearestDiff<CAL_BEAT_MS/2) offsets.push(Math.round(tap-nearest));
+      }
+      if(offsets.length<2) return {avg:null,taps:taps.length};
+      const avg=Math.round(offsets.reduce((a,b)=>a+b,0)/offsets.length);
+      return {avg,taps:taps.length};
+    }
+
+    function showCalResults(){
+      document.getElementById('cal-active').style.display='none';
+      document.getElementById('cal-results').classList.add('show');
+      const container=document.getElementById('cal-round-results');
+      container.innerHTML='';
+      let validAvgs=[];
+      calRoundResults.forEach((r,i)=>{
+        const div=document.createElement('div');
+        div.className='cal-round-result';
+        const avgStr=r.avg!==null?(r.avg>0?'+':'')+r.avg+'ms':'—';
+        div.innerHTML=`<div class="rr-label">ROUND ${i+1}</div><div class="rr-val">${avgStr}</div><div class="rr-taps">${r.taps} hits</div>`;
+        container.appendChild(div);
+        if(r.avg!==null) validAvgs.push(r.avg);
+      });
+      let overall=0;
+      if(validAvgs.length>0) overall=Math.round(validAvgs.reduce((a,b)=>a+b,0)/validAvgs.length);
+      calPendingOffset=overall;
+      document.getElementById('cal-final-val').textContent=(overall>0?'+':'')+overall;
+      document.getElementById('cal-current-val').textContent=(overall>0?'+':'')+overall+'ms';
+      document.getElementById('cal-device-note').textContent='Will be saved for: '+activeMidiDevice;
+    }
+
+    function nudgeOffset(delta){
+      calPendingOffset=Math.max(-200,Math.min(200,calPendingOffset+delta));
+      const el=document.getElementById('cal-current-val');
+      if(el) el.textContent=(calPendingOffset>0?'+':'')+calPendingOffset+'ms';
+    }
+
+    function applyOffset(){ saveOffsetForDevice(calPendingOffset); closeCal(); }
+
+    function registerCalTap(){
+      if(!calOpen||calRound>=CAL_ROUNDS) return;
+      calTaps.push(performance.now());
+    }
+
+    initMIDI();
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>

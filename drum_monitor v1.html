@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BandSync — Drum Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 12px; min-height: 100vh; }
+
+    h1 { font-size: 20px; font-weight: 500; letter-spacing: 4px; color: #fff; }
+    h1 span { color: #1D9E75; }
+    .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
+
+    /* STATUS BAR */
+    .status-bar { display: flex; align-items: center; gap: 10px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 7px 14px; width: 100%; max-width: 1100px; }
+    .sdot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+    .sdot.green { background: #1D9E75; } .sdot.yellow { background: #BA7517; } .sdot.red { background: #E24B4A; }
+    .stext { font-size: 12px; color: #888; }
+
+    /* MAIN LAYOUT */
+    .main-row { display: flex; gap: 16px; width: 100%; max-width: 1100px; align-items: flex-start; }
+
+    /* HIT LOG */
+    .hit-log-panel { flex: 1; background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 8px; padding: 14px; min-width: 260px; }
+    .panel-title { font-size: 9px; letter-spacing: 2px; color: #555; margin-bottom: 10px; border-bottom: 0.5px solid #1a1a26; padding-bottom: 6px; }
+    .hit-log { height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+    .hit-log::-webkit-scrollbar { width: 4px; } .hit-log::-webkit-scrollbar-track { background: #0a0a0f; } .hit-log::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+    .hit-entry { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: #111120; border-radius: 4px; font-size: 11px; border: 0.5px solid #1a1a26; transition: background 0.1s; }
+    .hit-entry.fresh { background: #1a1a30; border-color: #2a2a4a; }
+    .hit-note { font-family: 'Courier New', monospace; font-size: 13px; color: #7F77DD; min-width: 32px; font-weight: bold; }
+    .hit-name { flex: 1; font-size: 11px; color: #1D9E75; letter-spacing: 1px; }
+    .hit-name.unmapped { color: #444; font-style: italic; }
+    .hit-vel { font-family: 'Courier New', monospace; font-size: 10px; color: #555; min-width: 50px; text-align: right; }
+    .hit-time { font-family: 'Courier New', monospace; font-size: 9px; color: #333; min-width: 55px; text-align: right; }
+    .log-empty { color: #333; font-size: 11px; font-style: italic; text-align: center; margin-top: 40px; }
+
+    /* LAST HIT BIG DISPLAY */
+    .last-hit-box { background: #0a0a0f; border: 0.5px solid #1e1e2a; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; }
+    .last-note-num { font-family: 'Courier New', monospace; font-size: 36px; font-weight: bold; color: #7F77DD; line-height: 1; min-width: 60px; }
+    .last-note-info { flex: 1; }
+    .last-note-name { font-size: 18px; font-weight: 500; color: #1D9E75; letter-spacing: 2px; min-height: 28px; }
+    .last-note-vel { font-size: 11px; color: #555; margin-top: 2px; }
+    .vel-bar-wrap { width: 80px; height: 40px; display: flex; align-items: flex-end; gap: 2px; }
+    .vel-bar { width: 100%; border-radius: 2px 2px 0 0; background: #1D9E75; transition: height 0.08s; }
+
+    /* MAPPING PANEL */
+    .mapping-panel { width: 340px; background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 8px; padding: 14px; flex-shrink: 0; }
+    .mapping-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+    .drum-btn { background: #0a0a0f; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 8px 6px; font-size: 10px; letter-spacing: 1px; color: #555; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .drum-btn:hover { border-color: #1D9E75; color: #5DCAA5; }
+    .drum-btn.mapped { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
+    .drum-btn.mapped .dm-note { color: #1D9E75; }
+    .drum-btn.firing { background: #0F6E56; border-color: #1D9E75; color: #fff; transform: scale(1.04); }
+    .dm-label { font-size: 11px; font-weight: 500; letter-spacing: 1px; }
+    .dm-note { font-family: 'Courier New', monospace; font-size: 10px; color: #444; margin-top: 3px; }
+
+    .assign-row { display: flex; align-items: center; gap: 8px; background: #0a0a0f; border: 0.5px solid #1e1e2a; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+    .assign-note { font-family: 'Courier New', monospace; font-size: 20px; color: #7F77DD; font-weight: bold; min-width: 36px; }
+    .assign-label { flex: 1; font-size: 11px; color: #555; }
+    .assign-label.ready { color: #ccc; }
+
+    /* ACTION BUTTONS */
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 6px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    button:hover { border-color: #1D9E75; color: #5DCAA5; }
+    button.active { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
+    button.danger { border-color: #A32D2D; color: #E24B4A; }
+    button.danger:hover { background: #501313; }
+    button.save-btn { background: #0F6E56; border-color: #1D9E75; color: #fff; }
+    button.save-btn:hover { background: #1D9E75; }
+
+    /* STATS ROW */
+    .stats-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .stat-box { flex: 1; background: #0a0a0f; border: 0.5px solid #1e1e2a; border-radius: 6px; padding: 8px; text-align: center; }
+    .stat-v { font-family: 'Courier New', monospace; font-size: 18px; color: #1D9E75; }
+    .stat-k { font-size: 8px; letter-spacing: 2px; color: #444; margin-top: 2px; }
+
+    /* MAPPING TABLE */
+    .map-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+    .map-table th { color: #444; font-weight: normal; text-align: left; padding: 3px 6px; border-bottom: 0.5px solid #1a1a26; font-size: 9px; letter-spacing: 1px; }
+    .map-table td { padding: 4px 6px; border-bottom: 0.5px solid #111; }
+    .map-table tr.firing td { background: #04342C; color: #5DCAA5; }
+
+    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; }
+
+    /* VELOCITY HISTORY */
+    .vel-history { display: flex; gap: 2px; align-items: flex-end; height: 32px; margin-top: 6px; }
+    .vel-bar-h { width: 8px; border-radius: 1px 1px 0 0; background: #1e1e2a; transition: height 0.1s, background 0.1s; flex-shrink: 0; }
+    .vel-bar-h.active { background: #1D9E75; }
+  </style>
+</head>
+<body>
+
+  <h1>BAND<span>SYNC</span></h1>
+  <div class="subtitle">DRUM MONITOR · MIDI NOTE DETECTION · MAPPING BUILDER</div>
+
+  <div class="status-bar">
+    <div class="sdot" id="sdot"></div>
+    <div class="stext" id="stext">Connecting...</div>
+  </div>
+
+  <div class="main-row">
+
+    <!-- LEFT: HIT LOG -->
+    <div class="hit-log-panel">
+      <div class="panel-title">LIVE HIT LOG</div>
+
+      <div class="last-hit-box">
+        <div class="last-note-num" id="last-note">—</div>
+        <div class="last-note-info">
+          <div class="last-note-name" id="last-name">waiting for hit...</div>
+          <div class="last-note-vel" id="last-vel"></div>
+        </div>
+        <div class="vel-bar-wrap">
+          <div class="vel-bar" id="vel-bar" style="height:0%;"></div>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-v" id="stat-hits">0</div><div class="stat-k">HITS</div></div>
+        <div class="stat-box"><div class="stat-v" id="stat-mapped">0</div><div class="stat-k">MAPPED</div></div>
+        <div class="stat-box"><div class="stat-v" id="stat-unique">0</div><div class="stat-k">UNIQUE NOTES</div></div>
+      </div>
+
+      <div class="vel-history" id="vel-history">
+        <!-- 20 velocity bars filled by JS -->
+      </div>
+
+      <div style="margin-top:10px;">
+        <div class="panel-title">RECENT HITS</div>
+        <div class="hit-log" id="hit-log">
+          <div class="log-empty">Hit a drum pad to begin...</div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button onclick="clearLog()">CLEAR LOG</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: MAPPING PANEL -->
+    <div class="mapping-panel">
+      <div class="panel-title">DRUM MAPPING — <span id="device-name-label" style="color:#7F77DD;">no device</span></div>
+
+      <!-- ASSIGN HELPER -->
+      <div class="assign-row">
+        <div class="assign-note" id="assign-note">—</div>
+        <div class="assign-label" id="assign-label">Hit a pad, then click its name below</div>
+      </div>
+
+      <!-- DRUM BUTTONS -->
+      <div class="mapping-grid" id="drum-grid"></div>
+
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button onclick="unassignLast()" class="danger">UNASSIGN LAST</button>
+        <button onclick="clearMapping()" class="danger">CLEAR ALL</button>
+        <button onclick="saveMapping()" class="save-btn">SAVE MAPPING ✓</button>
+      </div>
+
+      <div class="panel-title" style="margin-bottom:6px;">CURRENT MAPPING</div>
+      <table class="map-table" id="map-table">
+        <tr><th>NOTE</th><th>ABSTRACT NAME</th><th>HITS</th></tr>
+      </table>
+
+      <div style="margin-top:10px;font-size:10px;color:#333;letter-spacing:1px;" id="save-status"></div>
+    </div>
+
+  </div>
+
+  <div class="info">Hit any drum pad — the MIDI note appears top left · Click its name to map it · SAVE when done</div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════════
+    // ABSTRACT DRUM NAMES — matches BandSync core spec
+    // ═══════════════════════════════════════════════════════════════
+    const DRUM_NAMES = [
+      'KICK',
+      'SNARE', 'SNARE_RIM',
+      'HH_CLOSED', 'HH_OPEN', 'HH_PEDAL',
+      'TOM_1', 'TOM_2', 'TOM_3',
+      'CRASH', 'RIDE', 'RIDE_BELL',
+    ];
+
+    // ═══════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════
+    let mapping = {};        // { midiNote: abstractName }
+    let hitCounts = {};      // { midiNote: count }
+    let uniqueNotes = new Set();
+    let totalHits = 0;
+    let lastNote = null;
+    let activeMidiDevice = 'unknown';
+    let logEntries = [];
+    let velHistory = new Array(20).fill(0);
+    let firingTimers = {};   // { abstractName: timeoutId }
+    let startTime = performance.now();
+
+    // ═══════════════════════════════════════════════════════════════
+    // VELOCITY HISTORY BARS
+    // ═══════════════════════════════════════════════════════════════
+    const velHistDiv = document.getElementById('vel-history');
+    for(let i = 0; i < 20; i++) {
+      const b = document.createElement('div');
+      b.className = 'vel-bar-h';
+      b.id = 'vh-' + i;
+      velHistDiv.appendChild(b);
+    }
+
+    function pushVelHistory(vel) {
+      velHistory.push(vel);
+      if(velHistory.length > 20) velHistory.shift();
+      velHistory.forEach((v, i) => {
+        const b = document.getElementById('vh-' + i);
+        if(!b) return;
+        const h = Math.round((v / 127) * 32);
+        b.style.height = h + 'px';
+        b.className = 'vel-bar-h' + (i === velHistory.length - 1 ? ' active' : '');
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // BUILD DRUM GRID
+    // ═══════════════════════════════════════════════════════════════
+    function buildGrid() {
+      const grid = document.getElementById('drum-grid');
+      grid.innerHTML = '';
+      DRUM_NAMES.forEach(name => {
+        const btn = document.createElement('div');
+        btn.className = 'drum-btn';
+        btn.id = 'dbtn-' + name;
+        const midiNote = getMidiForName(name);
+        btn.innerHTML = `<div class="dm-label">${name}</div><div class="dm-note">${midiNote !== null ? 'note ' + midiNote : 'unmapped'}</div>`;
+        if(midiNote !== null) btn.classList.add('mapped');
+        btn.onclick = () => assignNote(name);
+        grid.appendChild(btn);
+      });
+    }
+
+    function getMidiForName(name) {
+      for(const [note, n] of Object.entries(mapping)) {
+        if(n === name) return parseInt(note);
+      }
+      return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MIDI
+    // ═══════════════════════════════════════════════════════════════
+    async function initMIDI() {
+      const dot = document.getElementById('sdot');
+      const txt = document.getElementById('stext');
+      if(!navigator.requestMIDIAccess) {
+        dot.className = 'sdot red';
+        txt.textContent = 'Web MIDI not supported — use Chrome';
+        return;
+      }
+      try {
+        const midi = await navigator.requestMIDIAccess({ sysex: false });
+        const inputs = [...midi.inputs.values()];
+        dot.className = inputs.length > 0 ? 'sdot green' : 'sdot yellow';
+        txt.textContent = inputs.length > 0
+          ? 'Connected: ' + inputs.map(i => i.name).join(', ')
+          : 'No MIDI devices — connect one and refresh';
+        inputs.forEach(i => { i.onmidimessage = onMIDI; });
+        if(inputs.length > 0) loadMappingForDevice(inputs[0].name);
+
+        midi.onstatechange = () => {
+          const all = [...midi.inputs.values()];
+          all.forEach(i => { i.onmidimessage = onMIDI; });
+          dot.className = all.length > 0 ? 'sdot green' : 'sdot yellow';
+          txt.textContent = all.length > 0
+            ? 'Connected: ' + all.map(i => i.name).join(', ')
+            : 'No devices';
+          if(all.length > 0) loadMappingForDevice(all[0].name);
+        };
+      } catch(e) {
+        dot.className = 'sdot red';
+        document.getElementById('stext').textContent = 'MIDI access denied — check Chrome permissions';
+      }
+    }
+
+    function onMIDI(e) {
+      const [status, note, vel] = e.data;
+      const type = status & 0xF0;
+      // Note on (and not note-off disguised as note-on with vel=0)
+      if(type === 0x90 && vel > 0) registerHit(note, vel);
+      // Some kits send note-off as 0x80 — ignore for drum monitor
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // HIT REGISTRATION
+    // ═══════════════════════════════════════════════════════════════
+    function registerHit(note, vel) {
+      totalHits++;
+      uniqueNotes.add(note);
+      hitCounts[note] = (hitCounts[note] || 0) + 1;
+      lastNote = note;
+
+      const name = mapping[note] || null;
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+
+      // Update big display
+      document.getElementById('last-note').textContent = note;
+      document.getElementById('last-name').textContent = name || 'UNMAPPED';
+      document.getElementById('last-name').style.color = name ? '#1D9E75' : '#555';
+      document.getElementById('last-vel').textContent = 'velocity: ' + vel + ' / 127';
+      document.getElementById('vel-bar').style.height = Math.round((vel / 127) * 100) + '%';
+
+      // Velocity history
+      pushVelHistory(vel);
+
+      // Stats
+      document.getElementById('stat-hits').textContent = totalHits;
+      document.getElementById('stat-unique').textContent = uniqueNotes.size;
+      document.getElementById('stat-mapped').textContent = Object.keys(mapping).length;
+
+      // Update assign helper
+      document.getElementById('assign-note').textContent = note;
+      document.getElementById('assign-label').className = 'assign-label ready';
+      document.getElementById('assign-label').textContent = name
+        ? 'Mapped to ' + name + ' — reassign below'
+        : 'Now click the drum name below to map it';
+
+      // Flash the mapped drum button
+      if(name) flashDrumBtn(name);
+
+      // Add to log
+      addLogEntry(note, vel, name, elapsed);
+
+      // Update mapping table
+      updateMapTable();
+    }
+
+    function flashDrumBtn(name) {
+      const btn = document.getElementById('dbtn-' + name);
+      if(!btn) return;
+      btn.classList.add('firing');
+      if(firingTimers[name]) clearTimeout(firingTimers[name]);
+      firingTimers[name] = setTimeout(() => btn.classList.remove('firing'), 120);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // LOG
+    // ═══════════════════════════════════════════════════════════════
+    function addLogEntry(note, vel, name, elapsed) {
+      const log = document.getElementById('hit-log');
+
+      // Remove empty placeholder
+      const empty = log.querySelector('.log-empty');
+      if(empty) empty.remove();
+
+      const div = document.createElement('div');
+      div.className = 'hit-entry fresh';
+      div.innerHTML = `
+        <span class="hit-note">${note}</span>
+        <span class="hit-name ${name ? '' : 'unmapped'}">${name || 'unmapped'}</span>
+        <span class="hit-vel">vel ${vel}</span>
+        <span class="hit-time">${elapsed}s</span>
+      `;
+      log.insertBefore(div, log.firstChild);
+      setTimeout(() => div.classList.remove('fresh'), 200);
+
+      // Keep log to 60 entries
+      while(log.children.length > 60) log.removeChild(log.lastChild);
+    }
+
+    function clearLog() {
+      const log = document.getElementById('hit-log');
+      log.innerHTML = '<div class="log-empty">Hit a drum pad to begin...</div>';
+      totalHits = 0; hitCounts = {}; uniqueNotes = new Set();
+      velHistory = new Array(20).fill(0);
+      velHistory.forEach((v, i) => {
+        const b = document.getElementById('vh-' + i);
+        if(b) { b.style.height = '0px'; b.className = 'vel-bar-h'; }
+      });
+      document.getElementById('stat-hits').textContent = '0';
+      document.getElementById('stat-unique').textContent = '0';
+      document.getElementById('last-note').textContent = '—';
+      document.getElementById('last-name').textContent = 'waiting for hit...';
+      document.getElementById('last-vel').textContent = '';
+      document.getElementById('vel-bar').style.height = '0%';
+      startTime = performance.now();
+      updateMapTable();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MAPPING
+    // ═══════════════════════════════════════════════════════════════
+    function assignNote(abstractName) {
+      if(lastNote === null) {
+        document.getElementById('assign-label').textContent = 'Hit a pad first, then click its name';
+        return;
+      }
+      // Remove any existing assignment for this abstract name
+      for(const [k, v] of Object.entries(mapping)) {
+        if(v === abstractName) delete mapping[k];
+      }
+      mapping[lastNote] = abstractName;
+      document.getElementById('stat-mapped').textContent = Object.keys(mapping).length;
+      document.getElementById('assign-label').textContent = 'Note ' + lastNote + ' → ' + abstractName + ' ✓';
+      buildGrid();
+      updateMapTable();
+    }
+
+    function unassignLast() {
+      if(lastNote === null) return;
+      delete mapping[lastNote];
+      document.getElementById('stat-mapped').textContent = Object.keys(mapping).length;
+      document.getElementById('assign-label').textContent = 'Note ' + lastNote + ' unassigned';
+      buildGrid();
+      updateMapTable();
+    }
+
+    function clearMapping() {
+      if(!confirm('Clear all mappings for this device?')) return;
+      mapping = {};
+      document.getElementById('stat-mapped').textContent = '0';
+      buildGrid();
+      updateMapTable();
+      document.getElementById('save-status').textContent = '';
+    }
+
+    function updateMapTable() {
+      const table = document.getElementById('map-table');
+      table.innerHTML = '<tr><th>NOTE</th><th>ABSTRACT NAME</th><th>HITS</th></tr>';
+      // Sort by abstract name order
+      const sorted = Object.entries(mapping).sort((a, b) => {
+        return DRUM_NAMES.indexOf(a[1]) - DRUM_NAMES.indexOf(b[1]);
+      });
+      if(sorted.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="3" style="color:#333;font-style:italic;padding:8px 6px;">No mappings yet</td>';
+        table.appendChild(tr);
+        return;
+      }
+      sorted.forEach(([note, name]) => {
+        const tr = document.createElement('tr');
+        if(name === mapping[lastNote]) tr.classList.add('firing');
+        tr.innerHTML = `<td style="font-family:'Courier New',monospace;color:#7F77DD;">${note}</td><td style="color:#1D9E75;letter-spacing:1px;">${name}</td><td style="color:#555;">${hitCounts[note] || 0}</td>`;
+        table.appendChild(tr);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SAVE / LOAD — localStorage keyed by device name
+    // TODO: migrate into per-profile storage when profiles are built
+    // ═══════════════════════════════════════════════════════════════
+    function mappingKey(device) {
+      return 'bandsync_drummap_' + (device || 'unknown').replace(/\s+/g, '_');
+    }
+
+    function saveMapping() {
+      const key = mappingKey(activeMidiDevice);
+      localStorage.setItem(key, JSON.stringify(mapping));
+      const status = document.getElementById('save-status');
+      status.textContent = '✓ Saved for: ' + activeMidiDevice;
+      status.style.color = '#1D9E75';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    }
+
+    function loadMappingForDevice(deviceName) {
+      activeMidiDevice = deviceName || 'unknown';
+      document.getElementById('device-name-label').textContent = activeMidiDevice;
+      const key = mappingKey(activeMidiDevice);
+      const saved = localStorage.getItem(key);
+      if(saved) {
+        try {
+          mapping = JSON.parse(saved);
+          const status = document.getElementById('save-status');
+          status.textContent = '✓ Loaded saved mapping for: ' + activeMidiDevice;
+          status.style.color = '#7F77DD';
+          setTimeout(() => { status.textContent = ''; }, 3000);
+        } catch(e) { mapping = {}; }
+      } else {
+        mapping = {};
+      }
+      document.getElementById('stat-mapped').textContent = Object.keys(mapping).length;
+      buildGrid();
+      updateMapTable();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════
+    buildGrid();
+    updateMapTable();
+    initMIDI();
+  </script>
+</body>
+</html>
