@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BandSync — Test Hub</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+:root {
+  --bg: #07070f;
+  --bg2: #0d0d1a;
+  --border: #1e1e30;
+  --purple: #7F77DD;
+  --purple2: #AFA9EC;
+  --teal: #1D9E75;
+  --text: #c8c8d8;
+  --text2: #55556a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* CONTAINER */
+.wrap {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* LOGO */
+.logo {
+  font-family: 'Space Mono', monospace;
+  font-size: 34px;
+  letter-spacing: 8px;
+  color: #fff;
+}
+.logo span { color: var(--purple); }
+
+.sub {
+  font-family: 'Space Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--text2);
+  margin-top: -10px;
+}
+
+/* CARD */
+.card {
+  width: 100%;
+  background: var(--bg2);
+  border: 0.5px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* LINK BUTTON */
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #0a0a14;
+  border: 0.5px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.15s;
+}
+
+.link:hover {
+  border-color: var(--purple);
+  background: #12122a;
+  transform: translateY(-1px);
+}
+
+/* LEFT */
+.link-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.link-title {
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.link-sub {
+  font-size: 10px;
+  color: var(--text2);
+  letter-spacing: 1px;
+}
+
+/* RIGHT */
+.arrow {
+  color: var(--purple2);
+  font-size: 16px;
+}
+
+/* STATUS */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+
+.status-text {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--text2);
+  letter-spacing: 1px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="wrap">
+
+  <div style="text-align:center;">
+    <div class="logo">BAND<span>SYNC</span></div>
+    <div class="sub">MIDI TEST ENVIRONMENT</div>
+  </div>
+
+  <div class="card">
+
+    <a class="link" href="drum-debug.html">
+      <div class="link-left">
+        <div class="link-title">Drum Debug</div>
+        <div class="link-sub">Timing + calibration + latency</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+
+    <a class="link" href="drum-monitor.html">
+      <div class="link-left">
+        <div class="link-title">Drum Monitor</div>
+        <div class="link-sub">Live MIDI hit logging</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+
+    <a class="link" href="piano.html">
+      <div class="link-left">
+        <div class="link-title">Piano Game</div>
+        <div class="link-sub">Falling notes + gameplay</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+
+    <a class="link" href="midi-test.html">
+      <div class="link-left">
+        <div class="link-title">MIDI Test</div>
+        <div class="link-sub">Basic device + signal test</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+
+  </div>
+
+  <div class="status">
+    <div class="dot"></div>
+    <div class="status-text">READY FOR MIDI INPUT</div>
+  </div>
+
+</div>
+
+</body>
+</html>
