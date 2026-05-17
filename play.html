@@ -73,7 +73,7 @@
       border-radius: 10px;
       padding: 10px;
       min-width: 0;
-      overflow: hidden;
+      /* overflow: visible so HUD tooltips can extend past the panel */
     }
     .player-panel.p1 {
       border: 1px solid rgba(127,119,221,0.4);
@@ -104,6 +104,38 @@
     .hud-stat {
       display: flex; flex-direction: column; align-items: center; gap: 1px;
       min-width: 48px;
+      position: relative;
+    }
+    /* Tooltip that appears below the stat on hover */
+    .hud-stat.has-tip { cursor: help; }
+    .hud-stat.has-tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(2px);
+      background: #1a1a26;
+      border: 0.5px solid #3C3489;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+      color: #ccc;
+      white-space: pre;
+      letter-spacing: 0.5px;
+      line-height: 1.6;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s, transform 0.12s;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      margin-top: 6px;
+      text-align: left;
+    }
+    .p2 .hud-stat.has-tip::after { border-color: #0F6E56; }
+    .hud-stat.has-tip:hover::after {
+      opacity: 0.98;
+      transform: translateX(-50%) translateY(6px);
     }
     .hud-stat .lab {
       font-size: 8px; letter-spacing: 2px; color: #555;
@@ -299,11 +331,11 @@
       <div class="player-hud">
         <span class="player-name" id="p1-panel-title">P1 · PIANO</span>
         <span class="player-device" id="p1-device-name">—</span>
-        <div class="hud-stat"><span class="lab">SCORE</span><span class="val score" id="p1-score">0</span></div>
-        <div class="hud-stat"><span class="lab">COMBO</span><span class="val combo" id="p1-combo">x1</span></div>
-        <div class="hud-stat"><span class="lab">ACC</span><span class="val" id="p1-acc">—</span></div>
-        <div class="hud-stat"><span class="lab">GRADE</span><span class="val grade" id="p1-grade">—</span></div>
-        <div class="hud-stat"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw" style="font-size:11px;">0/0/0/0</span></div>
+        <div class="hud-stat has-tip" data-tip="SCORE&#10;PERFECT = 100 pts × combo multiplier&#10;GOOD    =  50 pts × combo multiplier&#10;MISS / WRONG = 0 pts"><span class="lab">SCORE</span><span class="val score" id="p1-score">0</span></div>
+        <div class="hud-stat has-tip" data-tip="COMBO MULTIPLIER&#10;Climbs every 10 consecutive scored hits&#10;x1 → x2 → x4 → x8&#10;MISS resets it to x1"><span class="lab">COMBO</span><span class="val combo" id="p1-combo">x1</span></div>
+        <div class="hud-stat has-tip" data-tip="ACCURACY&#10;(perfect + good) / total notes × 100&#10;Wrong notes don't count against accuracy"><span class="lab">ACC</span><span class="val" id="p1-acc">—</span></div>
+        <div class="hud-stat has-tip" data-tip="GRADE SCALE&#10;S — 95%+   (top)&#10;A — 85-94%&#10;B — 70-84%&#10;C — 50-69%&#10;D — below 50%"><span class="lab">GRADE</span><span class="val grade" id="p1-grade">—</span></div>
+        <div class="hud-stat has-tip" data-tip="PERFECT / GOOD / MISS / WRONG&#10;Perfect — within tight timing window&#10;Good    — within wider timing window&#10;Miss    — note passed without a press&#10;Wrong   — pressed a key with no matching note"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw" style="font-size:11px;">0/0/0/0</span></div>
       </div>
       <div class="canvas-stage">
         <canvas id="p1-canvas"></canvas>
@@ -316,11 +348,11 @@
       <div class="player-hud">
         <span class="player-name" id="p2-panel-title">P2 · DRUMS</span>
         <span class="player-device" id="p2-device-name">—</span>
-        <div class="hud-stat"><span class="lab">SCORE</span><span class="val score" id="p2-score">0</span></div>
-        <div class="hud-stat"><span class="lab">COMBO</span><span class="val combo" id="p2-combo">x1</span></div>
-        <div class="hud-stat"><span class="lab">ACC</span><span class="val" id="p2-acc">—</span></div>
-        <div class="hud-stat"><span class="lab">GRADE</span><span class="val grade" id="p2-grade">—</span></div>
-        <div class="hud-stat"><span class="lab">P/G/M/W</span><span class="val" id="p2-pgmw" style="font-size:11px;">0/0/0/0</span></div>
+        <div class="hud-stat has-tip" data-tip="SCORE&#10;PERFECT = 100 pts × combo multiplier&#10;GOOD    =  50 pts × combo multiplier&#10;MISS / WRONG = 0 pts"><span class="lab">SCORE</span><span class="val score" id="p2-score">0</span></div>
+        <div class="hud-stat has-tip" data-tip="COMBO MULTIPLIER&#10;Climbs every 10 consecutive scored hits&#10;x1 → x2 → x4 → x8&#10;MISS resets it to x1"><span class="lab">COMBO</span><span class="val combo" id="p2-combo">x1</span></div>
+        <div class="hud-stat has-tip" data-tip="ACCURACY&#10;(perfect + good) / total notes × 100&#10;Wrong notes don't count against accuracy"><span class="lab">ACC</span><span class="val" id="p2-acc">—</span></div>
+        <div class="hud-stat has-tip" data-tip="GRADE SCALE&#10;S — 95%+   (top)&#10;A — 85-94%&#10;B — 70-84%&#10;C — 50-69%&#10;D — below 50%"><span class="lab">GRADE</span><span class="val grade" id="p2-grade">—</span></div>
+        <div class="hud-stat has-tip" data-tip="PERFECT / GOOD / MISS / WRONG&#10;Perfect — within tight timing window&#10;Good    — within wider timing window&#10;Miss    — note passed without a press&#10;Wrong   — pressed a key with no matching note"><span class="lab">P/G/M/W</span><span class="val" id="p2-pgmw" style="font-size:11px;">0/0/0/0</span></div>
       </div>
       <div class="canvas-stage">
         <canvas id="p2-canvas-drums"></canvas>
