@@ -1167,6 +1167,24 @@ Phases 1-5 are the **MVP** — enough to play, save, and look back.
 Phases 6-7 are the **payoff** — the user-visible value of all this
 identity plumbing.
 
+### Future enhancements
+
+- **SMS invites via Twilio** — current flow requires the friend to
+  generate a code on their own phone, then read it aloud. A nicer
+  host-initiated variant: in `play.html` setup, host clicks
+  *"Text a friend to join P2"* and enters a phone number. Backend
+  uses Twilio (or Supabase's built-in phone OTP via Twilio) to send
+  the friend a magic link → friend taps it on their phone → if
+  signed in there, they confirm "Join Anthony's BandSync session" →
+  identity attaches to slot 2 the same way a manual code would.
+  Doesn't replace the manual-code flow (great when phones aren't
+  available); just adds a smoother path when they are.
+  Needs: Twilio account, server-side SMS dispatch (Supabase Edge
+  Function), deep-link route in `index.html` that maps to a
+  pending-claim record, and a confirmation modal on the friend's
+  side. Tracks naturally with the eventual remote-multiplayer work
+  in §19 v2.5.
+
 ### Open questions
 
 - Should the host see a banner in-game when a friend is attached
