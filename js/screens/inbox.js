@@ -68,6 +68,8 @@ export function mount(el, ctx, navigate, { openWith = null } = {}) {
 
   async function openConversation(partnerId, partnerProfile) {
     activePartnerId = partnerId;
+    // Mobile: swap from list-pane to conversation-pane.
+    document.querySelector('.inbox-wrap')?.classList.add('has-active');
     // Highlight selected
     document.querySelectorAll('.convo-row').forEach(r =>
       r.classList.toggle('active', r.dataset.id === partnerId));
@@ -76,6 +78,7 @@ export function mount(el, ctx, navigate, { openWith = null } = {}) {
     const mainEl = document.getElementById('inbox-main');
     mainEl.innerHTML = `
       <div class="chat-header">
+        <button class="chat-back-btn" id="chat-back" title="Back to messages">← BACK</button>
         <span class="friend-avatar" style="color:${color.accent}">${avatarEmoji(partnerProfile?.avatar)}</span>
         <div>
           <div class="friend-name" style="color:${color.accent}">${esc(partnerProfile?.display_name ?? partnerProfile?.username)}</div>
@@ -89,6 +92,13 @@ export function mount(el, ctx, navigate, { openWith = null } = {}) {
         <button class="btn btn-primary" id="chat-send">SEND</button>
       </div>
     `;
+
+    document.getElementById('chat-back')?.addEventListener('click', () => {
+      document.querySelector('.inbox-wrap')?.classList.remove('has-active');
+      activePartnerId = null;
+      // Clear the highlight on the list so re-entering doesn't look pre-selected.
+      document.querySelectorAll('.convo-row').forEach(r => r.classList.remove('active'));
+    });
 
     await loadMessages(partnerId);
     await markMessagesRead(user.id, partnerId);

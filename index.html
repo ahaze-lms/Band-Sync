@@ -714,6 +714,54 @@
       flex-shrink: 0;
     }
     .chat-input-row .input { flex: 1; }
+
+    /* Inline "← BACK" button in the chat header. Visible only on mobile
+       (the single-pane layout) — pops the user back to the conversation list. */
+    .chat-back-btn {
+      display: none;
+      background: transparent;
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      margin-right: 8px;
+      cursor: pointer;
+    }
+    .chat-back-btn:hover { color: var(--purple2); border-color: var(--purple); }
+
+    /* ── MOBILE TWEAKS (≤ 768px) ────────────────────────────────
+       Quick-pass mobile friendliness — not a full responsive redesign.
+       Inbox flips to a single-pane "list ↔ conversation" model so the
+       chat is actually usable on a phone, and the viewport uses dvh so
+       the on-screen keyboard doesn't cover the input. */
+    @media (max-width: 768px) {
+      /* Dynamic viewport height — accounts for the soft keyboard.
+         Falls back to 100vh on browsers that don't support dvh. */
+      #app { height: 100dvh; }
+
+      /* Inbox single-pane */
+      .inbox-wrap {
+        grid-template-columns: 1fr;
+      }
+      .inbox-main {
+        display: none;
+      }
+      .inbox-wrap.has-active .inbox-sidebar {
+        display: none;
+      }
+      .inbox-wrap.has-active .inbox-main {
+        display: flex;
+      }
+      .chat-back-btn { display: inline-flex; }
+
+      /* iOS auto-zooms inputs whose font-size is < 16px. Stops the
+         awkward "tap → page zooms in" jump when focusing the message
+         input. */
+      .chat-input-row .input { font-size: 16px; }
+      .input { font-size: 16px; }
+    }
   </style>
 </head>
 <body>
