@@ -29,6 +29,7 @@ import { createGameplay }     from './core/gameplay-engine.js';
 import { PLAYER_COLORS,
          PIANO_NOTE_MIN, PIANO_NOTE_MAX,
          DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL,
+         FALL_TIMES_MS, HIT_WINDOWS,
          DEVICE_ID_KEYBOARD, DEVICE_LABEL_KEYBOARD } from './config.js';
 
 // Avatars are also defined in js/app.js (index.html SPA shell) — duplicated
@@ -148,9 +149,11 @@ function defaultSlot(idx, song) {
 
 function defaultSetup(song) {
   return {
-    songFile:    song.file,
-    playerCount: Math.min(ENABLED_PLAYERS, Math.max(1, song.tracks.length)),
-    players:     Array.from({ length: MAX_PLAYERS }, (_, i) => defaultSlot(i, song)),
+    songFile:        song.file,
+    playerCount:     Math.min(ENABLED_PLAYERS, Math.max(1, song.tracks.length)),
+    speedLevel:      DEFAULT_SPEED_LEVEL,
+    hitWindowLevel:  DEFAULT_HIT_WINDOW_LEVEL,
+    players:         Array.from({ length: MAX_PLAYERS }, (_, i) => defaultSlot(i, song)),
   };
 }
 
@@ -273,6 +276,31 @@ function paintSetup() {
       </div>
 
       <div class="setup-section">
+        <div class="setup-section-label">DIFFICULTY &amp; SPEED</div>
+        <div class="setup-difficulty">
+          <div class="field">
+            <label class="field-label">SPEED — how fast notes fall</label>
+            <select data-field="speed">
+              ${FALL_TIMES_MS.map((ms, i) => {
+                const level = i + 1;
+                const s = (ms / 1000).toFixed(1);
+                return `<option value="${level}" ${setup.speedLevel === level ? 'selected' : ''}>Level ${level} — ${s}s fall</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">DIFFICULTY — timing tolerance</label>
+            <select data-field="difficulty">
+              ${HIT_WINDOWS.map((hw, i) => {
+                const level = i + 1;
+                return `<option value="${level}" ${setup.hitWindowLevel === level ? 'selected' : ''}>${level} — ${hw.name} (±${hw.perfect}ms perfect)</option>`;
+              }).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-section">
         <div class="setup-section-label">PLAYERS</div>
         <div class="player-count">
           ${[1, 2, 3, 4].map(n => `
@@ -320,6 +348,10 @@ function paintSetup() {
       const i = Number(el.dataset.player);
       const field = el.dataset.field;
       const p = setup.players[i];
+
+      // Session-level fields (not per-player) — no row to update.
+      if (field === 'speed')      { setup.speedLevel     = Number(el.value); return; }
+      if (field === 'difficulty') { setup.hitWindowLevel = Number(el.value); return; }
 
       if (field === 'instrument') p.instrument = el.value;
       if (field === 'device') {
@@ -667,8 +699,8 @@ async function renderGame() {
 
   ctx.activeGame = createGameplay({
     players:        enginePlayers,
-    speedLevel:     DEFAULT_SPEED_LEVEL,
-    hitWindowLevel: DEFAULT_HIT_WINDOW_LEVEL,
+    speedLevel:     setup.speedLevel     ?? DEFAULT_SPEED_LEVEL,
+    hitWindowLevel: setup.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
     alwaysSound:    true,
     callbacks: {
       onScoreUpdate:  (idx, stats) => updateScoreCard(idx, stats),
@@ -877,8 +909,8 @@ function onSongComplete() {
   saveSession({
     hostUserId:     ctx.user.id,
     song:           { file: ctx.song.file, title: ctx.song.title },
-    speedLevel:     DEFAULT_SPEED_LEVEL,
-    hitWindowLevel: DEFAULT_HIT_WINDOW_LEVEL,
+    speedLevel:     ctx.setup?.speedLevel     ?? DEFAULT_SPEED_LEVEL,
+    hitWindowLevel: ctx.setup?.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
     startedAt:      ctx.gameStartedAt,
     endedAt:        new Date().toISOString(),
     slots,

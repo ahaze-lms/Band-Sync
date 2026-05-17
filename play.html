@@ -194,6 +194,16 @@
       margin-bottom: 10px;
     }
 
+    /* Difficulty + speed selectors — two side-by-side dropdowns */
+    .setup-difficulty {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 768px) {
+      .setup-difficulty { grid-template-columns: 1fr; }
+    }
+
     /* Player count buttons */
     .player-count {
       display: flex; gap: 8px;
@@ -728,6 +738,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=10"></script>
+  <script type="module" src="js/play.js?v=11"></script>
 </body>
 </html>

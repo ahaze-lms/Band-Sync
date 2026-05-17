@@ -77,6 +77,12 @@ export function createPianoRenderer(canvas, options = {}) {
     //                Usually the QWERTY key for keyboard-input players ("Z").
     blockLabel = null,
     blockHint  = null,
+    // Multiplier on the canvas pixel buffer relative to the logical
+    // coordinate system. CSS still sizes the canvas via object-fit:contain
+    // — this just gives the browser more pixels to work with when scaling
+    // up to large displays (4K monitors etc), removing bilinear blur.
+    // Drawing code stays in logical coordinates thanks to ctx.setTransform.
+    pixelRatio = Math.max(2, window.devicePixelRatio || 1),
   } = options;
 
   // ── Build keyboard layout ─────────────────────────────────────
@@ -101,9 +107,14 @@ export function createPianoRenderer(canvas, options = {}) {
   const noteWidthFor = n => isBlackKey(n) ? BLACK_KEY_W * 0.85 : WHITE_KEY_W * 0.8;
 
   // ── Bind canvas ───────────────────────────────────────────────
-  canvas.width  = CANVAS_W;
-  canvas.height = CANVAS_H;
+  // The pixel buffer is CANVAS_W × CANVAS_H × pixelRatio; the drawing
+  // code stays in logical (CANVAS_W × CANVAS_H) coordinates. Browsers
+  // upscale the larger buffer to the CSS display size with much less
+  // blur than upscaling the small native buffer would.
+  canvas.width  = CANVAS_W * pixelRatio;
+  canvas.height = CANVAS_H * pixelRatio;
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
   // ── Click detection rects (for mouse → key) ───────────────────
   const whiteKeyRects = whiteKeys.map((note, i) => ({
@@ -378,6 +389,10 @@ export function createPianoRenderer(canvas, options = {}) {
   return {
     // ── Frame draw ────────────────────────────────────────────
     draw({ fallingBlocks = [], heldNotes = new Set(), countoff = null } = {}) {
+      // Re-assert pixelRatio scaling each frame — drawCountoff uses
+      // save/restore which preserves the transform, but this is a cheap
+      // guard against any future code that might leave the matrix dirty.
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       const notePreview = computePreview(fallingBlocks);
       drawHighway(fallingBlocks, heldNotes);
