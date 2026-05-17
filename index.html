@@ -22,8 +22,8 @@
       --teal2:    #5DCAA5;
       --amber:    #BA7517;
       --red:      #E24B4A;
-      --text:     #c8c8d8;
-      --dim:      #55556a;
+      --text:     #d4d4e2;     /* slightly brighter body copy */
+      --dim:      #8585a0;     /* lifted from #55556a — old value was borderline contrast on mobile */
       --radius:   10px;
     }
 
@@ -34,7 +34,7 @@
       background: var(--bg);
       color: var(--text);
       font-family: 'DM Sans', sans-serif;
-      font-size: 14px;
+      font-size: 15px;       /* bumped from 14 for legibility, esp. on mobile */
       line-height: 1.5;
     }
     a { color: inherit; text-decoration: none; }

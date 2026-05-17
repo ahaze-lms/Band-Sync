@@ -20,8 +20,8 @@
       --amber2:   #EF9F27;
       --red:      #E24B4A;
       --red2:     #F09595;
-      --text:     #c8c8d8;
-      --dim:      #55556a;
+      --text:     #d4d4e2;     /* keep in sync with index.html */
+      --dim:      #8585a0;     /* lifted from #55556a for mobile legibility */
       --radius:   10px;
     }
 
@@ -32,7 +32,7 @@
       background: var(--bg);
       color: var(--text);
       font-family: 'Segoe UI', sans-serif;
-      font-size: 14px;
+      font-size: 15px;       /* bumped from 14 for legibility */
       line-height: 1.5;
       overflow-x: hidden;
     }
@@ -649,6 +649,63 @@
     .save-status.saving { color: var(--dim);  background: var(--bg3);  }
     .save-status.saved  { color: var(--teal2); background: rgba(29,158,117,0.12); }
     .save-status.failed { color: var(--red2);  background: rgba(226,75,74,0.12);  }
+
+    /* ── MOBILE TWEAKS (≤ 768px) ────────────────────────────────
+       Quick-pass mobile friendliness — not a full responsive redesign.
+       Goals:
+        - Player panels stack vertically regardless of count (side-by-side
+          is unreadable at phone widths)
+        - Piano canvas keeps its natural pixel size and scrolls
+          horizontally so keys stay touch-sized (~36px wide) instead of
+          getting squished to ~16px under object-fit:contain
+        - Slightly tighter chrome (the surrounding header/song info
+          eats vertical space that mobile players want for the canvas)
+    */
+    @media (max-width: 768px) {
+      .top-bar { padding: 10px 14px; gap: 14px; }
+      .game-shell { gap: 6px; height: calc(100vh - 60px); }
+      .game-header { padding: 8px 12px; gap: 10px; flex-wrap: wrap; }
+      .game-header .game-time { margin-left: auto; }
+
+      /* Always stack: every game-panels grid becomes a vertical column */
+      .game-panels.players-1,
+      .game-panels.players-2,
+      .game-panels.players-3,
+      .game-panels.players-4 {
+        grid-template-columns: 1fr;
+        grid-auto-rows: 1fr;
+        grid-template-rows: none;
+      }
+
+      .game-panel { padding: 4px 6px 6px; min-height: 220px; }
+      .score-card { gap: 10px; font-size: 11px; }
+      .score-stat .val.big { font-size: 16px; }
+
+      /* Canvas: keep natural size, scroll horizontally if it overflows.
+         Each white key stays ~36px wide instead of being scaled to <20px. */
+      .canvas-stage {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+      .canvas-stage canvas {
+        width: auto;
+        height: 100%;
+        max-width: none;
+        object-fit: none;
+      }
+
+      /* Setup screen — give the player rows room to breathe */
+      .player-row {
+        grid-template-columns: 56px 1fr;
+        grid-auto-rows: auto;
+        row-gap: 8px;
+      }
+      .player-row .field { grid-column: 2; }
+      .player-tag { grid-row: span 4; align-self: start; padding-top: 10px; }
+
+      .song-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
