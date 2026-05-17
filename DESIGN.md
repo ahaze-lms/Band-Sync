@@ -1,34 +1,41 @@
-# BandSync — Design Document v9
+# BandSync — Design Document v10
 
-> Updated 2026-05-16. Supersedes `BandSync_Web_Design_Doc_v8.docx`.
+> Updated 2026-05-16. Supersedes v9 / `BandSync_Web_Design_Doc_v8.docx`.
 >
-> Major changes from v8: scope expanded from "fun family rhythm game" to a commercial product with user accounts, paywall, AI-assisted music tools, and a built-in MIDI editor. Architecture refactored to ES modules (no frameworks, no build tools).
+> Major changes from v9: Supabase backend implemented (no longer planned). Social layer shipped — auth, profiles, friends, inbox, play invites. Development moved from local server to live GitHub Pages. Admin screen added to roadmap.
 
 ---
 
 ## 🚦 Current state (2026-05-16)
 
-**Playable.** A 2-player split-screen prototype works end-to-end and has been verified with two physical MIDI devices. See `README.md` for the running checklist of what works.
+**Two layers working:**
 
-### What's next when we pick this up
+**Gameplay** (`play.html`) — 2-player split-screen verified on physical MIDI hardware. See `README.md` for the full feature checklist.
 
-In rough priority order:
+**Social / account layer** (`index.html`) — live at <https://ahaze-lms.github.io/Band-Sync/>
+- Email/password auth via Supabase
+- User profiles (username, display name, avatar, accent color, tagline)
+- Friend requests, friend list, online presence
+- Real-time inbox (direct messages)
+- Play invites between friends
+- Profile setup onboarding
 
-1. **Real piano + drum samples** — replace the triangle-wave synthesis. Biggest perceived-quality jump for the least work.
-2. **Proper results screen** — replace the single-line "SONG COMPLETE" text with a full screen showing per-player scores, accuracy bars, personal-best flags, and Replay / Play Again / Song Select buttons.
-3. **Player profile UI** — names, avatars, accent colors. Still localStorage-backed at this stage; cloud sync arrives with §13 (backend) decisions.
-4. **Session history** — every completed song saved to localStorage with date / score / accuracy / grade.
-5. **Track-picker UI** for MIDI files with multiple piano or drum tracks (current behavior just picks the first of each — fine for v0.x).
-6. **3- and 4-player layouts** — design doc §16 lays out the 2×2 quad grid; mostly a CSS-grid + extra-renderer composition exercise.
-7. **Calibration overlay extraction** — duplicated across 3 screens; pull into `js/ui/calibration-overlay.js`.
+### What's next
 
-### Open architectural decisions (still parked)
+1. **Admin screen** — in-app view of users, friend graph, messages. Supabase Table Editor works for now; a proper `/admin` screen is planned.
+2. **Connect the two layers** — home screen's PLAY NOW links to `play.html`; wire the session so `play.html` knows which Supabase users are playing.
+3. **Real piano + drum samples** — biggest perceived-quality jump for the least work.
+4. **Proper results screen** — full per-player scores, accuracy bars, personal-best flags, Replay / Play Again buttons.
+5. **Session history** — every completed song saved to the user's profile in Supabase.
+6. **Track-picker UI** for multi-track MIDI files.
+7. **3- and 4-player layouts** — CSS-grid + extra renderers.
+8. **Calibration overlay extraction** — currently duplicated across 3 screens.
 
-- Backend stack (working assumption: Supabase)
-- Auth provider (depends on backend)
-- Pricing tiers
+### Open architectural decisions
+
+- Pricing tiers ($/mo)
 - Domain name
-- AI scope sharpening (see §14) — which capability to ship first
+- AI scope — which capability to ship first (see §14)
 
 ---
 
@@ -80,15 +87,19 @@ Feature gates check user tier before unlocking. Stripe Checkout for subscription
 - **localStorage** — profiles, calibrations, drum mappings (temporary, migrates to server when accounts ship)
 
 ### Hosting (current)
-- **GitHub Pages** for the static frontend
-- **Local dev:** `python -m http.server 8000` from project root
+- **GitHub Pages** — live at <https://ahaze-lms.github.io/Band-Sync/>, auto-deploys on push to `main`
+- **Local dev (optional):** `python -m http.server 8000` — only needed for offline work; live site is the primary target
 
-### Planned (backend, when accounts land)
-- **Backend:** TBD. Top candidates: Supabase (Postgres + auth + storage in one), Firebase, or rolled own Node + Postgres on Fly.io/Render. See §13.
-- **Auth:** managed service (depends on backend choice). Email + password, Google OAuth.
-- **AI:** Claude API (Anthropic) for the MIDI editor + chart generation
+### Backend (current — implemented)
+- **Supabase** — Postgres + Auth + Realtime. Project: `pmccwxovzhfdkuqzhkez.supabase.co`
+- **Auth:** email + password via Supabase Auth
+- **Realtime:** Supabase channels for live inbox events (messages, play invites, friend requests)
+- **Vendor:** `js/vendor/supabase.umd.js` — bundled locally to eliminate CDN latency
+
+### Planned
+- **AI:** Claude API (Anthropic) for the MIDI editor + chart generation (see §14)
 - **Payments:** Stripe Checkout + webhooks
-- **Hosting:** moves from GitHub Pages → Vercel or Cloudflare Pages (frontend) + backend host of choice
+- **OAuth:** Google sign-in (future, after core features ship)
 
 ---
 
@@ -142,24 +153,28 @@ Band-Sync/
 ## 6. App Flow
 
 Logged-out:
-1. **Landing** — logo, "Try free" + "Sign in"
-2. **Sign in / sign up** — managed by the auth provider
+1. **Auth** ✅ — sign in / sign up with email + password
 
-Logged-in:
-3. **Home** — Quick Play / Library / AI Studio / Profile
-4. **Profile select** — pick which humans are playing today (multiple profiles, one screen)
-5. **Device assignment** — assign MIDI device + role per player, test input
-6. **Song select** — pick from library; for multi-track songs, assign tracks to players; shared/dueling option
-7. **Count-off** — mandatory 4-beat count-in, notes fall during count-off
-8. **Gameplay** — 1-4 panels, falling notes, HUD per player, pause
-9. **Song complete** — brief flash before results
-10. **Results** — scores, accuracy, grade, personal-best flags, dueling winner
-11. **Replay** (paid) — visual + audio playback, expected vs actual side-by-side
-12. **Profile + progress** — all-time stats, per-song history, accuracy graph
-13. **AI Studio** — piano-roll MIDI editor with Claude suggestions
-14. **Library** — saved songs, custom uploads, AI-generated charts
-15. **Settings** — global volume, calibrations, drum mappings, account
-16. **Subscription** — current tier, upgrade, billing portal (Stripe)
+Logged-in (social layer):
+2. **Home** ✅ — PLAY NOW button, friends panel, pending requests, play invites
+3. **Friends** ✅ — search players, send/accept/decline requests, invite to play, message
+4. **Inbox** ✅ — real-time direct messages between friends
+5. **Profile edit** ✅ — username, display name, avatar, accent color, tagline
+
+Gameplay flow (future integration with social layer):
+6. **Profile select** — pick which logged-in users are playing today
+7. **Device assignment** — assign MIDI device + role per player, test input
+8. **Song select** — pick from library; assign tracks to players; shared/dueling option
+9. **Count-off** — mandatory 4-beat count-in, notes fall during count-off
+10. **Gameplay** — 1-4 panels, falling notes, HUD per player, pause
+11. **Results** — scores, accuracy, grade, personal-best flags, dueling winner
+12. **Replay** (paid) — visual + audio playback, expected vs actual side-by-side
+13. **Profile + progress** — all-time stats, per-song history, accuracy graph
+14. **AI Studio** — piano-roll MIDI editor with Claude suggestions (planned)
+15. **Library** — saved songs, custom uploads, AI-generated charts (planned)
+16. **Settings** — volume, calibrations, drum mappings, account (planned)
+17. **Subscription** — tier, upgrade, billing portal via Stripe (planned)
+18. **Admin** — user list, friend graph, message log, data management (planned — admin-only)
 
 ---
 
@@ -303,33 +318,30 @@ Every player + every MIDI device pairing has its own latency. Calibration measur
 
 ---
 
-## 13. Backend (planned, decision pending)
+## 13. Backend — Supabase (implemented)
 
-Top three candidates ranked by fit:
+**Decision made: Supabase.** Implemented and live.
 
-### Supabase (recommended)
-- Postgres + auth + storage + realtime in one product
-- Generous free tier
-- Clean Stripe integration via webhooks
-- Single client SDK; row-level security keeps things tidy
-- Lock-in is moderate; data is portable (it's Postgres)
+### Database schema (`supabase/schema.sql`)
 
-### Firebase
-- Slightly easier auth UX
-- Firestore is NoSQL — awkward for relational data (profiles + sessions + per-song bests)
-- Less smooth Stripe integration
+| Table | Purpose |
+|---|---|
+| `profiles` | One row per user — username, display_name, avatar, accent_color, tagline, is_online, last_seen_at |
+| `friend_requests` | from_id → to_id, status: pending / accepted / declined |
+| `messages` | from_id → to_id, body, read_at |
+| `play_invites` | from_id → to_id, song_id, status, expires_at (5 min TTL) |
 
-### Roll-your-own (Node + Postgres on Fly.io / Render)
-- Maximum flexibility, no vendor lock-in
-- Far more plumbing to write before features ship
-- Auth becomes a project of its own
+All tables have Row Level Security. Users can only read/write their own data or data they're party to. A Postgres trigger auto-creates a `profiles` row on every new `auth.users` insert.
 
-### Cloudflare Workers + D1 + KV
-- Cheapest at scale
-- Newer ecosystem; auth requires gluing pieces together
-- Better as a v2 migration than a v1 starter
+### Realtime
 
-**Working assumption: Supabase**, until a better reason emerges. Final call pending user decision.
+All four tables are in the `supabase_realtime` publication. The `subscribeToInbox()` function in `js/services/social.js` sets up a Supabase channel per user that pushes new messages, play invites, and friend requests in real time.
+
+### Admin
+
+**Current:** Supabase Dashboard → Table Editor (view/edit all rows like a spreadsheet).
+
+**Planned:** In-app `/admin` screen — see §19 roadmap.
 
 ---
 
@@ -447,23 +459,28 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - ✅ HUD tooltips on every stat
 - ✅ Hit window scale extended to 7 levels (Practice + Beginner added for kids)
 - ✅ **Verified working** with two physical MIDI devices (MPK Mini 3 + Casio CDP)
+- ✅ Supabase backend — auth, profiles, friends, inbox, play invites
+- ✅ Real-time inbox via Supabase Realtime channels
+- ✅ Live on GitHub Pages — no local server required for users
+- ✅ Supabase vendor bundle served locally (no CDN latency)
+- 🔜 Admin screen — in-app user/data management (admin-only route)
+- 🔜 Connect social → gameplay (pass logged-in user into play.html session)
 - 🔜 3- and 4-player layouts
 - 🔜 Real piano + drum samples
 - 🔜 Proper results screen (replacing the single-line song-complete text)
-- 🔜 Session history in localStorage
-- 🔜 Player profile UI (names, avatars, accent colors)
+- 🔜 Session history saved to Supabase per user
 - 🔜 Track-picker UI when a MIDI file has multiple piano or drum tracks
 - 🔜 Calibration-overlay extraction into a shared `js/ui/` module
 
 ### v1.0 — MVP launchable
-- User accounts + cloud sync (backend decision required)
+- Admin screen with user list, activity log, data management
 - Paywall (free 1-2P, paid 3-4P + custom uploads)
 - Default song library (bundled MIDIs)
-- Results screen full
-- Profile UI (create, edit, switch)
+- Results screen — full per-player scores, accuracy bars, personal-best flags
 - Device assignment screen
 - Drum mapping calibration tool integrated into onboarding
-- Latency calibration migrated to per-profile
+- Latency calibration migrated to per-profile in Supabase
+- Google OAuth (optional — lower friction sign-up)
 
 ### v1.5 — Paid features differentiate
 - Custom MIDI upload (paid)
@@ -545,8 +562,10 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-16 | Single-MIDI-device shared between both players is allowed and multiplexes one event stream into both `onP1Midi` and `onP2Midi`. Useful when only one keyboard is plugged in. |
 | 2026-05-16 | Hit window scale extended from 5 to 7 levels — Practice (±250/±500) and Beginner (±180/±350) added for younger players. |
 | 2026-05-16 | HUD tooltips on every stat. Pattern: `[data-tip]` + `.has-tip` CSS — reusable for future screens. |
-| TBD | Backend stack (working assumption: Supabase) |
-| TBD | Auth provider (depends on backend) |
+| 2026-05-16 | **Backend: Supabase.** Implemented. Project `pmccwxovzhfdkuqzhkez`. Tables: profiles, friend_requests, messages, play_invites. All with RLS + Realtime. |
+| 2026-05-16 | Supabase vendor bundle (`supabase.umd.js`) downloaded and served from `/js/vendor/` — eliminates CDN latency on every load. |
+| 2026-05-16 | Live-first development. GitHub Pages (`ahaze-lms.github.io/Band-Sync`) is the primary target. Local server (`python -m http.server 8000`) is optional fallback for offline work only. |
+| 2026-05-16 | Admin screen added to roadmap — in-app route, admin-only, showing user list, friend graph, recent activity. Supabase Table Editor fills this role in the interim. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -575,8 +594,9 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | `/js/core/` | Engine modules (timing, audio, scoring, MIDI, calibration, parser, mapping) |
 | `/js/render/` | Canvas renderers (piano, drums, future bass/guitar) |
 | `/js/input/` | MIDI-to-game input mapping (future) |
-| `/js/screens/` | Top-level screens (gameplay, results, library, studio) |
-| `/js/services/` | API/auth/AI/payments clients (future) |
+| `/js/screens/` | SPA screens: auth, home, profile-edit, friends, inbox — plus future: gameplay, results, library, studio, admin |
+| `/js/services/` | Supabase clients: auth.js, profile.js, social.js, supabase.js |
+| `/js/vendor/` | Local third-party bundles — supabase.umd.js (served locally, no CDN) |
 | `/songs/` | Bundled `.mid` files |
 | `/debug/` | Standalone debug tools that survived the refactor |
 | `/server/` | Backend code (future) |
