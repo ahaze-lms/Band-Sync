@@ -90,13 +90,22 @@ export function getHitWindow() {
 // Caller is responsible for resetting their own gameplay state
 // (scheduled notes, falling blocks, score, etc.) — this function only
 // touches the clock.
-export function startSong() {
+//
+// Options:
+//   countoffStartsAt: local performance.now() at which the count-off
+//     should begin. Defaults to "now". Pass a future timestamp for
+//     synchronized starts in remote multiplayer — each client computes
+//     `serverNow + offsetToLocalClock` from the agreed server start
+//     timestamp so all clients fire beat 1 at the same wall-clock moment.
+//     The tick/getSongTime functions tolerate a future start (elapsed < 0).
+export function startSong(options = {}) {
   const fallTimeMs = getFallTimeMs();
-  _songStart       = performance.now() - (COUNTOFF_TOTAL_MS - fallTimeMs);
+  const startAt    = options.countoffStartsAt ?? performance.now();
+  _songStart       = startAt - (COUNTOFF_TOTAL_MS - fallTimeMs);
   _songStartSet    = true;
   _countoffActive  = true;
   _countoffDone    = false;
-  _countoffStart   = performance.now();
+  _countoffStart   = startAt;
   _playing         = true;
   _paused          = false;
   _pauseOffset     = 0;
@@ -165,6 +174,8 @@ export function isCountoffDone()   { return _countoffDone; }
 export function tickCountoff() {
   if (!_countoffActive) return null;
   const elapsed = performance.now() - _countoffStart;
+  // Scheduled-future start (remote sync) — count-off hasn't begun yet.
+  if (elapsed < 0) return null;
   if (elapsed >= COUNTOFF_TOTAL_MS) {
     _countoffActive = false;
     _countoffDone   = true;
@@ -188,6 +199,8 @@ export function justCrossedBeat() {
     return false;
   }
   const elapsed   = performance.now() - _countoffStart;
+  // Scheduled-future start (remote sync) — no beats to fire yet.
+  if (elapsed < 0) return false;
   const beatIndex = Math.floor(elapsed / BEAT_MS);
   if (beatIndex !== _lastClickBeat && beatIndex < COUNTOFF_BEATS) {
     _lastClickBeat = beatIndex;

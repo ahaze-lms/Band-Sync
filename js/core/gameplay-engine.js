@@ -343,11 +343,14 @@ export function createGameplay(config) {
   }
 
   // ── LIFECYCLE ──────────────────────────────────────────────────
-  function start() {
+  // Options are forwarded to Clock.startSong(). The notable one is
+  // `countoffStartsAt: <performance.now() timestamp>` for synchronized
+  // starts across remote players — see Clock.startSong() docs.
+  function start(options) {
     if (Clock.isPlaying()) return;
     resetState();
     songEnded = false;
-    Clock.startSong();
+    Clock.startSong(options);
     if (rafId === null) rafId = requestAnimationFrame(loop);
   }
 
