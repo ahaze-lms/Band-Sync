@@ -207,6 +207,33 @@ create table public.play_session_slots (
 
 create index play_session_slots_user_idx on public.play_session_slots (user_id);
 
+-- ── Helper functions to break RLS cross-reference recursion (see
+--    migrations/0002_fix_play_session_rls_recursion.sql for the why) ──
+create or replace function public.user_in_session(p_session_id uuid)
+returns boolean
+language sql security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.play_session_slots
+    where session_id = p_session_id and user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.user_hosts_session(p_session_id uuid)
+returns boolean
+language sql security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.play_sessions
+    where id = p_session_id and host_user_id = auth.uid()
+  );
+$$;
+
+grant execute on function public.user_in_session(uuid)    to authenticated;
+grant execute on function public.user_hosts_session(uuid) to authenticated;
+
 -- ── RLS — play_sessions ───────────────────────────────────────────
 alter table public.play_sessions enable row level security;
 
@@ -215,12 +242,7 @@ create policy "ps_insert_host" on public.play_sessions
 create policy "ps_select_host" on public.play_sessions
   for select using (auth.uid() = host_user_id);
 create policy "ps_select_participant" on public.play_sessions
-  for select using (
-    exists (
-      select 1 from public.play_session_slots ss
-      where ss.session_id = play_sessions.id and ss.user_id = auth.uid()
-    )
-  );
+  for select using (public.user_in_session(id));
 create policy "ps_update_host" on public.play_sessions
   for update using (auth.uid() = host_user_id);
 
@@ -228,25 +250,10 @@ create policy "ps_update_host" on public.play_sessions
 alter table public.play_session_slots enable row level security;
 
 create policy "pss_insert_host" on public.play_session_slots
-  for insert with check (
-    exists (
-      select 1 from public.play_sessions s
-      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
-    )
-  );
+  for insert with check (public.user_hosts_session(session_id));
 create policy "pss_update_host" on public.play_session_slots
-  for update using (
-    exists (
-      select 1 from public.play_sessions s
-      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
-    )
-  );
+  for update using (public.user_hosts_session(session_id));
 create policy "pss_select_own" on public.play_session_slots
   for select using (auth.uid() = user_id);
 create policy "pss_select_host" on public.play_session_slots
-  for select using (
-    exists (
-      select 1 from public.play_sessions s
-      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
-    )
-  );
+  for select using (public.user_hosts_session(session_id));
