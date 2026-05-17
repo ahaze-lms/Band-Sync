@@ -143,9 +143,10 @@ function applyP2Role(role) {
   P1.scorer.reset();
   resetSongUI();
 
-  // Show the right canvas
-  document.getElementById('p2-canvas-drums-wrap').style.display = role === 'drums' ? '' : 'none';
-  document.getElementById('p2-canvas-piano-wrap').style.display = role === 'piano' ? '' : 'none';
+  // Show the right canvas (toggle the canvas elements directly — the
+  // new split-screen layout has both canvases inside one .canvas-stage)
+  document.getElementById('p2-canvas-drums').style.display = role === 'drums' ? '' : 'none';
+  document.getElementById('p2-canvas-piano').style.display = role === 'piano' ? '' : 'none';
 
   // Update labels
   document.getElementById('p2-panel-title').textContent = 'P2 · ' + (role === 'piano' ? 'PIANO' : 'DRUMS');
@@ -270,8 +271,17 @@ function rebindAllListeners() {
   Midi.detachAll();
   const p1Input = findInputByName(P1.deviceName);
   const p2Input = findInputByName(P2.deviceName);
+
+  // Same physical device for both players: multiplex one MIDI handler
+  // into both onP1Midi and onP2Midi. (Useful when there's only one
+  // keyboard plugged in — both pianos receive the same input.)
+  if (p1Input && p2Input && p1Input.id === p2Input.id) {
+    Midi.attachListener(p1Input.id, evt => { onP1Midi(evt); onP2Midi(evt); });
+    return;
+  }
+
   if (p1Input) Midi.attachListener(p1Input.id, onP1Midi);
-  if (p2Input && (!p1Input || p2Input.id !== p1Input.id)) Midi.attachListener(p2Input.id, onP2Midi);
+  if (p2Input) Midi.attachListener(p2Input.id, onP2Midi);
 }
 
 function assignP1Device(name) {
