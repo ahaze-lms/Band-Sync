@@ -6,12 +6,23 @@
 // Phase 2 ✓ : setup screen — player count + per-player instrument /
 //             device / track pickers. Designed for 1-4 players; UI
 //             currently enables 1-2.
-// Phase 3 / 4 still pending: gameplay (reusing 2player.html engine),
-// results screen.
+// Phase 3 ✓ : gameplay using js/core/gameplay-engine.js. Per-player
+//             canvases, live score cards, feedback overlays, song timer,
+//             pause / restart, end-of-song → results.
+// Phase 3c (later): port js/screens/gameplay.js to use the same engine
+//                   so 2player.html stops duplicating the loop.
+// Phase 4 (later) : polished results — accuracy bars, personal bests,
+//                   Supabase persistence.
 // ════════════════════════════════════════════════════════════════════
 
-import { getUser } from './services/auth.js';
+import { getUser }            from './services/auth.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
+import { parseMIDIFile }      from './core/midi-parser.js';
+import { loadOffset }         from './core/calibration.js';
+import { createGameplay }     from './core/gameplay-engine.js';
+import { PLAYER_COLORS,
+         PIANO_NOTE_MIN, PIANO_NOTE_MAX,
+         DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL } from './config.js';
 
 const stateEl      = document.getElementById('state');
 const stateLabelEl = document.getElementById('state-label');
@@ -20,11 +31,14 @@ const MAX_PLAYERS     = 4;
 const ENABLED_PLAYERS = 2;   // bump when 3/4-player layouts land
 
 const ctx = {
-  user:     null,
-  manifest: null,
-  song:     null,   // selected song from manifest
-  setup:    null,   // per-song setup state (player count, choices)
-  midi:     null,   // { ok, reason?, inputCount }
+  user:        null,
+  manifest:    null,
+  song:        null,   // selected song from manifest
+  setup:       null,   // per-song setup state (player count, choices)
+  midi:        null,   // { ok, reason?, inputCount }
+  activeGame:  null,   // current gameplay engine instance, or null
+  gameTimer:   null,   // requestAnimationFrame id for the song timer
+  lastResults: null,   // [{ stats, color }, ...] preserved for results screen
 };
 
 let setupTeardown = null;    // un-subscribes hot-plug listener when leaving setup
@@ -230,7 +244,7 @@ function paintSetup() {
 
   // Actions
   stateEl.querySelector('[data-action="back"]').addEventListener('click', renderSongSelect);
-  stateEl.querySelector('[data-action="start"]').addEventListener('click', renderGamePlaceholder);
+  stateEl.querySelector('[data-action="start"]').addEventListener('click', renderGame);
 }
 
 function playerRow(i, p, inputs, tracks) {
@@ -281,7 +295,7 @@ function midiStatusText() {
     return 'MIDI: access denied — reload and allow the permission prompt';
   }
   const inputs = getInputs();
-  if (inputs.length === 0) return 'MIDI: no devices connected — plug in a controller';
+  if (inputs.length === 0) return 'MIDI: no devices connected — mouse/click input still works';
   return `MIDI: ${inputs.length} device${inputs.length === 1 ? '' : 's'} connected`;
 }
 
@@ -291,42 +305,266 @@ function midiStatusClass() {
   return 'ok';
 }
 
-// ── STATE: GAME (placeholder for phase 3) ──────────────────────────
+// ── STATE: GAME ────────────────────────────────────────────────────
 
-function renderGamePlaceholder() {
+async function renderGame() {
   leaveCurrentState();
   setStateLabel('GAME');
 
-  const song    = ctx.song;
-  const setup   = ctx.setup;
-  const inputs  = getInputs();
-  const summary = setup.players.slice(0, setup.playerCount).map((p, i) => {
-    const device = inputs.find(d => d.id === p.deviceId)?.name ?? '(no device)';
-    const track  = song.tracks[p.trackIndex]?.name ?? '?';
-    return `P${i + 1} — ${p.instrument} · ${device} · ${track}`;
-  }).join('\n');
+  const song   = ctx.song;
+  const setup  = ctx.setup;
+  const inputs = getInputs();
+
+  // Show a loading shim while we fetch + parse.
+  stateEl.innerHTML = `<div class="center-msg"><div class="title">LOADING SONG…</div></div>`;
+
+  let parsed;
+  try {
+    const res = await fetch('songs/' + song.file, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    parsed = parseMIDIFile(buf);
+  } catch (err) {
+    renderError('FAILED TO LOAD SONG', `${song.file}: ${err.message}`);
+    return;
+  }
+
+  // Manifest indexes only tracks-with-notes; the parser also returns the
+  // conductor track. Align them by filtering.
+  const playableTracks = parsed.tracks.filter(t => t.notes.length > 0);
+  if (playableTracks.length === 0) {
+    renderError('EMPTY SONG', `${song.file} has no playable tracks.`);
+    return;
+  }
+
+  // Build the gameplay UI shell — panels, canvases, score cards, overlays.
+  paintGame(setup.playerCount);
+
+  // Create the engine config from setup + parsed tracks.
+  const enginePlayers = setup.players.slice(0, setup.playerCount).map((p, i) => {
+    const track = playableTracks[p.trackIndex] ?? playableTracks[0];
+    const device = inputs.find(d => d.id === p.deviceId) ?? null;
+
+    // Auto-correct instrument if track shape doesn't match. For now all
+    // bundled songs are piano-format, so this just guards against the
+    // user picking "Drums" on a piano track.
+    const trackIsDrums = track.notes[0]?.abstractName != null;
+    const instrument   = trackIsDrums ? 'drums' : 'piano';
+
+    return {
+      id:         `p${i + 1}`,
+      color:      PLAYER_COLORS[i],
+      instrument,
+      canvas:     document.getElementById(`p${i + 1}-canvas`),
+      notes:      track.notes,
+      deviceId:   p.deviceId || null,
+      drumMapping: {},  // GM drum translation lands when drum songs do
+      userOffset: device ? loadOffset(device.name) : 0,
+      pianoOpts:  { noteMin: PIANO_NOTE_MIN, noteMax: PIANO_NOTE_MAX },
+    };
+  });
+
+  // Wire callbacks → DOM
+  const callbacks = {
+    onScoreUpdate: (idx, stats) => updateScoreCard(idx, stats),
+    onFeedback:    (idx, text, cls) => showFeedback(idx, text, cls),
+    onSongComplete: () => onSongComplete(),
+  };
+
+  ctx.activeGame = createGameplay({
+    players:        enginePlayers,
+    speedLevel:     DEFAULT_SPEED_LEVEL,
+    hitWindowLevel: DEFAULT_HIT_WINDOW_LEVEL,
+    alwaysSound:    true,
+    callbacks,
+  });
+
+  // Stash per-player meta for the results screen.
+  ctx.lastResults = enginePlayers.map(ep => ({
+    id:       ep.id,
+    color:    ep.color,
+    trackName: playableTracks[setup.players[Number(ep.id.slice(1)) - 1].trackIndex]?.name ?? ep.id,
+    instrument: ep.instrument,
+    deviceName: inputs.find(d => d.id === ep.deviceId)?.name ?? '(no device)',
+    stats:    null,
+  }));
+
+  // Song-time display loop.
+  startGameTimer();
+
+  // Wire control buttons.
+  document.getElementById('btn-pause').addEventListener('click', () => {
+    if (!ctx.activeGame) return;
+    const nowPaused = ctx.activeGame.togglePause();
+    document.getElementById('btn-pause').textContent = nowPaused ? '▶ RESUME' : '⏸ PAUSE';
+  });
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    if (!ctx.activeGame) return;
+    ctx.activeGame.reset();
+    document.getElementById('btn-pause').textContent = '⏸ PAUSE';
+    ctx.activeGame.start();
+  });
+  document.getElementById('btn-exit-game').addEventListener('click', renderSetup);
+
+  // Kick off the run.
+  ctx.activeGame.start();
+}
+
+function paintGame(playerCount) {
+  const song = ctx.song;
+  const mm   = Math.floor(song.durationSec / 60);
+  const ss   = String(Math.round(song.durationSec % 60)).padStart(2, '0');
+
+  // Player panels — one per active player.
+  const panels = Array.from({ length: playerCount }, (_, i) => `
+    <div class="game-panel p${i + 1}">
+      <div class="score-card">
+        <div class="score-tag">P${i + 1}</div>
+        <div class="score-row">
+          <span>SCORE</span>
+          <span class="val big" data-stat="${i}-score">0</span>
+        </div>
+        <div class="score-row">
+          <span>COMBO</span>
+          <span class="val" data-stat="${i}-combo">x1</span>
+        </div>
+        <div class="score-row">
+          <span>ACC</span>
+          <span class="val dim" data-stat="${i}-acc">—</span>
+        </div>
+        <div class="score-row">
+          <span>GRADE</span>
+          <span class="val" data-stat="${i}-grade">—</span>
+        </div>
+        <div class="score-pgmw" data-stat="${i}-pgmw">0 / 0 / 0 / 0</div>
+      </div>
+      <div class="canvas-stage">
+        <canvas id="p${i + 1}-canvas"></canvas>
+        <div class="feedback-overlay" id="p${i + 1}-feedback"></div>
+      </div>
+    </div>
+  `).join('');
 
   stateEl.innerHTML = `
-    <div class="state-inner">
-      <div class="center-msg">
-        <div class="title">GAMEPLAY — COMING NEXT (PHASE 3)</div>
-        <div style="font-size:14px;color:#fff;margin-top:8px">${esc(song.title)}</div>
-        <pre>${esc(summary)}</pre>
-        <div style="display:flex;gap:12px;margin-top:16px">
-          <button class="btn-ghost" data-action="back-setup">← BACK TO SETUP</button>
-          <button class="btn-ghost" data-action="back-songs">← SONGS</button>
-        </div>
+    <div class="game-shell">
+      <div class="game-header">
+        <div class="game-song">${esc(song.title)}</div>
+        <div class="game-meta">${song.bpm} BPM &middot; ${mm}:${ss}</div>
+        <div class="game-time" id="game-time">0:00 / ${mm}:${ss}</div>
+      </div>
+      <div class="game-panels players-${playerCount}">
+        ${panels}
+      </div>
+      <div class="game-controls">
+        <button class="btn-ghost" id="btn-exit-game">← EXIT</button>
+        <div class="spacer"></div>
+        <button class="btn-ghost" id="btn-restart">↺ RESTART</button>
+        <button class="btn-ghost" id="btn-pause">⏸ PAUSE</button>
       </div>
     </div>
   `;
-  stateEl.querySelector('[data-action="back-setup"]').addEventListener('click', renderSetup);
-  stateEl.querySelector('[data-action="back-songs"]').addEventListener('click', renderSongSelect);
+}
+
+function updateScoreCard(idx, stats) {
+  setText(`${idx}-score`, stats.score);
+  setText(`${idx}-combo`, 'x' + stats.multiplier);
+  setText(`${idx}-acc`,   stats.accuracy !== null ? stats.accuracy + '%' : '—');
+  setText(`${idx}-grade`, stats.grade || '—');
+  setText(`${idx}-pgmw`,  `${stats.perfect} / ${stats.good} / ${stats.miss} / ${stats.wrong}`);
+  if (ctx.lastResults?.[idx]) ctx.lastResults[idx].stats = stats;
+}
+
+function setText(stat, value) {
+  const el = document.querySelector(`[data-stat="${stat}"]`);
+  if (el) el.textContent = value;
+}
+
+function showFeedback(idx, text, cls) {
+  const el = document.getElementById(`p${idx + 1}-feedback`);
+  if (!el) return;
+  el.textContent = text;
+  el.className   = 'feedback-overlay show ' + cls;
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.className = 'feedback-overlay ' + cls; }, 550);
+}
+
+function startGameTimer() {
+  const total = ctx.activeGame?.getSongDuration?.() ?? 0;
+  const mmT = Math.floor(total / 60000);
+  const ssT = String(Math.floor((total / 1000) % 60)).padStart(2, '0');
+
+  const tick = () => {
+    if (!ctx.activeGame) return;
+    const t = Math.max(0, ctx.activeGame.getSongTime());
+    const mm = Math.floor(t / 60000);
+    const ss = String(Math.floor((t / 1000) % 60)).padStart(2, '0');
+    const el = document.getElementById('game-time');
+    if (el) el.textContent = `${mm}:${ss} / ${mmT}:${ssT}`;
+    ctx.gameTimer = requestAnimationFrame(tick);
+  };
+  ctx.gameTimer = requestAnimationFrame(tick);
+}
+
+function stopGameTimer() {
+  if (ctx.gameTimer !== null) cancelAnimationFrame(ctx.gameTimer);
+  ctx.gameTimer = null;
+}
+
+function onSongComplete() {
+  // Brief delay so the final feedback overlay isn't yanked off-screen.
+  setTimeout(() => renderResults(), 800);
+}
+
+// ── STATE: RESULTS ─────────────────────────────────────────────────
+
+function renderResults() {
+  leaveCurrentState();
+  setStateLabel('RESULTS');
+
+  const results = ctx.lastResults ?? [];
+  const song    = ctx.song;
+
+  stateEl.innerHTML = `
+    <div class="state-inner">
+      <div class="results-card">
+        <div class="results-song">${esc(song.title)}</div>
+        <div class="results-subtitle">SONG COMPLETE</div>
+        <div class="results-players">
+          ${results.map((r, i) => resultsRow(i, r)).join('')}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-ghost" data-action="menu">← SONG LIBRARY</button>
+        <button class="btn-primary" data-action="again">▶ PLAY AGAIN</button>
+      </div>
+    </div>
+  `;
+  stateEl.querySelector('[data-action="menu"]').addEventListener('click', renderSongSelect);
+  stateEl.querySelector('[data-action="again"]').addEventListener('click', renderGame);
+}
+
+function resultsRow(i, r) {
+  const s = r.stats ?? { score: 0, accuracy: 0, grade: '—', perfect: 0, good: 0, miss: 0, wrong: 0 };
+  return `
+    <div class="results-row p${i + 1}">
+      <div class="results-tag">P${i + 1}</div>
+      <div>
+        <div style="font-size:13px;color:#fff">${esc(r.trackName)}</div>
+        <div class="results-pgmw">${s.perfect} / ${s.good} / ${s.miss} / ${s.wrong}</div>
+      </div>
+      <div class="results-score">${s.score}</div>
+      <div class="results-acc">${s.accuracy !== null ? s.accuracy + '%' : '—'}</div>
+      <div class="results-grade">${s.grade || '—'}</div>
+    </div>
+  `;
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────
 
 function leaveCurrentState() {
   if (setupTeardown) { setupTeardown(); setupTeardown = null; }
+  if (ctx.activeGame) { ctx.activeGame.destroy(); ctx.activeGame = null; }
+  stopGameTimer();
 }
 
 function setStateLabel(text) {

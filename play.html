@@ -291,6 +291,198 @@
     .btn-primary:disabled {
       opacity: 0.35; cursor: not-allowed;
     }
+
+    /* ── GAMEPLAY ──────────────────────────────────────────────── */
+    /* Game state takes the full state container; song header sits up
+       top, panels stack vertically. */
+    .game-shell {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      height: calc(100vh - 80px);
+    }
+    .game-header {
+      display: flex; align-items: center; gap: 18px;
+      padding: 10px 14px;
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .game-song {
+      font-size: 13px; font-weight: 600; color: #fff;
+    }
+    .game-meta {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+    }
+    .game-time {
+      margin-left: auto;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px; color: var(--text);
+    }
+
+    .game-panels {
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+    }
+    .game-panels.players-1 { grid-template-rows: 1fr; }
+    .game-panels.players-2 { grid-template-rows: 1fr 1fr; }
+
+    .game-panel {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 12px;
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-left-width: 3px;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .game-panel.p1 { border-left-color: var(--purple); }
+    .game-panel.p2 { border-left-color: var(--teal); }
+    .game-panel.p3 { border-left-color: var(--amber); }
+    .game-panel.p4 { border-left-color: var(--red); }
+
+    /* Score card column */
+    .score-card {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 8px 10px;
+      align-self: start;
+    }
+    .score-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; font-weight: 700; letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+    .p1 .score-tag { color: var(--purple2); }
+    .p2 .score-tag { color: var(--teal2); }
+    .p3 .score-tag { color: var(--amber2); }
+    .p4 .score-tag { color: var(--red2); }
+
+    .score-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 11px; letter-spacing: 1.5px; color: var(--dim);
+    }
+    .score-row .val {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; color: #fff;
+    }
+    .score-row .val.big {
+      font-size: 22px; font-weight: 700;
+    }
+    .score-row .val.dim { color: var(--dim); }
+    .score-pgmw {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; color: var(--dim);
+      letter-spacing: 1px;
+    }
+
+    /* Canvas + feedback overlay */
+    .canvas-stage {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      min-width: 0; min-height: 0;
+      overflow: hidden;
+    }
+    .canvas-stage canvas {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+    .feedback-overlay {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.6);
+      font-family: 'Space Mono', monospace;
+      font-size: 56px; font-weight: 700; letter-spacing: 6px;
+      color: #fff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s, transform 0.12s;
+      text-shadow: 0 0 18px currentColor;
+    }
+    .feedback-overlay.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .feedback-overlay.perfect { color: var(--teal2); }
+    .feedback-overlay.good    { color: var(--purple2); }
+    .feedback-overlay.miss    { color: var(--amber2); }
+    .feedback-overlay.wrong   { color: var(--red2); }
+
+    /* Game control bar */
+    .game-controls {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .game-controls .spacer { flex: 1; }
+    .game-controls .btn-ghost { padding: 8px 14px; }
+
+    /* ── RESULTS ───────────────────────────────────────────────── */
+    .results-card {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 16px;
+    }
+    .results-song {
+      font-size: 18px; font-weight: 600; color: #fff;
+      text-align: center;
+    }
+    .results-subtitle {
+      font-size: 11px; letter-spacing: 3px; color: var(--dim);
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .results-players {
+      display: grid;
+      gap: 14px;
+    }
+    .results-row {
+      display: grid;
+      grid-template-columns: 60px 1fr 80px 100px 80px;
+      gap: 16px;
+      align-items: center;
+      padding: 14px 18px;
+      background: var(--bg3);
+      border: 0.5px solid var(--border);
+      border-left-width: 3px;
+      border-radius: 8px;
+    }
+    .results-row.p1 { border-left-color: var(--purple); }
+    .results-row.p2 { border-left-color: var(--teal); }
+    .results-row.p3 { border-left-color: var(--amber); }
+    .results-row.p4 { border-left-color: var(--red); }
+    .results-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; font-weight: 700; letter-spacing: 3px;
+    }
+    .results-row.p1 .results-tag { color: var(--purple2); }
+    .results-row.p2 .results-tag { color: var(--teal2); }
+    .results-row.p3 .results-tag { color: var(--amber2); }
+    .results-row.p4 .results-tag { color: var(--red2); }
+    .results-pgmw {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; color: var(--dim); letter-spacing: 1px;
+    }
+    .results-score {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px; font-weight: 700; color: #fff;
+      text-align: right;
+    }
+    .results-acc {
+      font-family: 'Space Mono', monospace;
+      font-size: 15px; color: var(--text);
+      text-align: right;
+    }
+    .results-grade {
+      font-family: 'Space Mono', monospace;
+      font-size: 28px; font-weight: 700; color: #fff;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -307,6 +499,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=2"></script>
+  <script type="module" src="js/play.js?v=3"></script>
 </body>
 </html>
