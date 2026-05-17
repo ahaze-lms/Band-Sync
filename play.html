@@ -211,9 +211,102 @@
       border-radius: var(--radius);
       padding: 14px 18px;
       display: grid;
-      grid-template-columns: 56px 1fr 1fr 1fr;
-      gap: 16px;
+      grid-template-columns: 56px 1.1fr 1fr 1fr 1fr;
+      gap: 14px;
       align-items: center;
+    }
+
+    /* Identity display when a friend is attached — name + small avatar */
+    .identity-attached {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--bg3);
+      border: 0.5px solid var(--purple);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .identity-attached .ia-avatar {
+      font-size: 16px;
+    }
+    .identity-attached .ia-name {
+      color: #fff;
+      font-weight: 500;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .identity-attached .ia-detach {
+      background: transparent;
+      border: none;
+      color: var(--dim);
+      cursor: pointer;
+      font-size: 11px;
+      padding: 2px 4px;
+    }
+    .identity-attached .ia-detach:hover { color: var(--red); }
+
+    /* Identity hint badge under the row */
+    .identity-host  { color: var(--purple2); }
+    .identity-guest { color: var(--dim); font-style: italic; }
+    .identity-friend { color: var(--teal2); }
+
+    /* ── CLAIM-CODE MODAL ──────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(7, 7, 15, 0.78);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 24px;
+    }
+    .modal-card {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      max-width: 460px;
+      width: 100%;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .modal-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; letter-spacing: 3px; color: #fff;
+      text-align: center;
+    }
+    .modal-desc {
+      font-size: 12px; color: var(--dim); line-height: 1.55;
+      text-align: center;
+    }
+    .code-input-row {
+      display: flex; gap: 8px; justify-content: center;
+      margin: 8px 0;
+    }
+    .code-input {
+      width: 48px; height: 56px;
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 24px; font-weight: 700;
+      background: var(--bg);
+      color: #fff;
+      border: 0.5px solid var(--border2);
+      border-radius: 8px;
+      caret-color: var(--purple);
+    }
+    .code-input:focus {
+      outline: none;
+      border-color: var(--purple);
+      background: var(--bg3);
+    }
+    .modal-error {
+      color: var(--red2);
+      font-size: 11px;
+      text-align: center;
+      min-height: 14px;
+    }
+    .modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+      margin-top: 4px;
     }
     .player-row.p1 { border-left-color: var(--purple); }
     .player-row.p2 { border-left-color: var(--teal); }
@@ -501,6 +594,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=3"></script>
+  <script type="module" src="js/play.js?v=4"></script>
 </body>
 </html>
