@@ -172,6 +172,12 @@ All tables have Row Level Security. A Postgres trigger auto-creates a `profiles`
 
 Score persistence writes one `play_sessions` row + N `play_session_slots` rows (one per slot, even guests) on song complete.
 
+**Evolution v2 (specced, not yet built)** — `§26` Evolution v2 adds **session attachments**: on claim, Supabase also issues a session token that the host stores in localStorage so reloads rehydrate the friend's identity (24h TTL, revocable). Fixes the "regen a code every song after refresh" friction. Builds on the same `session_attachments` primitive that remote multiplayer (§27) uses for participant tracking.
+
+## Remote multiplayer (specced, not yet built)
+
+`DESIGN.md §27` specs the lobby model: each player runs their own engine on their own machine (local-first), synchronised start via `Clock.startSong({ countoffStartsAt })` + Supabase Realtime, score broadcast at ~1Hz. New tables: `lobbies`, `lobby_participants`. Both local and remote write the same `play_sessions` / `play_session_slots` schema so HISTORY is mode-agnostic. Honest scope: ~3-4 focused sessions for a functional first version.
+
 ---
 
 ## Visual style

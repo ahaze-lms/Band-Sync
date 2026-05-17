@@ -1,8 +1,8 @@
-# BandSync — Design Document v13
+# BandSync — Design Document v14
 
-> Updated 2026-05-17. Supersedes v12.
+> Updated 2026-05-17. Supersedes v13.
 >
-> Major changes from v12: `play.html` shipped end-to-end (song select → setup → game → results) and is now the production gameplay surface. Player identity model (`§26`) built across phases 1–7: Supabase schema, friend-code generation/claim flow, host-side picker, score persistence, HISTORY screen, account-activity audit log. Gameplay engine extracted into `js/core/gameplay-engine.js`. 1–4 player layouts wired. Personal-best display + NEW PB badge. Editable guest names.
+> Major changes from v13: §26 evolved with **durable session attachments** — a token-based persistence layer on top of the existing 6-digit pairing so friend identities survive page reloads and tab closes (no more re-generating codes for every song). New §27 **Remote Multiplayer** spec — lobby model, clock sync via Realtime, score broadcast, and an honest 3-4 session scope estimate. Both designs share the same `play_sessions` / `play_session_slots` schema so HISTORY and PB queries don't care whether a song was played locally or remotely.
 
 ---
 
@@ -624,6 +624,8 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-17 | `play.html` gameplay layout optimized for 1-4 players. Score card flipped from a 220px side column to a compact horizontal strip on top of each panel; canvas fills remaining space via `object-fit: contain` so the keyboard upscales at 1-player full screen and downscales cleanly at 4-player quad. Grids: 1-col / 2-col / 3-col / 2×2. `ENABLED_PLAYERS` raised to 4 (3-4 are layout-ready; gameplay still needs ≥3 MIDI devices). |
 | 2026-05-17 | Personal best surfaced in two places: "YOUR BEST: 14,400 · S · 98% · 2d ago" line under each song on the setup screen, and a "NEW PERSONAL BEST" pill on the host's results row when they beat their previous PB. Triggered only when there *was* a previous best (first plays just record quietly). Friend/guest slots don't get the badge — friends' PBs are blocked by RLS, guests have no account. |
 | 2026-05-17 | Guest names are editable but optional. Identity cell for guest slots renders as a name input + mini kind-switcher side-by-side; default `Guest N` stays a valid value (empty input reverts to it). Edited name flows through to in-game chips, results row, saved `display_name`, and friend audit log. No schema change required. |
+| 2026-05-17 | §26 evolution: durable session attachments. Friend's 6-digit code is still the one-shot pairing handshake, but on claim Supabase now also issues a session token that the host stores in localStorage. Reloads rehydrate the attached identity by validating the token (24h TTL, revocable from friend's Connected Devices). YouTube-on-TV mental model. Fixes the "have to regen a code every song after every refresh" friction the user hit during testing. Schema adds `session_attachments` + extends `claim_device_code` RPC + new `attach_session` / `revoke_session_attachment` RPCs. Full spec in §26 Evolution v2. |
+| 2026-05-17 | §27 Remote Multiplayer specced. Local-first by design: each player runs their own engine, audio, and hit detection on their own machine; only synchronised start (via existing `Clock.startSong({ countoffStartsAt })`) and score broadcasts (Supabase Realtime, ~1Hz) cross the network. New tables: `lobbies`, `lobby_participants`. Both modes (local couch coop + remote) write the same `play_sessions` / `play_session_slots` rows so HISTORY queries are mode-agnostic. Honest scope: ~3-4 focused sessions to a functional first version, with lobby UI being the only genuinely new architectural surface. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -1201,6 +1203,160 @@ Phases 1-5 are the **MVP** — enough to play, save, and look back.
 Phases 6-7 are the **payoff** — the user-visible value of all this
 identity plumbing.
 
+### Evolution v2 — Durable session attachments
+
+The phase 1-7 MVP holds claimed friend identities **in memory only** on
+the host's machine. That works for "one song together at a party" but
+breaks the moment the host hard-reloads, closes the tab, or navigates
+away. The friend has to generate a fresh 6-digit code every time.
+Bad for couch coop sessions where you'll play 5+ songs over an hour;
+fatal once we want phones/tablets that can lose focus.
+
+**Fix**: keep the 6-digit code as the one-shot pairing handshake, but
+when it's claimed, also issue a **session token** that the host stores
+in localStorage. Reloads rehydrate the attached identity by validating
+the token against Supabase. Tokens auto-expire (24 h default), and the
+friend can revoke any time from their Connected Devices page.
+
+This is the YouTube-on-TV / Spotify-Connect mental model: pair once,
+stay paired for a sensible window, revoke if you mistrust.
+
+#### Flow
+
+```
+[friend phone]              [host browser]              [Supabase]
+generate 6-digit code  →    (read it aloud)
+                            claim_device_code(code) →   validate +
+                                                        consume code,
+                                                        issue session
+                                                        token, return
+                                                        both
+                            store session token in
+                            localStorage keyed by
+                            host_user_id + slot
+(close tab / reload)   ←    (still works)
+
+[reload]               →    read localStorage,
+                            attach_session(token)  →    check not revoked,
+                                                        not expired,
+                                                        bump last_used_at,
+                                                        return profile
+                            ← attach identity to slot
+
+(friend revokes from   ←    (next reload of host
+ Connected Devices)         won't rehydrate;
+                            current in-memory still
+                            works until reload)
+```
+
+#### Schema additions
+
+```sql
+create table session_attachments (
+  token             text primary key,           -- random ~32-char secret
+  user_id           uuid references auth.users on delete cascade not null,
+  host_user_id      uuid references auth.users on delete cascade not null,
+  display_name      text,
+  avatar            text,
+  accent_color      text,
+  created_at        timestamptz default now(),
+  last_used_at      timestamptz default now(),  -- bumped on each rehydrate
+  expires_at        timestamptz not null,       -- created_at + 24h default
+  revoked_at        timestamptz,
+  revoked_reason    text                        -- 'user' | 'expired' | 'rotated'
+);
+
+create index on session_attachments (user_id, expires_at);
+create index on session_attachments (host_user_id);
+```
+
+RLS:
+- `INSERT` — only the RPC (SECURITY DEFINER) writes; users don't insert directly
+- `SELECT` — `user_id = auth.uid()` (your own attachments) OR `host_user_id = auth.uid()` (attachments to your device)
+- `UPDATE` — `user_id = auth.uid()` (to revoke) — sets `revoked_at`, `revoked_reason`
+- `DELETE` — own user_id only
+
+#### RPC additions
+
+Update `claim_device_code` to issue an attachment in the same transaction:
+
+```sql
+-- Returns user_id, display_name, avatar, accent_color, session_token
+create or replace function claim_device_code(p_code text)
+returns table (
+  user_id       uuid,
+  display_name  text,
+  avatar        text,
+  accent_color  text,
+  session_token text
+) ...
+```
+
+New `attach_session(p_token text)` — validates a stored token:
+
+```sql
+-- Returns the same profile snapshot, or no rows if invalid.
+-- Bumps last_used_at as a side-effect.
+create or replace function attach_session(p_token text)
+returns table ( user_id uuid, display_name text, avatar text, accent_color text )
+language plpgsql security definer ...
+```
+
+New `revoke_session_attachment(p_token text)` — friend-side revoke:
+
+```sql
+-- Marks revoked_at + revoked_reason='user'. Allowed only if
+-- the token's user_id matches auth.uid().
+```
+
+#### Host-side localStorage
+
+```js
+// js/services/session-attachments.js
+const KEY = userId => `bandsync_attachments_${userId}`;
+
+// shape: { [slotKey]: { token, userId, displayName, avatar, accentColor, expiresAt } }
+function load(hostUserId)            { /* JSON.parse, drop expired */ }
+function save(hostUserId, slotKey, attachment)
+function remove(hostUserId, slotKey)
+function reattachAll(hostUserId)     { /* call attach_session on each */ }
+```
+
+`slotKey` is something stable like `'p2'` for "the second player slot." Stored
+per host so different accounts using the same browser don't see each other's
+attachments.
+
+#### UI changes
+
+- **Profile / Connected Devices** (§26 phase 7): list active
+  `session_attachments` for the user instead of just used `device_codes`
+  rows. Each shows: who claimed (host_user_id → profile), when (created_at),
+  last activity (last_used_at), Revoke button.
+- **`play.html` setup**: on entering setup, attempt `reattachAll`. Any
+  rehydrated slot shows the attached friend's pill exactly as before.
+- **Trust signal**: if the page rehydrated an attachment, optionally show
+  a subtle "@sarah's session restored" toast for the first second.
+
+#### Phase plan (incremental on top of §26 MVP)
+
+1. Migration: `session_attachments` table + RLS + updated RPCs (one paste).
+2. `js/services/session-attachments.js` — localStorage layer + RPC wrappers.
+3. Update `claim` flow in play.js to receive + store token.
+4. Add rehydrate-on-setup step.
+5. Update Connected Devices view to read attachments.
+6. Cleanup: expire/revoke triggers, maybe a daily cleanup of expired tokens.
+
+#### Threat model delta vs MVP
+
+- **localStorage theft**: someone with file access to the host machine can
+  steal tokens and use them to record scores as the friend. Mitigated by
+  the 24 h TTL and the friend's revoke button. Same blast radius as
+  pre-evolution (host can already grief).
+- **Friend's account compromise**: same as before — attachments live in
+  Supabase under the friend's user_id; they can wipe all in one query.
+- **Revoke latency**: revoke takes effect on the next rehydrate, NOT
+  mid-session. Acceptable; the in-memory identity dies with the page anyway.
+
 ### Future enhancements
 
 - **SMS invites via Twilio** — current flow requires the friend to
@@ -1232,6 +1388,221 @@ identity plumbing.
 - Personal-best **honesty mode**: should bests only count from
   sessions where the player was Host (so a friend can't inflate your
   PB)? Suggested toggle in profile, off by default.
+
+---
+
+## 27. Remote Multiplayer
+
+How friends sitting at different houses play the same song together
+"in sync" — given that internet latency makes frame-perfect inter-player
+sync physically impossible.
+
+### What "remote multiplayer" actually means here
+
+Not Beat Saber co-op where you see each other's hits in real time. The
+math kills it: a perfect hit window is ±40ms, internet round-trip is
+50-150ms typical. By the time your friend's input arrived on your
+screen, the song moved 100ms past where they pressed.
+
+What works (and is what e.g. Beat Saber multiplayer + Fortnite Festival
+actually do):
+
+- **Synchronised start** — everyone hears the count-off + beat 1 at the
+  same wall-clock moment
+- **Local-first gameplay** — each player's audio, MIDI/keyboard input,
+  hit detection, and scoring run on their own machine. Frame-perfect
+  feel locally. Their inputs never leave their device for hit-judgement.
+- **Shared score sidebar** — scores stream up via Supabase Realtime
+  every ~1s; each player sees the others' totals updating on their HUD
+- **Voice chat externalised** — Discord / WebRTC / phone, not built in v1
+- **Results compared at end** — same per-slot rows + grades as local
+
+You get the **feeling** of playing together — same song at the same
+moment, scores racing, results compared — without pretending the
+network is faster than physics.
+
+### Architectural fit
+
+We're already 80% set up for this **on purpose**. CLAUDE.md principle
+#2: "game logic is local; sync is async." Concretely:
+
+- ✅ `gameplay-engine.js` is parameterised + local — each player runs
+  their own instance with their own slice of the config
+- ✅ `Clock.startSong({ countoffStartsAt })` accepts an absolute timestamp
+  for synchronised starts — already wired (commit b4af140)
+- ✅ Supabase Realtime is in production for inbox / play invites — the
+  transport for everything new
+- ✅ `play_sessions` + `play_session_slots` schema works for both
+  modes; we just need RLS to allow "I write my own slot" for remote
+- ✅ Identity model (§26) treats the player's user_id as the unit of
+  attribution regardless of where the bits originated
+
+What's missing:
+
+- ❌ Lobby concept — a session-in-progress that friends can join before
+  the song starts
+- ❌ Real-time score broadcast layer
+- ❌ Clock-skew measurement against the server
+- ❌ RLS update so each remote player writes their own slot row
+- ❌ Lobby UI (create, share invite, join, ready check)
+- ❌ Disconnect / reconnect handling
+
+### Conceptual model — Local vs Remote unified
+
+|                          | Local couch coop                     | Remote                                  |
+|---|---|---|
+| **Who creates the session** | Host (auto, on Start)              | Host (auto, on lobby Start)             |
+| **Who's in the session**    | Slots claimed via 6-digit codes / guests | Players joined via lobby invite       |
+| **Identity source**         | `session_attachments` (§26 evolution) | The player's own auth session         |
+| **Who writes which slot**   | Host writes all (RLS allows)         | Each player writes their own (RLS extension) |
+| **Audio / input**           | Local (one machine, multiple devices) | Local (each player on their own machine) |
+| **Clock**                   | Host's local clock                   | Server time + each client's clock-skew offset |
+| **Score visibility live**   | Side-by-side on host's screen        | Live HUD via Realtime broadcasts        |
+
+Both modes write the **same** `play_sessions` + `play_session_slots`
+rows, so HISTORY, PB display, and stats queries don't care which mode
+the song was played in.
+
+### New schema
+
+```sql
+create table lobbies (
+  id            uuid primary key default gen_random_uuid(),
+  host_user_id  uuid references auth.users on delete cascade not null,
+  song_file     text not null,
+  song_title    text not null,
+  state         text not null check (state in
+                    ('waiting','ready','starting','playing','done','abandoned'))
+                  default 'waiting',
+  speed_level      int,
+  hit_window_level int,
+  start_at         timestamptz,           -- server time when count-off fires
+  session_id       uuid references play_sessions, -- set when state→'playing'
+  created_at       timestamptz default now(),
+  expires_at       timestamptz default (now() + interval '2 hours')
+);
+
+create table lobby_participants (
+  lobby_id      uuid references lobbies on delete cascade not null,
+  user_id       uuid references auth.users on delete cascade not null,
+  slot          int check (slot between 1 and 4),
+  instrument    text,
+  track_index   int,
+  is_ready      boolean default false,
+  joined_at     timestamptz default now(),
+  primary key (lobby_id, user_id)
+);
+```
+
+Both in the `supabase_realtime` publication so clients can subscribe
+to changes.
+
+### RLS sketch
+
+- `lobbies`: INSERT = own host_user_id; SELECT = host OR participant
+  (via SECURITY DEFINER helper, same recursion-fix pattern as the
+  play_sessions tables); UPDATE/DELETE = host only
+- `lobby_participants`: INSERT = self OR host; SELECT = anyone in the
+  same lobby; UPDATE = self (for is_ready) OR host (for slot/instrument
+  reassignment); DELETE = self (leave) or host (kick)
+- `play_session_slots`: extend `pss_insert_host` to also allow
+  `pss_insert_self_in_session` — `user_id = auth.uid() AND
+  user_in_session(session_id)`
+
+### Realtime channels
+
+One channel per lobby: `lobby:<id>`. Players subscribe on join.
+
+Messages:
+- `participant_joined` / `participant_left` (DB-driven via Realtime
+  changes on lobby_participants)
+- `state_change` (lobby state field updates)
+- `clock_sync_pong` (server timestamp echo for skew measurement)
+- `score_tick` — broadcast every ~1 second from each player:
+  `{ user_id, score, combo, perfect, good, miss, wrong, accuracy }`
+- `song_ended` — when a player finishes, marks them done in the lobby
+
+### Clock sync
+
+The hard part, but bounded. Approach:
+
+1. Before the host fires "starting", every client sends a few `clock_sync_ping`
+   broadcasts and measures round-trip via the server timestamp echo.
+2. Each client computes its own `serverTime - localTime` offset.
+3. Host picks a `start_at = serverTime + 3 seconds` (enough lead for
+   slowest client) and writes it to the lobby row.
+4. Realtime fans the `start_at` to all participants.
+5. Each client converts: `localStartAt = start_at - clockOffset`.
+6. Each client calls `engine.start({ countoffStartsAt: localStartAt })`.
+7. All count-offs fire at the same wall-clock instant; song stays in
+   sync because everyone advances their own local audio clock.
+
+Acceptable drift: ~30ms across clients on a typical home connection.
+Worse than that and we'd surface a "you and Sarah are out of sync — try
+again on better wifi" notice.
+
+### Build phases
+
+Each is committable in isolation:
+
+1. **Migration**: lobbies + lobby_participants tables, RLS, helper
+   functions, RPCs.
+2. **Lobby service**: `js/services/lobbies.js` — create, join, leave,
+   ready, kick, set start_at.
+3. **Lobby UI**: new `play.html` state between song-select and setup
+   when "Remote game" is chosen. Shows participant list, ready
+   checkboxes, share-invite link.
+4. **Realtime wiring**: per-lobby channel, score broadcast, state
+   change propagation.
+5. **Clock sync**: ping/pong implementation + the synchronised-start
+   handshake. Engine integration via existing `countoffStartsAt`.
+6. **Score sidebar in gameplay**: small HUD overlay showing each remote
+   player's live score (updated on score_tick).
+7. **End-of-song**: each player writes their own slot via the new RLS
+   path; results screen aggregates.
+8. **RLS extension**: `pss_insert_self_in_session` policy.
+
+### Honest scope estimate
+
+If we did them back-to-back with no other distractions:
+
+- Phase 1 + 2 + 8: ~1 focused session
+- Phase 3 + 4: ~1 focused session
+- Phase 5: ~half session (the hardest math but well-defined)
+- Phase 6 + 7: ~half session
+- Polish (invite-via-link flow, disconnect handling, lobby teardown,
+  empty states, mobile responsiveness): ~1 session
+
+So **~3-4 focused sessions** to a functional first version. Less if we
+ship a "minimum viable remote" with fixed song picked by host, no
+late-join, no reconnect. More if voice chat or WebRTC is in scope (it
+shouldn't be in v1 — Discord works).
+
+The pieces that already exist do the heavy lifting. The lobby
+infrastructure is the only genuinely new architectural concept; the
+rest is plumbing.
+
+### What this does NOT cover (deliberate)
+
+- **In-game live opponent visuals**: you don't see your friend's hits
+  on your screen during play. Latency forbids it. You see their score
+  in the HUD only.
+- **Voice chat**: out of scope. Discord / phone / WebRTC integration
+  is a separate v3 feature.
+- **AI fill-in for missing players**: if a friend disconnects mid-song,
+  their slot just stops scoring. No bot replacement.
+- **Spectator mode**: not v1. Could be added by allowing
+  `lobby_participants.slot = NULL` for watchers.
+
+### Open questions
+
+- Should the lobby's `start_at` be hard-coded to "3 seconds from now"
+  or adaptive based on the worst observed clock-sync round-trip?
+- Late join (during count-off vs during song): allow / forbid / clamp?
+- What happens to scores when a player has clock drift > 100ms — flag
+  the session or just save it with a note?
+- Honesty-mode PB toggle (§26 future) becomes more important: should
+  remote-played PBs count the same as solo PBs?
 
 ---
 
