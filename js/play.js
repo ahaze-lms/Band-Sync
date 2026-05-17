@@ -28,7 +28,8 @@ import { loadOffset }         from './core/calibration.js';
 import { createGameplay }     from './core/gameplay-engine.js';
 import { PLAYER_COLORS,
          PIANO_NOTE_MIN, PIANO_NOTE_MAX,
-         DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL } from './config.js';
+         DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL,
+         DEVICE_ID_KEYBOARD, DEVICE_LABEL_KEYBOARD } from './config.js';
 
 // Avatars are also defined in js/app.js (index.html SPA shell) — duplicated
 // here so play.html stays decoupled from the SPA shell module.
@@ -320,7 +321,20 @@ function paintSetup() {
       const p = setup.players[i];
 
       if (field === 'instrument') p.instrument = el.value;
-      if (field === 'device')     p.deviceId   = el.value || null;
+      if (field === 'device') {
+        p.deviceId = el.value || null;
+        // Only one slot can own the Computer Keyboard — demote any other.
+        if (p.deviceId === DEVICE_ID_KEYBOARD) {
+          let changed = false;
+          setup.players.forEach((other, oi) => {
+            if (oi !== i && other.deviceId === DEVICE_ID_KEYBOARD) {
+              other.deviceId = null;
+              changed = true;
+            }
+          });
+          if (changed) paintSetup();
+        }
+      }
       if (field === 'track')      p.trackIndex = Number(el.value);
 
       if (field === 'guest-name') {
@@ -414,14 +428,15 @@ function playerRow(i, slot, inputs, tracks) {
 
       <div class="field">
         <label class="field-label">MIDI DEVICE</label>
-        <select data-player="${i}" data-field="device" ${inputs.length === 0 ? 'disabled' : ''}>
-          ${inputs.length === 0
-            ? `<option value="">(no devices)</option>`
-            : `<option value="">(none)</option>` +
-              inputs.map(d => `
-                <option value="${esc(d.id)}" ${slot.deviceId === d.id ? 'selected' : ''}>
-                  ${esc(d.name)}
-                </option>`).join('')}
+        <select data-player="${i}" data-field="device">
+          <option value="">(none)</option>
+          <option value="${esc(DEVICE_ID_KEYBOARD)}" ${slot.deviceId === DEVICE_ID_KEYBOARD ? 'selected' : ''}>
+            ⌨ ${esc(DEVICE_LABEL_KEYBOARD)}
+          </option>
+          ${inputs.map(d => `
+            <option value="${esc(d.id)}" ${slot.deviceId === d.id ? 'selected' : ''}>
+              ${esc(d.name)}
+            </option>`).join('')}
         </select>
       </div>
 

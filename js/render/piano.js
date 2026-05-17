@@ -64,11 +64,19 @@ export const isBlackKey = n => KEY_PATTERN[n % 12] === 1;
 
 export function createPianoRenderer(canvas, options = {}) {
   const {
-    noteMin   = PIANO_NOTE_MIN,
-    noteMax   = PIANO_NOTE_MAX,
-    color     = PLAYER_COLORS[0],
-    onKeyDown = null,
-    onKeyUp   = null,
+    noteMin    = PIANO_NOTE_MIN,
+    noteMax    = PIANO_NOTE_MAX,
+    color      = PLAYER_COLORS[0],
+    onKeyDown  = null,
+    onKeyUp    = null,
+    // Optional per-note labels drawn on each falling block. Both functions
+    // take a MIDI note number and return a string (or null to skip).
+    //   blockLabel — primary, drawn centred. Usually the note name ("C", "F#")
+    //                so players passively learn note recognition.
+    //   blockHint  — secondary, drawn smaller at the bottom of the block.
+    //                Usually the QWERTY key for keyboard-input players ("Z").
+    blockLabel = null,
+    blockHint  = null,
   } = options;
 
   // ── Build keyboard layout ─────────────────────────────────────
@@ -195,6 +203,33 @@ export function createPianoRenderer(canvas, options = {}) {
       // Subtle top-edge shine
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
       ctx.beginPath(); ctx.roundRect(block.x + 1, block.y + 1, block.w - 2, 3, 1); ctx.fill();
+
+      // Note-name label (primary) + optional keyboard-key hint (secondary).
+      // Only draw when the block is tall enough to host text — keeps things
+      // legible at high speed levels where blocks are short.
+      if (block.h >= 18) {
+        const cx = block.x + block.w / 2;
+        if (blockLabel) {
+          const lab = blockLabel(block.note);
+          if (lab) {
+            ctx.fillStyle    = '#fff';
+            ctx.font         = '600 11px "Space Mono", monospace';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(lab, cx, block.y + block.h / 2);
+          }
+        }
+        if (blockHint && block.h >= 28) {
+          const hint = blockHint(block.note);
+          if (hint) {
+            ctx.fillStyle    = 'rgba(255,255,255,0.55)';
+            ctx.font         = '8px "Space Mono", monospace';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(hint, cx, block.y + block.h - 2);
+          }
+        }
+      }
       ctx.globalAlpha = 1;
     });
 

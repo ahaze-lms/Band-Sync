@@ -35,8 +35,9 @@
 // ════════════════════════════════════════════════════════════════════
 
 import {
-  HIGHWAY_H, PIANO_NOTE_MIN, PIANO_NOTE_MAX,
+  HIGHWAY_H, PIANO_NOTE_MIN, PIANO_NOTE_MAX, NOTE_NAMES,
   DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL,
+  DEVICE_ID_KEYBOARD,
 } from '../config.js';
 
 import * as Clock                    from './timing.js';
@@ -44,8 +45,13 @@ import { playPianoNote, playDrumSound, playClick } from './audio.js';
 import { createScorer }              from './scoring.js';
 import * as Midi                     from './midi.js';
 import { lookupAbstractName }        from './drum-mapping.js';
+import { createKeyboardInput }       from './keyboard-input.js';
 import { createPianoRenderer }       from '../render/piano.js';
 import { createDrumRenderer }        from '../render/drums.js';
+
+// Drop the octave number — "C" is the teaching cue, not "C4".
+// (Players see octave information implicitly via vertical key position.)
+const noteLabel = midi => NOTE_NAMES[midi % 12];
 
 const DEFAULT_VEL = 80;
 
@@ -65,7 +71,17 @@ export function createGameplay(config) {
       laneFlash:       {},
       feedbackTimer:   null,
       renderer:        null,
+      keyboard:        null,   // KeyboardInput if deviceId === keyboard, else null
     };
+
+    // Spin up a computer-keyboard listener for this slot if requested. Done
+    // before the renderer so we can use its labelFor() for blockHint.
+    if (pc.deviceId === DEVICE_ID_KEYBOARD) {
+      player.keyboard = createKeyboardInput({
+        onEvent: evt => dispatch(player, evt),
+      });
+      player.keyboard.attach();
+    }
 
     if (pc.instrument === 'piano') {
       const opts = pc.pianoOpts ?? {};
@@ -75,6 +91,11 @@ export function createGameplay(config) {
         color:     pc.color,
         onKeyDown: note => dispatch(player, { type: 'noteOn',  note, velocity: DEFAULT_VEL }),
         onKeyUp:   note => dispatch(player, { type: 'noteOff', note, velocity: 0 }),
+        // Always label every block with its note name — teaches note
+        // recognition by exposure regardless of input device.
+        blockLabel: noteLabel,
+        // Keyboard-input players also see the QWERTY key on each block.
+        blockHint:  player.keyboard ? player.keyboard.labelFor : null,
       });
     } else if (pc.instrument === 'drums') {
       player.renderer = createDrumRenderer(pc.canvas, {
@@ -117,7 +138,9 @@ export function createGameplay(config) {
     const byDevice = new Map();
     for (const p of players) {
       const id = p.config.deviceId;
-      if (!id) continue;
+      // Skip null (no device) and the keyboard pseudo-id (handled above by
+      // createKeyboardInput, not by MIDI).
+      if (!id || id === DEVICE_ID_KEYBOARD) continue;
       if (!byDevice.has(id)) byDevice.set(id, []);
       byDevice.get(id).push(p);
     }
@@ -378,7 +401,10 @@ export function createGameplay(config) {
     rafId = null;
     Clock.stopSong();
     for (const td of midiTeardown) td();
-    for (const p of players) clearTimeout(p.feedbackTimer);
+    for (const p of players) {
+      clearTimeout(p.feedbackTimer);
+      p.keyboard?.detach();
+    }
   }
 
   // Kick off the render loop so the countoff-pending highway shows up

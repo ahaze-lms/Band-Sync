@@ -117,6 +117,16 @@ export const DEFAULT_DRUM_MAPPING_SD5X = {
 };
 
 
+// ── COMPUTER KEYBOARD INPUT ─────────────────────────────────────
+// One synthetic "device id" the play.html picker uses to mean "this
+// slot is controlled by the host's QWERTY keyboard." Only one slot
+// can hold this id at a time (enforced in the picker). When the
+// engine sees this id, it spins up a KeyboardInput listener instead
+// of attaching a MIDI input.
+export const DEVICE_ID_KEYBOARD = '__keyboard__';
+export const DEVICE_LABEL_KEYBOARD = 'Computer Keyboard';
+
+
 // ── LOCALSTORAGE KEYS ───────────────────────────────────────────
 // One place to register every key we read/write so we don't sprinkle
 // hard-coded strings through the codebase.
