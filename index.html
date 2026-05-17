@@ -365,6 +365,63 @@
     }
     .avatar-opt:hover  { border-color: var(--purple); }
     .avatar-opt.selected { border-color: var(--purple); background: rgba(127,119,221,0.15); }
+    /* ── PAIRING (device codes) ──────────────────────────────── */
+    .pairing-explainer {
+      font-size: 12px; color: var(--dim); line-height: 1.55;
+    }
+    .pairing-explainer code {
+      color: var(--purple2);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+    }
+    .pairing-list {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .pairing-empty {
+      font-size: 11px; color: var(--dim);
+      letter-spacing: 1px;
+      padding: 12px 0;
+      text-align: center;
+    }
+    .pairing-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 14px;
+      align-items: center;
+      background: var(--bg);
+      border: 0.5px solid var(--border2);
+      border-radius: 8px;
+      padding: 12px 14px;
+      transition: border-color 0.2s, background 0.4s;
+    }
+    .pairing-row.fresh {
+      border-color: var(--purple);
+      background: rgba(127,119,221,0.06);
+    }
+    .pairing-code {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px; font-weight: 700; letter-spacing: 8px;
+      color: #fff;
+    }
+    .pairing-meta {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px;
+      color: var(--dim);
+    }
+    .pairing-meta.warn { color: var(--amber); }
+    .btn-revoke {
+      background: transparent;
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 9px; letter-spacing: 2px;
+      transition: all 0.15s;
+    }
+    .btn-revoke:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
     .color-grid { display: flex; gap: 10px; }
     .color-opt {
       width: 32px; height: 32px;

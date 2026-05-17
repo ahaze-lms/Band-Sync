@@ -1,8 +1,10 @@
 import { updateProfile, isUsernameTaken } from '../services/profile.js';
+import { generateCode, listMyCodes, revokeCode } from '../services/device-codes.js';
 import { AVATARS, ACCENT_COLORS, refreshProfile } from '../app.js';
 
 export function mount(el, ctx, navigate, { onboarding = false } = {}) {
   const { user, profile } = ctx;
+  let countdownTimer = null;
 
   el.innerHTML = `
     <div class="form-page">
@@ -58,6 +60,24 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
         </button>
         ${!onboarding ? '<button class="btn btn-ghost btn-full" id="btn-cancel" style="margin-top:8px">CANCEL</button>' : ''}
       </div>
+
+      ${onboarding ? '' : `
+      <div class="form-card" id="pairing-card">
+        <div class="form-card-title">PAIRING</div>
+        <div class="pairing-explainer">
+          Generate a one-time code to play under <strong>your account</strong>
+          on a friend's device. Share the code aloud or with a message — they
+          enter it at <code>play.html → setup → P2: Join with code</code> and
+          your scores save to your history. Codes expire in 10 minutes and
+          can only be used once.
+        </div>
+        <button class="btn btn-primary" id="btn-gen-code">▸ GENERATE NEW CODE</button>
+        <div class="auth-error" id="pairing-error"></div>
+        <div class="pairing-list" id="pairing-list">
+          <div class="pairing-empty">Loading…</div>
+        </div>
+      </div>
+      `}
     </div>
   `;
 
@@ -145,6 +165,110 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
   if (!onboarding) {
     document.getElementById('btn-cancel')?.addEventListener('click', () => navigate('home'));
   }
+
+  // ── Pairing section ────────────────────────────────────────────
+  // Only present when not onboarding. Manages active device-code list
+  // with a live countdown, generate, and revoke.
+  let freshCode = null;       // most recently generated code, gets the highlight
+
+  async function refreshPairingList() {
+    const listEl = document.getElementById('pairing-list');
+    if (!listEl) return;
+    try {
+      const codes = await listMyCodes(user.id);
+      if (codes.length === 0) {
+        listEl.innerHTML = '<div class="pairing-empty">NO ACTIVE CODES</div>';
+        return;
+      }
+      listEl.innerHTML = codes.map(renderCodeRow).join('');
+      // Wire revoke buttons.
+      listEl.querySelectorAll('[data-revoke]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const code = btn.dataset.revoke;
+          btn.disabled = true;
+          try {
+            await revokeCode(code);
+            await refreshPairingList();
+          } catch (ex) {
+            btn.disabled = false;
+            document.getElementById('pairing-error').textContent = ex.message;
+          }
+        });
+      });
+      paintCountdowns();
+    } catch (ex) {
+      listEl.innerHTML = `<div class="pairing-empty" style="color:var(--red)">${esc(ex.message)}</div>`;
+    }
+  }
+
+  function renderCodeRow(c) {
+    const codeFmt = formatCode(c.code);
+    const fresh   = c.code === freshCode ? ' fresh' : '';
+    return `
+      <div class="pairing-row${fresh}" data-code="${esc(c.code)}" data-expires="${esc(c.expires_at)}">
+        <div class="pairing-code">${esc(codeFmt)}</div>
+        <div class="pairing-meta" data-countdown></div>
+        <button class="btn-revoke" data-revoke="${esc(c.code)}">REVOKE</button>
+      </div>
+    `;
+  }
+
+  // Visual: "742619" → "742 619" (three digits, space, three digits).
+  function formatCode(c) {
+    return c.length === 6 ? `${c.slice(0, 3)} ${c.slice(3)}` : c;
+  }
+
+  function paintCountdowns() {
+    const rows = document.querySelectorAll('.pairing-row[data-expires]');
+    const now  = Date.now();
+    let anyExpired = false;
+    rows.forEach(row => {
+      const expiresAt = new Date(row.dataset.expires).getTime();
+      const msLeft    = expiresAt - now;
+      const meta      = row.querySelector('[data-countdown]');
+      if (!meta) return;
+      if (msLeft <= 0) { anyExpired = true; meta.textContent = 'EXPIRED'; meta.className = 'pairing-meta warn'; return; }
+      const totalSec = Math.floor(msLeft / 1000);
+      const mm = Math.floor(totalSec / 60);
+      const ss = String(totalSec % 60).padStart(2, '0');
+      meta.textContent = `EXPIRES IN ${mm}:${ss}`;
+      meta.className   = msLeft < 60_000 ? 'pairing-meta warn' : 'pairing-meta';
+    });
+    if (anyExpired) refreshPairingList();   // re-fetch so expired rows drop off
+  }
+
+  if (!onboarding) {
+    document.getElementById('btn-gen-code').addEventListener('click', async () => {
+      const btn    = document.getElementById('btn-gen-code');
+      const errEl  = document.getElementById('pairing-error');
+      errEl.textContent = '';
+      btn.disabled = true; btn.textContent = '...';
+      try {
+        // Use the latest in-memory profile so the snapshot reflects any
+        // unsaved-but-applied display/avatar/color tweaks above. If a
+        // change hasn't been saved yet, the snapshot uses the saved one.
+        const snap = ctx.profile ?? profile;
+        const row  = await generateCode(user.id, snap);
+        freshCode  = row.code;
+        await refreshPairingList();
+      } catch (ex) {
+        errEl.textContent = ex.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '▸ GENERATE NEW CODE';
+      }
+    });
+
+    refreshPairingList();
+    countdownTimer = setInterval(paintCountdowns, 1000);
+  }
+
+  // ── Cleanup ────────────────────────────────────────────────────
+  return {
+    destroy() {
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    },
+  };
 }
 
 function esc(s) {
