@@ -8,6 +8,28 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 
 ---
 
+## Where we are
+
+The prototype is **playable**. A 2-player split-screen gameplay screen works end-to-end:
+
+- ✅ Two-player split-screen (`play.html`) — piano + drums, or two pianos
+- ✅ Independent scoring, combo, accuracy, S/A/B/C/D grades per player
+- ✅ Big PERFECT / GOOD / MISS / WRONG feedback overlays per side
+- ✅ MIDI auto-detect with manual override (per player)
+- ✅ Multi-device routing; shared device routes to both players for unison play
+- ✅ Per-device latency calibration (per-player buttons)
+- ✅ 7-level hit window scale (Practice → Expert) for kids through pros
+- ✅ 10-level speed scale (4.0s → 0.5s fall time)
+- ✅ Count-off engine with metronome click
+- ✅ Multi-track `.mid` file loading with auto-role detection
+- ✅ Hover tooltips on every HUD stat
+
+The full engine and renderers are reusable modules under `/js/core` and `/js/render`. The two debug tools in `/debug/` also run on these modules.
+
+**Try it:** start the local server (below), then open <http://localhost:8000/play.html>.
+
+---
+
 ## Project structure
 
 ```

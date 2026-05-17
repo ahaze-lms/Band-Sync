@@ -6,6 +6,32 @@
 
 ---
 
+## 🚦 Current state (2026-05-16)
+
+**Playable.** A 2-player split-screen prototype works end-to-end and has been verified with two physical MIDI devices. See `README.md` for the running checklist of what works.
+
+### What's next when we pick this up
+
+In rough priority order:
+
+1. **Real piano + drum samples** — replace the triangle-wave synthesis. Biggest perceived-quality jump for the least work.
+2. **Proper results screen** — replace the single-line "SONG COMPLETE" text with a full screen showing per-player scores, accuracy bars, personal-best flags, and Replay / Play Again / Song Select buttons.
+3. **Player profile UI** — names, avatars, accent colors. Still localStorage-backed at this stage; cloud sync arrives with §13 (backend) decisions.
+4. **Session history** — every completed song saved to localStorage with date / score / accuracy / grade.
+5. **Track-picker UI** for MIDI files with multiple piano or drum tracks (current behavior just picks the first of each — fine for v0.x).
+6. **3- and 4-player layouts** — design doc §16 lays out the 2×2 quad grid; mostly a CSS-grid + extra-renderer composition exercise.
+7. **Calibration overlay extraction** — duplicated across 3 screens; pull into `js/ui/calibration-overlay.js`.
+
+### Open architectural decisions (still parked)
+
+- Backend stack (working assumption: Supabase)
+- Auth provider (depends on backend)
+- Pricing tiers
+- Domain name
+- AI scope sharpening (see §14) — which capability to ship first
+
+---
+
 ## 1. Vision
 
 BandSync is a browser-based, Synthesia-style rhythm game for up to 4 players, with a built-in AI-assisted MIDI editor for creating and modifying songs.
@@ -411,12 +437,23 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 ### v0.x — Prototype (current)
 - ✅ Modular refactor — shared engine modules under `/js/core`
 - ✅ Piano debug + drum debug on shared modules
-- 🔜 Render module extraction (`render/piano.js`, `render/drums.js`)
-- 🔜 2-player split-screen gameplay
+- ✅ Render module extraction (`render/piano.js`, `render/drums.js`)
+- ✅ 2-player split-screen gameplay (`play.html`)
+- ✅ P2 role toggle (drums or second piano) with localStorage persistence
+- ✅ Combined test patterns (piano + drums; piano + piano)
+- ✅ Multi-device MIDI routing with auto-detect + override
+- ✅ Shared-device multiplexing (one keyboard → both players for unison)
+- ✅ Big hit-feedback overlays per player
+- ✅ HUD tooltips on every stat
+- ✅ Hit window scale extended to 7 levels (Practice + Beginner added for kids)
+- ✅ **Verified working** with two physical MIDI devices (MPK Mini 3 + Casio CDP)
 - 🔜 3- and 4-player layouts
 - 🔜 Real piano + drum samples
-- 🔜 Basic results screen
+- 🔜 Proper results screen (replacing the single-line song-complete text)
 - 🔜 Session history in localStorage
+- 🔜 Player profile UI (names, avatars, accent colors)
+- 🔜 Track-picker UI when a MIDI file has multiple piano or drum tracks
+- 🔜 Calibration-overlay extraction into a shared `js/ui/` module
 
 ### v1.0 — MVP launchable
 - User accounts + cloud sync (backend decision required)
@@ -502,10 +539,17 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-16 | Modular ES-module refactor. `/js/core` shared across all screens. |
 | 2026-05-16 | Vision expanded to commercial product with user accounts, paywall, and AI tools. |
 | 2026-05-16 | AI scope focused on MIDI domain (editor + simplification + chart generation). Explicit non-goal: text-to-audio synthesis. |
+| 2026-05-16 | Render modules extracted — `createPianoRenderer(canvas, opts)` and `createDrumRenderer(canvas, opts)` factory functions. Both debug tools and the gameplay screen compose them. |
+| 2026-05-16 | First playable prototype shipped — `play.html` with 2-player split-screen, verified on physical MIDI hardware (MPK Mini 3 + Casio CDP). |
+| 2026-05-16 | P2 role is runtime-switchable (drums ↔ piano). Drum work fully preserved. |
+| 2026-05-16 | Single-MIDI-device shared between both players is allowed and multiplexes one event stream into both `onP1Midi` and `onP2Midi`. Useful when only one keyboard is plugged in. |
+| 2026-05-16 | Hit window scale extended from 5 to 7 levels — Practice (±250/±500) and Beginner (±180/±350) added for younger players. |
+| 2026-05-16 | HUD tooltips on every stat. Pattern: `[data-tip]` + `.has-tip` CSS — reusable for future screens. |
 | TBD | Backend stack (working assumption: Supabase) |
 | TBD | Auth provider (depends on backend) |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
+| TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
 
 ---
 
