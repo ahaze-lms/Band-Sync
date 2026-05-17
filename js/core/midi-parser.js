@@ -166,14 +166,17 @@ function guessRole(name, isDrum, notes) {
 
   const n = name.toLowerCase();
   if (/drum|kick|snare|hat|cymbal|perc/.test(n)) return 'drums';
-  if (/piano|keys|key|synth|epiano|rhodes|organ/.test(n)) return 'piano';
+  // Melodic instrument names — all collapse to 'piano' until bass/guitar/
+  // vocal views ship (DESIGN.md §15: bass v1.5, guitar v2.0, vocals v2.5).
+  // Add the new role here when those views land.
+  if (/piano|keys?|synth|epiano|rhodes|organ|bass|guitar|gtr|vocal|vox|melody|lead|harm/.test(n)) return 'piano';
 
   // No name hint — fall back to note-range heuristic.
   if (notes.length === 0) return 'unknown';
   const lo = Math.min(...notes.map(n => n.note));
   const hi = Math.max(...notes.map(n => n.note));
-  // Drum-machine territory: low notes packed tightly (35-60 range)
-  if (lo >= 35 && hi <= 60) return 'drums';
-  // Otherwise assume melodic instrument
+  // GM drum kit lives at MIDI 35–51; the old upper bound of 60 caught
+  // low piano/bass notes and misclassified them.
+  if (lo >= 35 && hi <= 51) return 'drums';
   return 'piano';
 }
