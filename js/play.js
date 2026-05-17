@@ -2,20 +2,32 @@
 // BandSync — play.html entry point
 // ════════════════════════════════════════════════════════════════════
 // Mini-SPA with 4 states: song-select → setup → game → results.
-// Phase 1 (now): auth gate + song-select pulling from songs/manifest.json.
-// Phases 2-4 land setup, gameplay (reusing 2player.html engine), results.
+// Phase 1 ✓ : auth gate + song-select pulling from songs/manifest.json.
+// Phase 2 ✓ : setup screen — player count + per-player instrument /
+//             device / track pickers. Designed for 1-4 players; UI
+//             currently enables 1-2.
+// Phase 3 / 4 still pending: gameplay (reusing 2player.html engine),
+// results screen.
 // ════════════════════════════════════════════════════════════════════
 
 import { getUser } from './services/auth.js';
+import { initMIDI, getInputs, onStateChange } from './core/midi.js';
 
 const stateEl      = document.getElementById('state');
 const stateLabelEl = document.getElementById('state-label');
+
+const MAX_PLAYERS     = 4;
+const ENABLED_PLAYERS = 2;   // bump when 3/4-player layouts land
 
 const ctx = {
   user:     null,
   manifest: null,
   song:     null,   // selected song from manifest
+  setup:    null,   // per-song setup state (player count, choices)
+  midi:     null,   // { ok, reason?, inputCount }
 };
+
+let setupTeardown = null;    // un-subscribes hot-plug listener when leaving setup
 
 // ── BOOT ───────────────────────────────────────────────────────────
 
@@ -55,6 +67,7 @@ async function init() {
 // ── STATE: SONG SELECT ─────────────────────────────────────────────
 
 function renderSongSelect() {
+  leaveCurrentState();
   setStateLabel('SONG SELECT');
 
   const songs = ctx.manifest.songs ?? [];
@@ -76,7 +89,9 @@ function renderSongSelect() {
     el.addEventListener('click', () => {
       const file = el.dataset.songFile;
       ctx.song = songs.find(s => s.file === file);
-      renderSetupPlaceholder();   // phase 2 lands the real setup
+      // Reset setup state on song change so dropdowns re-default to this song's tracks.
+      ctx.setup = null;
+      renderSetup();
     });
   });
 }
@@ -101,44 +116,225 @@ function songCard(song) {
   `;
 }
 
-// ── STATE: SETUP (placeholder for phase 2) ─────────────────────────
+// ── STATE: SETUP ───────────────────────────────────────────────────
 
-function renderSetupPlaceholder() {
+async function renderSetup() {
+  leaveCurrentState();
   setStateLabel('SETUP');
-  const trackList = ctx.song.tracks.map(t => `• ${esc(t.name)}`).join('<br>');
+
+  // Initialise MIDI (idempotent — returns cached state on subsequent calls).
+  ctx.midi = await initMIDI();
+
+  // Build default setup state on first entry for this song.
+  if (!ctx.setup) ctx.setup = defaultSetup(ctx.song);
+
+  // Auto-pick first device for any player that doesn't have one yet.
+  const inputs = getInputs();
+  for (const p of ctx.setup.players) {
+    if (!p.deviceId && inputs.length) p.deviceId = inputs[0].id;
+  }
+
+  paintSetup();
+
+  // Hot-plug: re-render player rows + device list when devices change.
+  onStateChange(() => {
+    if (stateLabelEl.textContent === 'SETUP') paintSetup();
+  });
+  setupTeardown = () => { /* onStateChange has no unsubscribe yet — guarded by stateLabel check above */ };
+}
+
+function defaultSetup(song) {
+  return {
+    songFile:    song.file,
+    playerCount: Math.min(ENABLED_PLAYERS, Math.max(1, song.tracks.length)),
+    players: Array.from({ length: MAX_PLAYERS }, (_, i) => ({
+      instrument: 'piano',
+      deviceId:   null,
+      trackIndex: Math.min(i, song.tracks.length - 1),
+    })),
+  };
+}
+
+function paintSetup() {
+  const song    = ctx.song;
+  const setup   = ctx.setup;
+  const inputs  = getInputs();
+  const tracks  = song.tracks;
+  const mm      = Math.floor(song.durationSec / 60);
+  const ss      = String(Math.round(song.durationSec % 60)).padStart(2, '0');
+
   stateEl.innerHTML = `
     <div class="state-inner">
-      <div class="center-msg">
-        <div class="title">SETUP — COMING NEXT</div>
-        <div style="font-size:14px;color:#fff;margin-top:8px">${esc(ctx.song.title)}</div>
-        <div style="color:var(--dim);font-size:11px;letter-spacing:1.5px">
-          ${ctx.song.bpm} BPM · ${ctx.song.tracks.length} track${ctx.song.tracks.length === 1 ? '' : 's'}
+      <div class="setup-song">
+        <div class="setup-song-title">${esc(song.title)}</div>
+        <div class="setup-song-meta">
+          ${song.bpm} BPM &middot; ${mm}:${ss} &middot;
+          ${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'}
+          (${tracks.map(t => esc(t.name)).join(', ')})
         </div>
-        <div style="font-size:11px;color:var(--purple2);margin-top:8px;line-height:1.7">
-          ${trackList}
+      </div>
+
+      <div class="setup-section">
+        <div class="setup-section-label">PLAYERS</div>
+        <div class="player-count">
+          ${[1, 2, 3, 4].map(n => `
+            <button class="count-btn ${setup.playerCount === n ? 'active' : ''}"
+                    data-count="${n}"
+                    ${n > ENABLED_PLAYERS ? 'disabled title="3-4 player layouts coming later"' : ''}>${n}</button>
+          `).join('')}
+          ${ENABLED_PLAYERS < MAX_PLAYERS
+            ? `<div class="count-btn-note">3-4 player layouts coming later</div>`
+            : ''}
         </div>
-        <button onclick="history.back()" style="
-          margin-top:24px;padding:8px 20px;background:transparent;
-          border:0.5px solid var(--border2);color:var(--dim);border-radius:6px;
-          font-size:10px;letter-spacing:2px;font-family:inherit">
-          ← PICK ANOTHER SONG
-        </button>
+      </div>
+
+      <div class="setup-section">
+        <div class="setup-section-label">ASSIGN</div>
+        <div class="player-rows">
+          ${setup.players.slice(0, setup.playerCount)
+            .map((p, i) => playerRow(i, p, inputs, tracks))
+            .join('')}
+        </div>
+      </div>
+
+      <div class="midi-status ${midiStatusClass()}">${midiStatusText()}</div>
+
+      <div class="actions">
+        <button class="btn-ghost" data-action="back">← BACK TO SONGS</button>
+        <button class="btn-primary" data-action="start">▶ START</button>
       </div>
     </div>
   `;
-  stateEl.querySelector('button').addEventListener('click', e => {
-    e.preventDefault();
-    renderSongSelect();
+
+  // Player count buttons
+  stateEl.querySelectorAll('[data-count]').forEach(el => {
+    el.addEventListener('click', () => {
+      const n = Number(el.dataset.count);
+      if (n > ENABLED_PLAYERS) return;
+      setup.playerCount = n;
+      paintSetup();
+    });
   });
+
+  // Per-row selectors
+  stateEl.querySelectorAll('[data-player]').forEach(el => {
+    const i = Number(el.dataset.player);
+    const field = el.dataset.field;
+    el.addEventListener('change', () => {
+      const p = setup.players[i];
+      if (field === 'instrument') p.instrument = el.value;
+      if (field === 'device')     p.deviceId   = el.value || null;
+      if (field === 'track')      p.trackIndex = Number(el.value);
+    });
+  });
+
+  // Actions
+  stateEl.querySelector('[data-action="back"]').addEventListener('click', renderSongSelect);
+  stateEl.querySelector('[data-action="start"]').addEventListener('click', renderGamePlaceholder);
+}
+
+function playerRow(i, p, inputs, tracks) {
+  const tag = `P${i + 1}`;
+  return `
+    <div class="player-row p${i + 1}">
+      <div class="player-tag">${tag}</div>
+
+      <div class="field">
+        <label class="field-label">INSTRUMENT</label>
+        <select data-player="${i}" data-field="instrument">
+          <option value="piano" ${p.instrument === 'piano' ? 'selected' : ''}>Piano</option>
+          <option value="drums" ${p.instrument === 'drums' ? 'selected' : ''}>Drums</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">MIDI DEVICE</label>
+        <select data-player="${i}" data-field="device" ${inputs.length === 0 ? 'disabled' : ''}>
+          ${inputs.length === 0
+            ? `<option value="">(no devices)</option>`
+            : `<option value="">(none)</option>` +
+              inputs.map(d => `
+                <option value="${esc(d.id)}" ${p.deviceId === d.id ? 'selected' : ''}>
+                  ${esc(d.name)}
+                </option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="field-label">TRACK</label>
+        <select data-player="${i}" data-field="track">
+          ${tracks.map((t, ti) => `
+            <option value="${ti}" ${p.trackIndex === ti ? 'selected' : ''}>${esc(t.name)}</option>
+          `).join('')}
+        </select>
+      </div>
+    </div>
+  `;
+}
+
+function midiStatusText() {
+  if (!ctx.midi) return 'MIDI: initializing…';
+  if (!ctx.midi.ok && ctx.midi.reason === 'unsupported') {
+    return 'MIDI: not supported in this browser — open in Chrome to play';
+  }
+  if (!ctx.midi.ok && ctx.midi.reason === 'denied') {
+    return 'MIDI: access denied — reload and allow the permission prompt';
+  }
+  const inputs = getInputs();
+  if (inputs.length === 0) return 'MIDI: no devices connected — plug in a controller';
+  return `MIDI: ${inputs.length} device${inputs.length === 1 ? '' : 's'} connected`;
+}
+
+function midiStatusClass() {
+  if (!ctx.midi?.ok) return 'error';
+  if (getInputs().length === 0) return 'warn';
+  return 'ok';
+}
+
+// ── STATE: GAME (placeholder for phase 3) ──────────────────────────
+
+function renderGamePlaceholder() {
+  leaveCurrentState();
+  setStateLabel('GAME');
+
+  const song    = ctx.song;
+  const setup   = ctx.setup;
+  const inputs  = getInputs();
+  const summary = setup.players.slice(0, setup.playerCount).map((p, i) => {
+    const device = inputs.find(d => d.id === p.deviceId)?.name ?? '(no device)';
+    const track  = song.tracks[p.trackIndex]?.name ?? '?';
+    return `P${i + 1} — ${p.instrument} · ${device} · ${track}`;
+  }).join('\n');
+
+  stateEl.innerHTML = `
+    <div class="state-inner">
+      <div class="center-msg">
+        <div class="title">GAMEPLAY — COMING NEXT (PHASE 3)</div>
+        <div style="font-size:14px;color:#fff;margin-top:8px">${esc(song.title)}</div>
+        <pre>${esc(summary)}</pre>
+        <div style="display:flex;gap:12px;margin-top:16px">
+          <button class="btn-ghost" data-action="back-setup">← BACK TO SETUP</button>
+          <button class="btn-ghost" data-action="back-songs">← SONGS</button>
+        </div>
+      </div>
+    </div>
+  `;
+  stateEl.querySelector('[data-action="back-setup"]').addEventListener('click', renderSetup);
+  stateEl.querySelector('[data-action="back-songs"]').addEventListener('click', renderSongSelect);
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────
+
+function leaveCurrentState() {
+  if (setupTeardown) { setupTeardown(); setupTeardown = null; }
+}
 
 function setStateLabel(text) {
   stateLabelEl.textContent = text;
 }
 
 function renderError(title, message) {
+  leaveCurrentState();
   setStateLabel('');
   stateEl.innerHTML = `
     <div class="center-msg error">

@@ -115,7 +115,7 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
 ### `play.html` — the real game
 Mini-SPA with 4 states:
 1. Song select — list of `.mid` files from `songs/`
-2. Setup — player count (1–2 for now); per player: instrument, MIDI device, **and track** (which of the song's tracks they'll play — e.g. Melody vs Bass). Two players can share a track ("duel mode") — same notes, independent scores. Default when song has fewer tracks than players.
+2. Setup — **up to 4 players** (UI currently exposes 1–2; design supports 1–4). Per player: instrument, MIDI device, **and track** (which of the song's tracks they'll play — e.g. Melody vs Bass). Any subset of players can share a track ("duel mode") — same notes, independent scores. Auto-defaults when player count exceeds track count, but is also a free choice.
 3. Game — same engine as `2player.html`, parameterized by player count and per-player track selection
 4. Results — per-player scores, accuracy, grade, Play Again / Menu
 
