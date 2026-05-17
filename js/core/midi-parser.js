@@ -80,8 +80,11 @@ export function parseMIDIFile(arrayBuffer) {
       const type    = st & 0xF0;
       const channel = st & 0x0F;
 
-      if (type === 0xFF) {
+      if (st === 0xFF) {
         // Meta event: FF type len data
+        // (Check full status byte, not masked `type` — `st & 0xF0` tops at 0xF0
+        //  so `type === 0xFF` would never match and meta events would silently
+        //  fall through to the sysex branch, dropping tempo and track names.)
         const mt = u8();
         const ml = vl();
         if (mt === 0x51 && ml === 3) {
