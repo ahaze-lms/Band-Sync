@@ -13,6 +13,7 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 ### Gameplay prototype — playable at `2player.html`
 
 - ✅ Two-player split-screen — piano + drums, or two pianos
+- ✅ Per-player instrument picker — each player independently switches between piano and drums at runtime
 - ✅ Independent scoring, combo, accuracy, S/A/B/C/D grades per player
 - ✅ Big PERFECT / GOOD / MISS / WRONG feedback overlays per side
 - ✅ MIDI auto-detect with manual override (per player)
@@ -40,7 +41,9 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 ```
 Band-Sync/
 ├── index.html              Auth-gated SPA shell (login, home, social)
-├── 2player.html               2-player gameplay screen (standalone)
+├── play.html               (reserved — real game, not yet built)
+├── 2player.html            2-player prototype (access via Dev Lab)
+├── lab.html                Dev Lab hub — links to prototype + all debug tools
 ├── js/
 │   ├── app.js              SPA router + nav + auth state
 │   ├── config.js           Shared constants (timing, hit windows, etc.)

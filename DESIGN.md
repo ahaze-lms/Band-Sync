@@ -1,16 +1,16 @@
-# BandSync — Design Document v10
+# BandSync — Design Document v11
 
-> Updated 2026-05-16. Supersedes v9 / `BandSync_Web_Design_Doc_v8.docx`.
+> Updated 2026-05-16. Supersedes v10.
 >
-> Major changes from v9: Supabase backend implemented (no longer planned). Social layer shipped — auth, profiles, friends, inbox, play invites. Development moved from local server to live GitHub Pages. Admin screen added to roadmap.
+> Major changes from v10: Per-player instrument picker shipped (both P1 and P2 can independently switch piano/drums at runtime). Dev Lab hub page created (`lab.html`). `play.html` reserved for the real game; prototype moved to `2player.html`. DEV LAB link added to main nav.
 
 ---
 
 ## 🚦 Current state (2026-05-16)
 
-**Two layers working:**
+**Three layers working:**
 
-**Gameplay** (`2player.html`) — 2-player split-screen verified on physical MIDI hardware. See `README.md` for the full feature checklist.
+**Gameplay prototype** (`2player.html`) — 2-player split-screen verified on physical MIDI hardware. Both players independently choose piano or drums at runtime. See `README.md` for the full feature checklist.
 
 **Social / account layer** (`index.html`) — live at <https://ahaze-lms.github.io/Band-Sync/>
 - Email/password auth via Supabase
@@ -20,16 +20,23 @@
 - Play invites between friends
 - Profile setup onboarding
 
+**Dev Lab** (`lab.html`) — hub page accessible from the main nav. Links to the 2-player prototype and all debug/test tools. Each tool has a ← LAB back link.
+
+**URL convention:**
+- `play.html` — reserved for the real game (not yet built)
+- `2player.html` — current prototype (reached via Dev Lab)
+
 ### What's next
 
-1. **Admin screen** — in-app view of users, friend graph, messages. Supabase Table Editor works for now; a proper `/admin` screen is planned.
-2. **Connect the two layers** — home screen's PLAY NOW links to `2player.html`; wire the session so `2player.html` knows which Supabase users are playing.
-3. **Real piano + drum samples** — biggest perceived-quality jump for the least work.
-4. **Proper results screen** — full per-player scores, accuracy bars, personal-best flags, Replay / Play Again buttons.
-5. **Session history** — every completed song saved to the user's profile in Supabase.
-6. **Track-picker UI** for multi-track MIDI files.
-7. **3- and 4-player layouts** — CSS-grid + extra renderers.
-8. **Calibration overlay extraction** — currently duplicated across 3 screens.
+1. **Real game** (`play.html`) — the actual game experience users reach via PLAY NOW. Architecture TBD; start here next session.
+2. **Admin screen** — in-app view of users, friend graph, messages. Supabase Table Editor works for now; a proper `/admin` screen is planned.
+3. **Connect social → gameplay** — wire the session so `play.html` knows which Supabase users are playing.
+4. **Real piano + drum samples** — biggest perceived-quality jump for the least work.
+5. **Proper results screen** — full per-player scores, accuracy bars, personal-best flags, Replay / Play Again buttons.
+6. **Session history** — every completed song saved to the user's profile in Supabase.
+7. **Track-picker UI** for multi-track MIDI files.
+8. **3- and 4-player layouts** — CSS-grid + extra renderers.
+9. **Calibration overlay extraction** — currently duplicated across 3 screens.
 
 ### Open architectural decisions
 
