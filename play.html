@@ -10,6 +10,13 @@
     h1 .p1 { color: #7F77DD; } h1 .p2 { color: #1D9E75; }
     .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
 
+    /* MODE TOGGLE */
+    .mode-row { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: 2px; color: #555; }
+    .mode-label { color: #555; }
+    .mode-btn { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 5px 14px; font-size: 10px; color: #888; cursor: pointer; letter-spacing: 2px; transition: all 0.15s; }
+    .mode-btn:hover { border-color: #5DCAA5; color: #5DCAA5; }
+    .mode-btn.active { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
+
     /* STATUS BAR */
     .status-bar { display: flex; gap: 20px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 1280px; }
     .player-status { display: flex; align-items: center; gap: 8px; flex: 1; }
@@ -121,6 +128,13 @@
   <h1>BAND<span class="p1">SYNC</span></h1>
   <div class="subtitle">2-PLAYER · PIANO + DRUMS</div>
 
+  <!-- MODE TOGGLE -->
+  <div class="mode-row">
+    <span class="mode-label">P2 ROLE:</span>
+    <button id="btn-p2-drums" class="mode-btn active">DRUMS</button>
+    <button id="btn-p2-piano" class="mode-btn">PIANO</button>
+  </div>
+
   <!-- STATUS BAR -->
   <div class="status-bar">
     <div class="player-status p1">
@@ -129,7 +143,7 @@
       <span class="offset-tag" id="p1-offset">0ms</span>
     </div>
     <div class="player-status p2">
-      <span class="label">P2 DRUMS</span>
+      <span class="label" id="p2-role-label">P2 DRUMS</span>
       <select class="device-select" id="p2-device-select"></select>
       <span class="offset-tag" id="p2-offset">0ms</span>
     </div>
@@ -157,11 +171,12 @@
   <!-- P2 PANEL -->
   <div class="player-panel p2">
     <div class="panel-header">
-      <span class="panel-title">P2 · DRUMS</span>
+      <span class="panel-title" id="p2-panel-title">P2 · DRUMS</span>
       <span class="panel-device" id="p2-device-name">—</span>
     </div>
     <div class="panel-row">
-      <div class="canvas-wrap"><canvas id="p2-canvas"></canvas></div>
+      <div class="canvas-wrap" id="p2-canvas-drums-wrap"><canvas id="p2-canvas-drums"></canvas></div>
+      <div class="canvas-wrap" id="p2-canvas-piano-wrap" style="display:none;"><canvas id="p2-canvas-piano"></canvas></div>
       <div class="score-card">
         <div class="sc-row"><span class="lab">SCORE</span><span class="val" id="p2-score">0</span></div>
         <div class="sc-row"><span class="lab">COMBO</span><span class="val" id="p2-combo">x1</span></div>
@@ -180,9 +195,17 @@
   <!-- CONTROLS -->
   <div class="controls-row">
     <label class="file-btn" id="file-label">♪ LOAD MIDI<input type="file" id="file-input" accept=".mid,.midi"></label>
-    <button id="btn-test-mary-rock">▶ MARY + ROCK</button>
-    <button id="btn-test-scale-hihat">▶ SCALE + HIHAT</button>
-    <button id="btn-test-metro-kick">▶ METRO + KICK</button>
+
+    <!-- Piano + Drums patterns (visible in P+D mode) -->
+    <button class="pd-only" id="btn-test-mary-rock">▶ MARY + ROCK</button>
+    <button class="pd-only" id="btn-test-scale-hihat">▶ SCALE + HIHAT</button>
+    <button class="pd-only" id="btn-test-metro-kick">▶ METRO + KICK</button>
+
+    <!-- Piano + Piano patterns (visible in P+P mode) -->
+    <button class="pp-only" id="btn-test-mary-unison" style="display:none;">▶ MARY UNISON</button>
+    <button class="pp-only" id="btn-test-mary-octaves" style="display:none;">▶ MARY OCTAVES</button>
+    <button class="pp-only" id="btn-test-scale-thirds" style="display:none;">▶ SCALES IN 3rds</button>
+
     <button class="start-btn" id="start-btn">START →</button>
     <button id="btn-pause" style="display:none;">⏸ PAUSE</button>
     <button id="btn-reset" style="display:none;">↺ RESET</button>
