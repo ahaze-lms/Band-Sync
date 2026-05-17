@@ -44,6 +44,7 @@ function renderNav() {
       <a class="nav-link" data-screen="home"    href="#">HOME</a>
       <a class="nav-link" data-screen="friends" href="#">FRIENDS <span class="badge" id="badge-friends"></span></a>
       <a class="nav-link" data-screen="inbox"   href="#">INBOX   <span class="badge" id="badge-inbox"></span></a>
+      <a class="nav-link nav-lab" href="lab.html" target="_blank">DEV LAB</a>
     </div>
     <div class="nav-right">
       <a class="nav-avatar" data-screen="profile" href="#" title="Edit profile">

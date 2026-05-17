@@ -15,10 +15,7 @@ export function mount(el, ctx, navigate) {
             <div class="home-tagline">${esc(profile?.tagline ?? '')}</div>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-          <a class="btn btn-play" href="play.html" target="_blank">▶ PLAY NOW</a>
-          <a href="lab.html" target="_blank" style="font-size:9px;letter-spacing:2px;color:#444;text-decoration:none;text-align:right;transition:color 0.15s" onmouseover="this.style.color='#7F77DD'" onmouseout="this.style.color='#444'">⚗ DEV LAB</a>
-        </div>
+        <a class="btn btn-play" href="play.html" target="_blank">▶ PLAY NOW</a>
       </div>
 
       <div class="home-panels">
