@@ -697,19 +697,13 @@
       .score-card { gap: 10px; font-size: 11px; }
       .score-stat .val.big { font-size: 16px; }
 
-      /* Canvas: keep natural size, scroll horizontally if it overflows.
-         Each white key stays ~36px wide instead of being scaled to <20px. */
-      .canvas-stage {
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
-      }
-      .canvas-stage canvas {
-        width: auto;
-        height: 100%;
-        max-width: none;
-        object-fit: none;
-      }
+      /* Canvas — use the default object-fit:contain + ResizeObserver
+         path. (An earlier attempt to keep the canvas at natural pixel
+         size + horizontal scroll for bigger keys is now incompatible
+         with ResizeObserver-driven buffer sizing — object-fit:none
+         crops the buffer at the display size and hides the keyboard
+         at the bottom. Touchability tradeoff: keys are small on
+         narrow screens but the whole instrument is visible.) */
 
       /* Setup screen — give the player rows room to breathe */
       .player-row {
@@ -738,6 +732,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=12"></script>
+  <script type="module" src="js/play.js?v=13"></script>
 </body>
 </html>
