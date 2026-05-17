@@ -28,15 +28,20 @@ export const DEFAULT_SPEED_LEVEL = 3; // 3.0s — comfortable default
 // Per-difficulty timing tolerances. A press within ±perfect ms of the
 // expected hit time counts as PERFECT; within ±good ms counts as GOOD.
 //
-// Level 1 = Very Easy (kids)   Level 5 = Expert (brutal)
+// Levels run easiest (1) to brutal (7). Practice and Beginner are
+// generously loose for kids who are still building motor timing — at
+// ±250ms PERFECT they can be off by a quarter-second and still get
+// the full reward.
 export const HIT_WINDOWS = [
+  { name: 'Practice',  perfect: 250, good: 500 },
+  { name: 'Beginner',  perfect: 180, good: 350 },
   { name: 'Very Easy', perfect: 120, good: 200 },
   { name: 'Easy',      perfect: 80,  good: 160 },
   { name: 'Normal',    perfect: 40,  good: 80  },
   { name: 'Hard',      perfect: 25,  good: 50  },
   { name: 'Expert',    perfect: 15,  good: 30  },
 ];
-export const DEFAULT_HIT_WINDOW_LEVEL = 2; // Easy
+export const DEFAULT_HIT_WINDOW_LEVEL = 4; // Easy (same feel as the old default)
 
 
 // ── COUNT-OFF ───────────────────────────────────────────────────

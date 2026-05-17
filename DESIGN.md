@@ -226,15 +226,17 @@ Speed is defined as **fall duration in seconds**, not pixels per frame. Intuitiv
 
 ## 10. Hit Windows
 
-5 difficulty levels. PERFECT window in ms / GOOD window in ms.
+7 difficulty levels. PERFECT window in ms / GOOD window in ms.
 
 | Level | Name | PERFECT | GOOD | Notes |
 |---|---|---|---|---|
-| 1 | Very Easy | ±120 | ±200 | Young kids |
-| 2 | Easy | ±80 | ±160 | **Default for now** |
-| 3 | Normal | ±40 | ±80 | Standard |
-| 4 | Hard | ±25 | ±50 | Experienced |
-| 5 | Expert | ±15 | ±30 | Tighter than Guitar Hero |
+| 1 | Practice | ±250 | ±500 | Very young kids — quarter-second tolerance |
+| 2 | Beginner | ±180 | ±350 | Building motor timing |
+| 3 | Very Easy | ±120 | ±200 | Casual family play |
+| 4 | Easy | ±80 | ±160 | **Default** — comfortable adult play |
+| 5 | Normal | ±40 | ±80 | Standard rhythm-game feel |
+| 6 | Hard | ±25 | ±50 | Experienced players |
+| 7 | Expert | ±15 | ±30 | Tighter than Guitar Hero |
 
 Future: hit window will be derived from difficulty level, not a separate slider.
 
