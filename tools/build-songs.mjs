@@ -83,18 +83,27 @@ function buildPianoTrack(name, notes, { channel = 0, velocity = 96 } = {}) {
   return events;
 }
 
-function writeSong(filename, { bpm, trackName = 'Piano', notes }) {
+// tracks: [{ name, notes, channel? }]  — channel auto-assigns 0,1,2,...
+function writeSong(filename, { bpm, tracks }) {
   const conductor = [tempoEvent(bpm), timeSigEvent(4, 4)];
-  const piano     = buildPianoTrack(trackName, notes);
-  const bytes     = [...headerChunk(2), ...trackChunk(conductor), ...trackChunk(piano)];
+  const trackChunks = tracks.map((t, i) =>
+    trackChunk(buildPianoTrack(t.name, t.notes, { channel: t.channel ?? i }))
+  );
+  const bytes = [
+    ...headerChunk(1 + tracks.length),
+    ...trackChunk(conductor),
+    ...trackChunks.flat(),
+  ];
   mkdirSync(SONGS_DIR, { recursive: true });
   writeFileSync(join(SONGS_DIR, filename), Buffer.from(bytes));
-  console.log(`  ✓ ${filename.padEnd(36)} ${notes.filter(n => n[0] !== null).length} notes @ ${bpm} BPM`);
+  const totalNotes = tracks.reduce((s, t) => s + t.notes.filter(n => n[0] !== null).length, 0);
+  const trackList  = tracks.map(t => t.name).join(' + ');
+  console.log(`  ✓ ${filename.padEnd(36)} ${String(totalNotes).padStart(3)} notes @ ${bpm} BPM (${trackList})`);
 }
 
 // ── Pitch shorthand (middle-C octave centered) ────────────────────
 
-const G3=55, A3=57, B3=59,
+const C3=48, D3=50, E3=52, F3=53, G3=55, A3=57, B3=59,
       C4=60, D4=62, E4=64, F4=65, G4=67, A4=69, B4=71,
       C5=72, D5=74, E5=76, F5=77, G5=79;
 const _ = null;
@@ -141,6 +150,23 @@ const FRERE_JACQUES = [
   [C4,1],[G3,1],[C4,2],          [C4,1],[G3,1],[C4,2],
 ];
 
+// Twinkle Twinkle bass line — standard I-IV-V harmonization, half-note roots.
+// Pairs with TWINKLE as a melody+bass duet (one octave below the melody).
+const TWINKLE_BASS = [
+  [C3,2],[C3,2],   // bar 1  (C   – Twinkle twinkle)
+  [F3,2],[C3,2],   // bar 2  (F C – little star)
+  [F3,2],[C3,2],   // bar 3  (F C – How I wonder)
+  [G3,2],[C3,2],   // bar 4  (G C – what you are)
+  [C3,2],[G3,2],   // bar 5  (C G – Up above the)
+  [C3,2],[G3,2],   // bar 6  (C G – world so high)
+  [C3,2],[G3,2],   // bar 7  (C G – Like a diamond)
+  [C3,2],[G3,2],   // bar 8  (C G – in the sky)
+  [C3,2],[C3,2],   // bar 9   (repeat of bars 1–4)
+  [F3,2],[C3,2],   // bar 10
+  [F3,2],[C3,2],   // bar 11
+  [G3,2],[C3,2],   // bar 12
+];
+
 // When the Saints Go Marching In (traditional spiritual). PD.
 const SAINTS = [
   [_,1],[C4,1],[E4,1],[F4,1],   [G4,3],[_,1],
@@ -155,9 +181,31 @@ const SAINTS = [
 // ── Run ───────────────────────────────────────────────────────────
 
 console.log('Generating bundled songs →', SONGS_DIR);
-writeSong('twinkle-twinkle.mid',    { bpm: 100, notes: TWINKLE });
-writeSong('mary-had-a-little-lamb.mid', { bpm:  96, notes: MARY });
-writeSong('ode-to-joy.mid',         { bpm: 112, notes: ODE_TO_JOY });
-writeSong('frere-jacques.mid',      { bpm: 108, notes: FRERE_JACQUES });
-writeSong('saints-go-marching-in.mid', { bpm: 120, notes: SAINTS });
+writeSong('twinkle-twinkle.mid', {
+  bpm: 100,
+  tracks: [{ name: 'Piano', notes: TWINKLE }],
+});
+writeSong('twinkle-twinkle-duet.mid', {
+  bpm: 100,
+  tracks: [
+    { name: 'Melody', notes: TWINKLE },
+    { name: 'Bass',   notes: TWINKLE_BASS },
+  ],
+});
+writeSong('mary-had-a-little-lamb.mid', {
+  bpm: 96,
+  tracks: [{ name: 'Piano', notes: MARY }],
+});
+writeSong('ode-to-joy.mid', {
+  bpm: 112,
+  tracks: [{ name: 'Piano', notes: ODE_TO_JOY }],
+});
+writeSong('frere-jacques.mid', {
+  bpm: 108,
+  tracks: [{ name: 'Piano', notes: FRERE_JACQUES }],
+});
+writeSong('saints-go-marching-in.mid', {
+  bpm: 120,
+  tracks: [{ name: 'Piano', notes: SAINTS }],
+});
 console.log('Done.');
