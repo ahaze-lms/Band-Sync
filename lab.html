@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BandSync — Dev Lab</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0f; color: #ccc;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 40px 24px; gap: 32px;
+    }
+
+    .back-link {
+      align-self: flex-start;
+      font-size: 10px; letter-spacing: 2px; color: #555;
+      text-decoration: none; transition: color 0.15s;
+    }
+    .back-link:hover { color: #7F77DD; }
+
+    .header { text-align: center; }
+    .logo { font-size: 22px; font-weight: 500; letter-spacing: 4px; color: #fff; }
+    .logo span { color: #7F77DD; }
+    .subtitle { font-size: 10px; letter-spacing: 3px; color: #555; margin-top: 4px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      width: 100%; max-width: 900px;
+    }
+
+    .tool-card {
+      background: #0d0d14; border: 0.5px solid #1e1e2a;
+      border-radius: 10px; padding: 20px 22px;
+      text-decoration: none; color: inherit;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .tool-card:hover { border-color: #7F77DD; background: #0f0f1c; }
+    .tool-card.teal:hover { border-color: #1D9E75; }
+
+    .tool-name {
+      font-size: 13px; font-weight: 600; letter-spacing: 2px; color: #fff;
+    }
+    .tool-card.purple .tool-name { color: #AFA9EC; }
+    .tool-card.teal   .tool-name { color: #5DCAA5; }
+
+    .tool-desc {
+      font-size: 11px; color: #555; line-height: 1.5;
+    }
+
+    .tool-tag {
+      margin-top: 4px;
+      font-size: 9px; letter-spacing: 2px; color: #333;
+    }
+
+    .section-label {
+      width: 100%; max-width: 900px;
+      font-size: 9px; letter-spacing: 3px; color: #333;
+      padding-bottom: 6px; border-bottom: 0.5px solid #1a1a26;
+    }
+  </style>
+</head>
+<body>
+
+  <a class="back-link" href="index.html">← BACK TO MAIN</a>
+
+  <div class="header">
+    <div class="logo">BAND<span>SYNC</span></div>
+    <div class="subtitle">DEV LAB</div>
+  </div>
+
+  <div class="section-label">PROTOTYPES</div>
+  <div class="grid">
+
+    <a class="tool-card purple" href="play.html" target="_blank">
+      <div class="tool-name">2-PLAYER GAMEPLAY</div>
+      <div class="tool-desc">Split-screen prototype — piano + drums or two pianos. Per-player scoring, MIDI routing, calibration, and test patterns.</div>
+      <div class="tool-tag">play.html</div>
+    </a>
+
+    <a class="tool-card" href="debug/bandsync_mockup.html" target="_blank">
+      <div class="tool-name">UI MOCKUP</div>
+      <div class="tool-desc">Static design mockup — visual reference for layout, color palette, and component hierarchy.</div>
+      <div class="tool-tag">debug/bandsync_mockup.html</div>
+    </a>
+
+  </div>
+
+  <div class="section-label">MIDI + INPUT</div>
+  <div class="grid">
+
+    <a class="tool-card teal" href="debug/midi_test.html" target="_blank">
+      <div class="tool-name">MIDI TEST</div>
+      <div class="tool-desc">Raw MIDI event viewer — shows every message from every connected device. Use this to verify a new controller is sending data.</div>
+      <div class="tool-tag">debug/midi_test.html</div>
+    </a>
+
+    <a class="tool-card teal" href="debug/drum_monitor.html" target="_blank">
+      <div class="tool-name">DRUM MONITOR</div>
+      <div class="tool-desc">Live drum hit visualizer — shows pad name, MIDI note, and velocity for each hit. Useful for building and verifying drum mappings.</div>
+      <div class="tool-tag">debug/drum_monitor.html</div>
+    </a>
+
+  </div>
+
+  <div class="section-label">RENDERER TESTS</div>
+  <div class="grid">
+
+    <a class="tool-card purple" href="debug/piano_debug.html" target="_blank">
+      <div class="tool-name">PIANO DEBUG</div>
+      <div class="tool-desc">Standalone piano renderer with live MIDI input. Tests falling-block drawing, held-key highlighting, and hit detection in isolation.</div>
+      <div class="tool-tag">debug/piano_debug.html</div>
+    </a>
+
+    <a class="tool-card teal" href="debug/drum_debug.html" target="_blank">
+      <div class="tool-name">DRUM DEBUG</div>
+      <div class="tool-desc">Standalone drum highway renderer with live MIDI input. Tests lane layout, lane-flash animation, and hit scoring in isolation.</div>
+      <div class="tool-tag">debug/drum_debug.html</div>
+    </a>
+
+  </div>
+
+</body>
+</html>
