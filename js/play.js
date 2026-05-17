@@ -20,6 +20,7 @@
 import { getUser }            from './services/auth.js';
 import { getProfile }         from './services/profile.js';
 import { claimCode }          from './services/device-codes.js';
+import { saveSession }        from './services/play-sessions.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
 import { parseMIDIFile }      from './core/midi-parser.js';
 import { loadOffset }         from './core/calibration.js';
@@ -49,9 +50,11 @@ const ctx = {
   song:        null,  // selected song from manifest
   setup:       null,  // per-song setup state (player count, choices, identities)
   midi:        null,  // { ok, reason?, inputCount }
-  activeGame:  null,  // current gameplay engine instance, or null
-  gameTimer:   null,  // requestAnimationFrame id for the song timer
-  lastResults: null,  // [{ identity, stats, ... }, ...] for results screen
+  activeGame:    null,  // current gameplay engine instance, or null
+  gameTimer:     null,  // requestAnimationFrame id for the song timer
+  gameStartedAt: null,  // ISO timestamp when current run began (refreshed on restart)
+  lastResults:   null,  // [{ identity, stats, ... }, ...] for results screen
+  saveStatus:    null,  // { state: 'saving'|'saved'|'failed', sessionId?, error? }
 };
 
 let setupTeardown = null;
@@ -621,10 +624,14 @@ async function renderGame() {
     if (!ctx.activeGame) return;
     ctx.activeGame.reset();
     document.getElementById('btn-pause').textContent = '⏸ PAUSE';
+    ctx.saveStatus    = null;
+    ctx.gameStartedAt = new Date().toISOString();
     ctx.activeGame.start();
   });
   document.getElementById('btn-exit-game').addEventListener('click', renderSetup);
 
+  ctx.saveStatus    = null;
+  ctx.gameStartedAt = new Date().toISOString();
   ctx.activeGame.start();
 }
 
@@ -737,7 +744,63 @@ function stopGameTimer() {
 }
 
 function onSongComplete() {
+  // Snapshot stats from the engine's final emission. ctx.lastResults
+  // was kept in lockstep by updateScoreCard, so it's the source of truth here.
+  const slots = (ctx.lastResults ?? []).map((r, i) => ({
+    slot:        i + 1,
+    identity:    r.identity.kind,
+    userId:      r.identity.userId,
+    displayName: r.identity.displayName,
+    instrument:  r.instrument,
+    trackIndex:  ctx.setup.players[i].trackIndex,
+    trackName:   r.trackName,
+    score:       r.stats?.score    ?? 0,
+    accuracy:    r.stats?.accuracy ?? null,
+    grade:       r.stats?.grade    ?? null,
+    perfect:     r.stats?.perfect  ?? 0,
+    good:        r.stats?.good     ?? 0,
+    miss:        r.stats?.miss     ?? 0,
+    wrong:       r.stats?.wrong    ?? 0,
+    maxCombo:    r.stats?.maxCombo ?? 0,
+  }));
+
+  // Fire the save in the background — don't block the results screen.
+  // saveStatus drives the small badge in renderResults().
+  ctx.saveStatus = { state: 'saving' };
+  saveSession({
+    hostUserId:     ctx.user.id,
+    song:           { file: ctx.song.file, title: ctx.song.title },
+    speedLevel:     DEFAULT_SPEED_LEVEL,
+    hitWindowLevel: DEFAULT_HIT_WINDOW_LEVEL,
+    startedAt:      ctx.gameStartedAt,
+    endedAt:        new Date().toISOString(),
+    slots,
+  }).then(sessionId => {
+    ctx.saveStatus = { state: 'saved', sessionId };
+    refreshSaveStatusUI();
+  }).catch(err => {
+    console.error('play.js: saveSession failed', err);
+    ctx.saveStatus = { state: 'failed', error: err.message };
+    refreshSaveStatusUI();
+  });
+
   setTimeout(() => renderResults(), 800);
+}
+
+function refreshSaveStatusUI() {
+  const el = document.getElementById('save-status');
+  if (!el || !ctx.saveStatus) return;
+  const s = ctx.saveStatus;
+  if (s.state === 'saving') {
+    el.textContent = 'SAVING TO HISTORY…';
+    el.className = 'save-status saving';
+  } else if (s.state === 'saved') {
+    el.textContent = '✓ SAVED TO HISTORY';
+    el.className = 'save-status saved';
+  } else {
+    el.textContent = `⚠ COULD NOT SAVE — ${s.error}`;
+    el.className = 'save-status failed';
+  }
 }
 
 // ── STATE: RESULTS ─────────────────────────────────────────────────
@@ -757,6 +820,7 @@ function renderResults() {
         <div class="results-players">
           ${results.map((r, i) => resultsRow(i, r)).join('')}
         </div>
+        <div class="save-status" id="save-status">SAVING TO HISTORY…</div>
       </div>
       <div class="actions">
         <button class="btn-ghost" data-action="menu">← SONG LIBRARY</button>
@@ -764,6 +828,7 @@ function renderResults() {
       </div>
     </div>
   `;
+  refreshSaveStatusUI();   // reflect the in-flight or completed save state
   stateEl.querySelector('[data-action="menu"]').addEventListener('click', renderSongSelect);
   stateEl.querySelector('[data-action="again"]').addEventListener('click', renderGame);
 }

@@ -578,6 +578,18 @@
       font-size: 28px; font-weight: 700; color: #fff;
       text-align: center;
     }
+    .save-status {
+      margin-top: 18px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .save-status.saving { color: var(--dim);  background: var(--bg3);  }
+    .save-status.saved  { color: var(--teal2); background: rgba(29,158,117,0.12); }
+    .save-status.failed { color: var(--red2);  background: rgba(226,75,74,0.12);  }
   </style>
 </head>
 <body>
@@ -594,6 +606,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=4"></script>
+  <script type="module" src="js/play.js?v=5"></script>
 </body>
 </html>
