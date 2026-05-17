@@ -323,7 +323,20 @@ function paintSetup() {
       if (field === 'device')     p.deviceId   = el.value || null;
       if (field === 'track')      p.trackIndex = Number(el.value);
 
+      if (field === 'guest-name') {
+        // Commit on blur. Empty value reverts to default — no destructive
+        // surprise if the user clears the input.
+        const v = el.value.trim();
+        const name = v || `Guest ${i + 1}`;
+        if (!v) el.value = name;
+        if (p.identity.kind === 'guest') p.identity.displayName = name;
+        return;
+      }
+
       if (field === 'identity') {
+        // Re-selecting the current kind from the mini-switcher is a no-op
+        // — guest's edited name would otherwise reset.
+        if (el.value === p.identity.kind) return;
         handleIdentityChange(i, el.value);
         return;   // handleIdentityChange repaints
       }
@@ -436,15 +449,36 @@ function identityCell(slotIdx, slot) {
     `;
   }
 
-  // Else dropdown: Me / Join with code… / Guest
-  const isHost  = slot.identity.kind === 'host';
-  const isGuest = slot.identity.kind === 'guest';
   const meLabel = `Me — ${esc(ctx.profile?.display_name || ctx.profile?.username || 'You')}`;
+
+  // Guest → editable name input + compact kind-switcher. Default name
+  // stays a valid value; editing is purely optional.
+  if (slot.identity.kind === 'guest') {
+    return `
+      <div class="identity-guest-cell">
+        <input type="text"
+               class="identity-name-input"
+               data-player="${slotIdx}" data-field="guest-name"
+               value="${esc(slot.identity.displayName)}"
+               placeholder="Guest ${slotIdx + 1}"
+               maxlength="24"
+               aria-label="Guest name">
+        <select class="identity-kind-mini" data-player="${slotIdx}" data-field="identity"
+                title="Change identity">
+          <option value="guest" selected>Guest</option>
+          <option value="host">${meLabel}</option>
+          <option value="claim">Join with code…</option>
+        </select>
+      </div>
+    `;
+  }
+
+  // Host → single dropdown.
   return `
     <select data-player="${slotIdx}" data-field="identity">
-      <option value="host"  ${isHost  ? 'selected' : ''}>${meLabel}</option>
+      <option value="host" selected>${meLabel}</option>
       <option value="claim">Join with code…</option>
-      <option value="guest" ${isGuest ? 'selected' : ''}>Guest ${slotIdx + 1}</option>
+      <option value="guest">Guest ${slotIdx + 1}</option>
     </select>
   `;
 }
