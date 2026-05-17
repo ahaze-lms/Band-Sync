@@ -150,9 +150,18 @@ Full spec in `DESIGN.md §25`. Key decisions:
 Project: `pmccwxovzhfdkuqzhkez.supabase.co`
 
 Current tables: `profiles`, `friend_requests`, `messages`, `play_invites`
-Planned tables: `songs`, `song_collaborators`
+Planned tables: `songs`, `song_collaborators`, `device_codes`, `play_sessions`, `play_session_slots`
 
 All tables have Row Level Security. A Postgres trigger auto-creates a `profiles` row on every new `auth.users` insert. All four current tables are in the `supabase_realtime` publication.
+
+## Player identity (3 modes per slot)
+
+`play.html` setup assigns one of three identities per player slot — see `DESIGN.md §26` for the full spec, schema, RLS, and threat model:
+- **Host** — the logged-in Supabase user; default for P1
+- **Friend** — another Supabase user, attached via a 6-digit device code generated on their phone (single-use, 10-min TTL); scores save to *their* account
+- **Guest** — anonymous; scores live only on the session row, not tied to any user
+
+Score persistence writes one `play_sessions` row + N `play_session_slots` rows (one per slot, even guests) on song complete.
 
 ---
 
