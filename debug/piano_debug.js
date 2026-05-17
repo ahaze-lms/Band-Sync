@@ -1,22 +1,29 @@
 // ════════════════════════════════════════════════════════════════════
 // BandSync — Piano Debug Screen
 // ════════════════════════════════════════════════════════════════════
-// Refactored to use the shared engine modules under /js. The piano view
-// itself (keyboard layout, canvas drawing, mouse-click handling) still
-// lives here for now; it'll move into /js/render/piano.js in Stage 5
-// once the 2-player gameplay screen needs it.
+// Standalone piano debug tool. Composes the shared engine + renderer
+// modules with a debug-panel HUD that the gameplay screen doesn't have.
 //
-// All non-piano-specific logic (clock, audio, scoring, MIDI, calibration
-// storage, MIDI parsing) is imported from /js/core.
+// Modules in play:
+//   - /js/core/timing      — song clock, count-off
+//   - /js/core/audio       — playPianoNote, playClick
+//   - /js/core/scoring     — createScorer factory
+//   - /js/core/midi        — Web MIDI access and per-device routing
+//   - /js/core/calibration — offset storage + round math
+//   - /js/core/midi-parser — multi-track .mid parser
+//   - /js/render/piano     — canvas drawing + key click input
+//
+// The piano renderer owns the canvas; this file just orchestrates
+// gameplay state, hit detection, calibration overlay, and the debug
+// panel HUD.
 // ════════════════════════════════════════════════════════════════════
 
 import {
-  PIANO_NOTE_MIN, PIANO_NOTE_MAX, NOTE_NAMES, KEY_PATTERN,
-  HIGHWAY_H, HIT_Y, PREVIEW_ZONE,
-  COUNTOFF_BEATS, BEAT_MS, COUNTOFF_TOTAL_MS,
+  PIANO_NOTE_MIN, PIANO_NOTE_MAX,
+  HIGHWAY_H,
+  BEAT_MS,
   CAL_ROUNDS, CAL_ROUND_MS, CAL_BEAT_MS, CAL_FLASH_MS,
   DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL,
-  FALL_TIMES_MS, HIT_WINDOWS,
   PLAYER_COLORS,
 } from '../js/config.js';
 
@@ -26,95 +33,23 @@ import { createScorer } from '../js/core/scoring.js';
 import * as Midi from '../js/core/midi.js';
 import { loadOffset, saveOffset, calcRoundOffset } from '../js/core/calibration.js';
 import { parseMIDIFile } from '../js/core/midi-parser.js';
+import { createPianoRenderer, midiToName } from '../js/render/piano.js';
 
 
 // ════════════════════════════════════════════════════════════════
-// PIANO LAYOUT — local until extracted to render/piano.js
+// RENDERER
 // ════════════════════════════════════════════════════════════════
 
-const WHITE_KEY_W = 22, WHITE_KEY_H = 72;
-const BLACK_KEY_W = 14, BLACK_KEY_H = 44;
-
-const midiToName = n => NOTE_NAMES[n % 12] + Math.floor(n / 12 - 1);
-const isBlack    = n => KEY_PATTERN[n % 12] === 1;
-
-const whiteKeys = [];
-for (let n = PIANO_NOTE_MIN; n <= PIANO_NOTE_MAX; n++) {
-  if (!isBlack(n)) whiteKeys.push(n);
-}
-const CANVAS_W = whiteKeys.length * WHITE_KEY_W;
-const CANVAS_H = HIGHWAY_H + WHITE_KEY_H;
-
-// Map MIDI note → x-center on the canvas
-const noteXCenter = {};
-for (let i = 0; i < whiteKeys.length; i++) {
-  noteXCenter[whiteKeys[i]] = i * WHITE_KEY_W + WHITE_KEY_W / 2;
-}
-for (let n = PIANO_NOTE_MIN; n <= PIANO_NOTE_MAX; n++) {
-  if (isBlack(n)) {
-    const L = noteXCenter[n - 1], R = noteXCenter[n + 1];
-    if (L !== undefined && R !== undefined) noteXCenter[n] = (L + R) / 2;
-  }
-}
-const noteWidth = n => isBlack(n) ? BLACK_KEY_W * 0.85 : WHITE_KEY_W * 0.8;
-
-
-// ════════════════════════════════════════════════════════════════
-// CANVAS + MOUSE INPUT
-// ════════════════════════════════════════════════════════════════
-
-const canvas = document.getElementById('highway');
-const ctx    = canvas.getContext('2d');
-canvas.width  = CANVAS_W;
-canvas.height = CANVAS_H;
-
-// Build clickable rects for white/black keys
-const whiteKeyRects = whiteKeys.map((note, i) => ({
-  note, x: i * WHITE_KEY_W + 1, y: HIGHWAY_H + 1, w: WHITE_KEY_W - 2, h: WHITE_KEY_H - 4,
-}));
-const blackKeyRects = [];
-for (let n = PIANO_NOTE_MIN; n <= PIANO_NOTE_MAX; n++) {
-  if (!isBlack(n)) continue;
-  const cx = noteXCenter[n];
-  if (cx == null) continue;
-  blackKeyRects.push({ note: n, x: cx - BLACK_KEY_W / 2, y: HIGHWAY_H, w: BLACK_KEY_W, h: BLACK_KEY_H });
-}
-
-const mouseHeldNotes = new Set();
-
-canvas.addEventListener('mousedown', e => {
-  const r  = canvas.getBoundingClientRect();
-  const mx = (e.clientX - r.left) * (CANVAS_W / r.width);
-  const my = (e.clientY - r.top)  * (CANVAS_H / r.height);
-  if (my < HIGHWAY_H) return; // clicks above the keyboard ignored
-
-  let hit = null;
-  for (const kr of blackKeyRects) {
-    if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) { hit = kr.note; break; }
-  }
-  if (hit === null) {
-    for (const kr of whiteKeyRects) {
-      if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) { hit = kr.note; break; }
-    }
-  }
-  if (hit === null) return;
-
-  if (calOpen) { registerCalTap(); return; }
-  mouseHeldNotes.add(hit);
-  heldNotes.add(hit);
-  if (alwaysSound) playPianoNote(hit, 80);
-  if (Clock.isPlaying() && !Clock.isPaused() && Clock.isCountoffDone()) {
-    if (!alwaysSound) playPianoNote(hit, 80);
-    checkHit(hit);
-  }
-});
-
-const releaseMouseNotes = () => {
-  mouseHeldNotes.forEach(n => heldNotes.delete(n));
-  mouseHeldNotes.clear();
-};
-canvas.addEventListener('mouseup',    releaseMouseNotes);
-canvas.addEventListener('mouseleave', releaseMouseNotes);
+const piano = createPianoRenderer(
+  document.getElementById('highway'),
+  {
+    noteMin:   PIANO_NOTE_MIN,
+    noteMax:   PIANO_NOTE_MAX,
+    color:     PLAYER_COLORS[0], // P1 purple
+    onKeyDown: handleKeyDown,
+    onKeyUp:   handleKeyUp,
+  },
+);
 
 
 // ════════════════════════════════════════════════════════════════
@@ -125,7 +60,6 @@ const scorer         = createScorer();
 let scheduledNotes   = [];
 let fallingBlocks    = [];
 const heldNotes      = new Set();
-let notePreview      = {};
 let offsetLog        = [];
 let songDuration     = 0;
 let userOffset       = 0;
@@ -135,13 +69,24 @@ let feedbackTimer    = null;
 let lastTime         = 0;
 let songName         = '—';
 
-// P1 colour palette
-const P1 = {
-  fill:      PLAYER_COLORS[0].fill,
-  stroke:    PLAYER_COLORS[0].stroke,
-  key:       PLAYER_COLORS[0].stroke,
-  keyStroke: PLAYER_COLORS[0].accent,
-};
+
+// ════════════════════════════════════════════════════════════════
+// INPUT HANDLERS (called by renderer for mouse, by MIDI module for keys)
+// ════════════════════════════════════════════════════════════════
+
+function handleKeyDown(note, velocity = 80) {
+  if (calOpen) { registerCalTap(); return; }
+  heldNotes.add(note);
+  if (alwaysSound) playPianoNote(note, velocity);
+  if (Clock.isPlaying() && !Clock.isPaused() && Clock.isCountoffDone()) {
+    if (!alwaysSound) playPianoNote(note, velocity);
+    checkHit(note);
+  }
+}
+
+function handleKeyUp(note) {
+  heldNotes.delete(note);
+}
 
 
 // ════════════════════════════════════════════════════════════════
@@ -190,14 +135,7 @@ function onMidiEvent(evt) {
     return;
   }
   if (evt.type !== 'noteOn') return;
-
-  if (calOpen) { registerCalTap(); return; }
-  heldNotes.add(evt.note);
-  if (alwaysSound) playPianoNote(evt.note, evt.velocity);
-  if (Clock.isPlaying() && !Clock.isPaused() && Clock.isCountoffDone()) {
-    if (!alwaysSound) playPianoNote(evt.note, evt.velocity);
-    checkHit(evt.note);
-  }
+  handleKeyDown(evt.note, evt.velocity);
 }
 
 
@@ -274,21 +212,19 @@ function setupSong(notes, name) {
   scorer.reset();
   offsetLog     = [];
   fallingBlocks = [];
-  notePreview   = {};
   songName      = name;
 
-  document.getElementById('file-label').className     = 'file-btn ready';
-  document.getElementById('start-btn').className      = 'start-btn enabled';
-  document.getElementById('start-btn').textContent    = 'START →';
-  document.getElementById('offset-log').innerHTML     = '<div style="color:#444;font-size:10px">— no hits yet —</div>';
-  document.getElementById('d-songname').textContent   = name;
+  document.getElementById('file-label').className   = 'file-btn ready';
+  document.getElementById('start-btn').className    = 'start-btn enabled';
+  document.getElementById('start-btn').textContent  = 'START →';
+  document.getElementById('offset-log').innerHTML   = '<div style="color:#444;font-size:10px">— no hits yet —</div>';
+  document.getElementById('d-songname').textContent = name;
 }
 
 function startSong() {
   if (!scheduledNotes.length) return;
   scheduledNotes.forEach(n => { n.hit = false; n.missed = false; n.block = null; n.spawned = false; });
   fallingBlocks = [];
-  notePreview   = {};
   offsetLog     = [];
   scorer.reset();
   Clock.startSong();
@@ -312,7 +248,6 @@ function resetSong() {
   Clock.stopSong();
   scheduledNotes.forEach(n => { n.hit = false; n.missed = false; n.block = null; n.spawned = false; });
   fallingBlocks = [];
-  notePreview   = {};
   offsetLog     = [];
   scorer.reset();
 
@@ -362,7 +297,7 @@ function makeTestSongs() {
   ];
   return { metronome, scale, mary };
 }
-const TEST_SONGS = makeTestSongs();
+const TEST_SONGS  = makeTestSongs();
 const SONG_LABELS = { metronome: 'Metronome — 8×C4', scale: 'C Major Scale', mary: 'Mary Had a Little Lamb' };
 
 function loadTest(name) {
@@ -379,11 +314,11 @@ function loadMIDIFile(event) {
     const parsed = parseMIDIFile(e.target.result);
     const notes = parsed.tracks
       .flatMap(t => t.notes)
-      .filter(n => n.note >= PIANO_NOTE_MIN && n.note <= PIANO_NOTE_MAX)
+      .filter(n => piano.noteInRange(n.note))
       .map(n => ({ ...n, hit: false, missed: false, block: null, spawned: false }))
       .sort((a, b) => a.startMs - b.startMs);
     if (!notes.length) {
-      alert('No playable notes found in range C3–C6. Try a different MIDI file.');
+      alert('No playable notes found in this keyboard range. Try a different MIDI file.');
       return;
     }
     setupSong(notes, file.name.replace(/\.midi?$/i, ''));
@@ -419,7 +354,7 @@ function toggleAlwaysSound() {
 
 
 // ════════════════════════════════════════════════════════════════
-// DEBUG PANEL UPDATE
+// DEBUG PANEL
 // ════════════════════════════════════════════════════════════════
 
 function updateOffsetDisplay() {
@@ -442,8 +377,7 @@ function updateOffsetLog() {
   });
   if (nums.length > 0) {
     const avg = Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
-    document.getElementById('d-avgoffset').textContent =
-      (avg > 0 ? '+' : '') + avg + 'ms';
+    document.getElementById('d-avgoffset').textContent = (avg > 0 ? '+' : '') + avg + 'ms';
     document.getElementById('d-suggestion').textContent =
         avg < -30 ? 'hitting too early — wait longer'
       : avg >  30 ? 'hitting too late — press sooner'
@@ -472,15 +406,12 @@ function updateDebug() {
     : Clock.isCountoffDone() && Clock.isPlaying() ? 'good'
     : 'neutral');
 
-  set('d-songtime',  songTime >= 0 ? songTime.toFixed(0) + 'ms' : '—',
-      songTime >= 0 ? 'good' : 'neutral');
+  set('d-songtime',  songTime >= 0 ? songTime.toFixed(0) + 'ms' : '—', songTime >= 0 ? 'good' : 'neutral');
   set('d-falltime',  fallTimeMs + 'ms');
-  set('d-songstart', Clock.getSongTime() >= 0 || Clock.isPlaying() ? 'YES ✓' : 'NO ✗',
-      Clock.isPlaying() ? 'good' : 'bad');
+  set('d-songstart', Clock.isPlaying() ? 'YES ✓' : 'NO ✗', Clock.isPlaying() ? 'good' : 'bad');
   set('d-speed',     Clock.getSpeedLevel() + ' (' + (fallTimeMs / 1000).toFixed(1) + 's fall)');
   set('d-window',    hw.name + ' ±' + hw.perfect + '/' + hw.good + 'ms');
-  const spawned = scheduledNotes.filter(n => n.spawned).length;
-  set('d-blocks',    fallingBlocks.length + ' / ' + spawned);
+  set('d-blocks',    fallingBlocks.length + ' / ' + scheduledNotes.filter(n => n.spawned).length);
 
   // Note table (first 8 upcoming)
   const tbody = document.getElementById('note-table');
@@ -496,182 +427,13 @@ function updateDebug() {
     tbody.appendChild(tr);
   });
 
-  // Score
+  // Score panel
   const s = scorer.getStats();
   set('d-perfect', s.perfect, 'good');
   set('d-good',    s.good);
   set('d-miss',    s.miss,  s.miss  > 0 ? 'bad'  : 'neutral');
   set('d-wrong',   s.wrong, s.wrong > 0 ? 'warn' : 'neutral');
   set('d-acc',     s.accuracy !== null ? s.accuracy + '%' : '—');
-}
-
-
-// ════════════════════════════════════════════════════════════════
-// KEY PREVIEW GLOW
-// ════════════════════════════════════════════════════════════════
-
-function computePreview() {
-  notePreview = {};
-  for (const block of fallingBlocks) {
-    const dist = HIT_Y - block.y;
-    if (dist >= 0 && dist <= PREVIEW_ZONE) {
-      const intensity = 1 - (dist / PREVIEW_ZONE);
-      if (!notePreview[block.note] || intensity > notePreview[block.note]) {
-        notePreview[block.note] = intensity;
-      }
-    }
-  }
-}
-
-
-// ════════════════════════════════════════════════════════════════
-// DRAW
-// ════════════════════════════════════════════════════════════════
-
-function drawHighway() {
-  ctx.fillStyle = '#0d0d14';
-  ctx.fillRect(0, 0, CANVAS_W, HIGHWAY_H);
-  for (let i = 0; i < whiteKeys.length; i++) {
-    ctx.fillStyle = i % 2 === 0 ? '#0d0d14' : '#0f0f18';
-    ctx.fillRect(i * WHITE_KEY_W, 0, WHITE_KEY_W, HIGHWAY_H);
-  }
-  ctx.strokeStyle = '#1a1a24'; ctx.lineWidth = 0.5;
-  for (let i = 0; i <= whiteKeys.length; i++) {
-    ctx.beginPath();
-    ctx.moveTo(i * WHITE_KEY_W, 0);
-    ctx.lineTo(i * WHITE_KEY_W, HIGHWAY_H);
-    ctx.stroke();
-  }
-
-  // Held-key column highlight
-  heldNotes.forEach(n => {
-    if (n < PIANO_NOTE_MIN || n > PIANO_NOTE_MAX) return;
-    const cx = noteXCenter[n];
-    const nw = isBlack(n) ? BLACK_KEY_W : WHITE_KEY_W;
-    ctx.fillStyle = 'rgba(127,119,221,0.1)';
-    ctx.fillRect(cx - nw / 2, 0, nw, HIGHWAY_H);
-  });
-
-  // Falling blocks
-  const now = performance.now();
-  fallingBlocks.forEach(block => {
-    let fill = block.black ? '#7F77DD' : P1.fill;
-    let stroke = block.black ? '#AFA9EC' : P1.stroke;
-    let alpha = 0.9;
-    if (block.hitQuality) {
-      const age = now - block.hitTime;
-      if (age < 250) {
-        fill   = block.hitQuality === 'perfect' ? '#1D9E75' : '#5DCAA5';
-        stroke = '#9FE1CB';
-        alpha  = 1 - (age / 250) * 0.6;
-      }
-    }
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = fill;
-    ctx.beginPath(); ctx.roundRect(block.x, block.y, block.w, block.h, 2); ctx.fill();
-    ctx.strokeStyle = stroke; ctx.lineWidth = 0.5;
-    ctx.beginPath(); ctx.roundRect(block.x, block.y, block.w, block.h, 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.beginPath(); ctx.roundRect(block.x + 1, block.y + 1, block.w - 2, 3, 1); ctx.fill();
-    ctx.globalAlpha = 1;
-  });
-
-  // Hit zone
-  ctx.fillStyle = 'rgba(127,119,221,0.35)';
-  ctx.fillRect(0, HIT_Y, CANVAS_W, 3);
-  ctx.fillStyle = 'rgba(127,119,221,0.3)';
-  ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
-  ctx.fillText('HIT ZONE', 4, HIT_Y - 4);
-  ctx.fillStyle = '#1e1e2a';
-  ctx.fillRect(0, HIGHWAY_H - 1, CANVAS_W, 1);
-}
-
-function drawKeyboard() {
-  const kyTop = HIGHWAY_H;
-  // White keys
-  for (let i = 0; i < whiteKeys.length; i++) {
-    const n = whiteKeys[i], kx = i * WHITE_KEY_W;
-    const held    = heldNotes.has(n);
-    const preview = notePreview[n] || 0;
-    ctx.fillStyle = held ? P1.key : '#e8e8e0';
-    ctx.strokeStyle = held ? P1.keyStroke : '#999';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.roundRect(kx + 1, kyTop + 1, WHITE_KEY_W - 2, WHITE_KEY_H - 4, [0, 0, 3, 3]);
-    ctx.fill(); ctx.stroke();
-    if (!held && preview > 0) {
-      ctx.globalAlpha = preview * 0.75;
-      ctx.fillStyle = '#7F77DD';
-      ctx.beginPath();
-      ctx.roundRect(kx + 1, kyTop + 1, WHITE_KEY_W - 2, WHITE_KEY_H - 4, [0, 0, 3, 3]);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      if (preview > 0.6) {
-        ctx.strokeStyle = '#AFA9EC';
-        ctx.lineWidth = preview;
-        ctx.beginPath();
-        ctx.roundRect(kx + 1, kyTop + 1, WHITE_KEY_W - 2, WHITE_KEY_H - 4, [0, 0, 3, 3]);
-        ctx.stroke();
-      }
-    }
-    if (n % 12 === 0) {
-      ctx.fillStyle = (held || preview > 0.3) ? '#3C3489' : '#aaa';
-      ctx.font = '8px Segoe UI'; ctx.textAlign = 'center';
-      ctx.fillText(midiToName(n), kx + WHITE_KEY_W / 2, kyTop + WHITE_KEY_H - 8);
-    }
-  }
-  // Black keys
-  for (let n = PIANO_NOTE_MIN; n <= PIANO_NOTE_MAX; n++) {
-    if (!isBlack(n)) continue;
-    const cx = noteXCenter[n];
-    if (cx == null) continue;
-    const kx = cx - BLACK_KEY_W / 2;
-    const held    = heldNotes.has(n);
-    const preview = notePreview[n] || 0;
-    ctx.fillStyle = held ? P1.fill : '#111';
-    ctx.strokeStyle = held ? P1.stroke : '#333';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.roundRect(kx, kyTop, BLACK_KEY_W, BLACK_KEY_H, [0, 0, 3, 3]);
-    ctx.fill(); ctx.stroke();
-    if (!held && preview > 0) {
-      ctx.globalAlpha = preview * 0.85;
-      ctx.fillStyle = '#7F77DD';
-      ctx.beginPath();
-      ctx.roundRect(kx, kyTop, BLACK_KEY_W, BLACK_KEY_H, [0, 0, 3, 3]);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (!held && preview === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.beginPath();
-      ctx.roundRect(kx + 2, kyTop + 2, BLACK_KEY_W - 4, 6, 2);
-      ctx.fill();
-    }
-  }
-}
-
-function drawCountoff(beatNum, beatProgress) {
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(0, 0, CANVAS_W, HIGHWAY_H);
-  const beatStr = beatNum <= COUNTOFF_BEATS ? String(beatNum) : 'GO!';
-  const scale = 1 - beatProgress * 0.25;
-  ctx.save();
-  ctx.translate(CANVAS_W / 2, HIGHWAY_H / 2);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = beatNum <= COUNTOFF_BEATS ? '#3C3489' : '#085041';
-  ctx.font = '500 108px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(beatStr, 3, 3);
-  ctx.fillStyle = beatNum <= COUNTOFF_BEATS ? '#AFA9EC' : '#9FE1CB';
-  ctx.font = '500 100px Segoe UI';
-  ctx.fillText(beatStr, 0, 0);
-  ctx.restore();
-  for (let i = 0; i < COUNTOFF_BEATS; i++) {
-    ctx.beginPath();
-    ctx.arc(CANVAS_W / 2 - ((COUNTOFF_BEATS - 1) / 2) * 24 + i * 24, HIGHWAY_H - 30, 5, 0, Math.PI * 2);
-    ctx.fillStyle = i < beatNum ? '#7F77DD' : '#2a2a3a';
-    ctx.fill();
-  }
 }
 
 
@@ -685,36 +447,34 @@ function update(timestamp) {
   lastTime = timestamp;
   const pxPerFrame = Clock.getPxPerFrame();
 
-  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
   if (Clock.isPlaying() && !Clock.isPaused()) {
     const songTime   = Clock.getSongTime();
     const fallTimeMs = Clock.getFallTimeMs();
     const hw         = Clock.getHitWindow();
 
-    // Spawn blocks
+    // ── Spawn blocks ──────────────────────────────────────────
     for (const sn of scheduledNotes) {
       if (sn.hit || sn.missed || sn.block) continue;
       if (songTime >= sn.startMs) {
-        const cx = noteXCenter[sn.note];
-        if (cx == null) continue;
-        const nw = noteWidth(sn.note);
-        const nh = isBlack(sn.note) ? 14 : 18;
+        if (!piano.noteInRange(sn.note)) continue;
+        const cx = piano.noteToX(sn.note);
+        const nw = piano.noteWidth(sn.note);
+        const nh = piano.blockHeight(sn.note);
         const block = {
           x: cx - nw / 2, y: 0, w: nw, h: nh,
-          note: sn.note, black: isBlack(sn.note),
+          note: sn.note, black: piano.isBlack(sn.note),
           hitQuality: null, hitTime: null,
         };
-        sn.block = block;
+        sn.block   = block;
         sn.spawned = true;
         fallingBlocks.push(block);
       }
     }
 
-    // Move blocks
+    // ── Move blocks (delta-time corrected) ────────────────────
     fallingBlocks.forEach(b => { b.y += pxPerFrame * (delta / 16.67); });
 
-    // Miss detection
+    // ── Miss detection ────────────────────────────────────────
     for (const sn of scheduledNotes) {
       if (!sn.hit && !sn.missed && sn.spawned) {
         const expected = sn.startMs + fallTimeMs;
@@ -722,33 +482,21 @@ function update(timestamp) {
       }
     }
 
-    // Cleanup off-screen blocks
+    // ── Cleanup off-screen blocks ─────────────────────────────
     fallingBlocks = fallingBlocks.filter(b => b.y < HIGHWAY_H + b.h);
 
-    // Tick count-off (auto-ends itself)
-    Clock.tickCountoff();
+    // ── Tick count-off (auto-ends; null when not active) ──────
+    const countoff = Clock.tickCountoff();
 
-    // End of song
+    // ── End-of-song ───────────────────────────────────────────
     if (Clock.isCountoffDone() && songTime > songDuration) {
       Clock.stopSong();
       showSongComplete();
     }
 
-    // Draw
-    computePreview();
-    drawHighway();
-    drawKeyboard();
-
-    // Count-off overlay
-    if (Clock.isCountoffActive()) {
-      // We already ticked it above; recompute the render values for this frame.
-      const tick = Clock.tickCountoff();
-      if (tick) drawCountoff(tick.beatNum, tick.beatProgress);
-    }
+    piano.draw({ fallingBlocks, heldNotes, countoff });
   } else {
-    computePreview();
-    drawHighway();
-    drawKeyboard();
+    piano.draw({ fallingBlocks, heldNotes });
   }
 
   updateDebug();
@@ -759,9 +507,8 @@ function update(timestamp) {
 // ════════════════════════════════════════════════════════════════
 // CALIBRATION OVERLAY
 // ════════════════════════════════════════════════════════════════
-// Storage and math live in core/calibration.js. The DOM-driven overlay
-// state stays here for now — could move into a shared overlay module
-// later if drum_debug and gameplay share the same overlay.
+// Storage + math live in core/calibration.js. The DOM-driven overlay
+// state stays here for now.
 
 let calOpen          = false;
 let calRound         = 0;
@@ -801,8 +548,8 @@ function startCalRound() {
     }
   }
   document.getElementById('cal-round-heading').textContent = 'ROUND ' + (calRound + 1) + ' OF ' + CAL_ROUNDS;
-  document.getElementById('cal-tap-count').textContent = '';
-  document.getElementById('cal-instruction').innerHTML = 'Tap your instrument in time with each flash.<br>Keep going until the round ends.';
+  document.getElementById('cal-tap-count').textContent     = '';
+  document.getElementById('cal-instruction').innerHTML     = 'Tap your instrument in time with each flash.<br>Keep going until the round ends.';
 
   calRoundStart = performance.now() + 500;
   calNextFlash  = calRoundStart;
@@ -886,7 +633,7 @@ function showCalResults() {
   }
   calPendingOffset = overall;
 
-  document.getElementById('cal-final-val').textContent = (overall > 0 ? '+' : '') + overall;
+  document.getElementById('cal-final-val').textContent   = (overall > 0 ? '+' : '') + overall;
   document.getElementById('cal-current-val').textContent = (overall > 0 ? '+' : '') + overall + 'ms';
   document.getElementById('cal-device-note').textContent = 'Will be saved for: ' + activeDeviceName;
 }
@@ -948,9 +695,6 @@ document.addEventListener('keydown', e => {
 // INIT
 // ════════════════════════════════════════════════════════════════
 
-// Set defaults
-Clock.setSpeedLevel(DEFAULT_SPEED_LEVEL);
-Clock.setHitWindowLevel(DEFAULT_HIT_WINDOW_LEVEL);
 document.getElementById('speed').value  = DEFAULT_SPEED_LEVEL;
 document.getElementById('hitwin').value = DEFAULT_HIT_WINDOW_LEVEL;
 updateSpeedUI(DEFAULT_SPEED_LEVEL);
