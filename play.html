@@ -30,16 +30,22 @@
       font-size: 9px; letter-spacing: 2px; color: #555;
     }
 
-    /* mode toggle, compact, inline in top bar */
-    .mode-group { display: flex; align-items: center; gap: 6px; }
-    .mode-label { font-size: 9px; letter-spacing: 2px; color: #555; }
-    .mode-btn {
+    /* per-player role toggle — lives inside each player panel header */
+    .player-identity { display: flex; align-items: center; gap: 6px; }
+    .player-num {
+      font-size: 13px; font-weight: 600; letter-spacing: 3px; flex-shrink: 0;
+    }
+    .p1 .player-num { color: #AFA9EC; }
+    .p2 .player-num { color: #5DCAA5; }
+    .role-btn {
       background: transparent; border: 0.5px solid #2a2a3a; border-radius: 5px;
-      padding: 4px 12px; font-size: 10px; color: #888; cursor: pointer;
+      padding: 3px 10px; font-size: 9px; color: #555; cursor: pointer;
       letter-spacing: 2px; transition: all 0.15s;
     }
-    .mode-btn:hover { border-color: #5DCAA5; color: #5DCAA5; }
-    .mode-btn.active { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
+    .role-btn.p1:hover { border-color: #7F77DD; color: #AFA9EC; }
+    .role-btn.p1.active { background: rgba(127,119,221,0.15); border-color: #7F77DD; color: #AFA9EC; }
+    .role-btn.p2:hover { border-color: #1D9E75; color: #5DCAA5; }
+    .role-btn.p2.active { background: rgba(29,158,117,0.15); border-color: #1D9E75; color: #5DCAA5; }
 
     .top-bar .spacer { flex: 1; }
 
@@ -302,12 +308,6 @@
       <div class="subtitle">2-PLAYER</div>
     </div>
 
-    <div class="mode-group">
-      <span class="mode-label">P2:</span>
-      <button id="btn-p2-drums" class="mode-btn active">DRUMS</button>
-      <button id="btn-p2-piano" class="mode-btn">PIANO</button>
-    </div>
-
     <span class="spacer"></span>
 
     <div class="device-group p1">
@@ -329,7 +329,11 @@
     <!-- P1 PANEL -->
     <div class="player-panel p1">
       <div class="player-hud">
-        <span class="player-name" id="p1-panel-title">P1 · PIANO</span>
+        <div class="player-identity">
+          <span class="player-num">P1</span>
+          <button id="btn-p1-piano" class="role-btn p1 active">PIANO</button>
+          <button id="btn-p1-drums" class="role-btn p1">DRUMS</button>
+        </div>
         <span class="player-device" id="p1-device-name">—</span>
         <div class="hud-stat has-tip" data-tip="SCORE&#10;PERFECT = 100 pts × combo multiplier&#10;GOOD    =  50 pts × combo multiplier&#10;MISS / WRONG = 0 pts"><span class="lab">SCORE</span><span class="val score" id="p1-score">0</span></div>
         <div class="hud-stat has-tip" data-tip="COMBO MULTIPLIER&#10;Climbs every 10 consecutive scored hits&#10;x1 → x2 → x4 → x8&#10;MISS resets it to x1"><span class="lab">COMBO</span><span class="val combo" id="p1-combo">x1</span></div>
@@ -338,7 +342,8 @@
         <div class="hud-stat has-tip" data-tip="PERFECT / GOOD / MISS / WRONG&#10;Perfect — within tight timing window&#10;Good    — within wider timing window&#10;Miss    — note passed without a press&#10;Wrong   — pressed a key with no matching note"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw" style="font-size:11px;">0/0/0/0</span></div>
       </div>
       <div class="canvas-stage">
-        <canvas id="p1-canvas"></canvas>
+        <canvas id="p1-canvas-piano"></canvas>
+        <canvas id="p1-canvas-drums" style="display:none;"></canvas>
         <div class="feedback-overlay" id="p1-feedback"></div>
       </div>
     </div>
@@ -346,7 +351,11 @@
     <!-- P2 PANEL -->
     <div class="player-panel p2">
       <div class="player-hud">
-        <span class="player-name" id="p2-panel-title">P2 · DRUMS</span>
+        <div class="player-identity">
+          <span class="player-num">P2</span>
+          <button id="btn-p2-drums" class="role-btn p2 active">DRUMS</button>
+          <button id="btn-p2-piano" class="role-btn p2">PIANO</button>
+        </div>
         <span class="player-device" id="p2-device-name">—</span>
         <div class="hud-stat has-tip" data-tip="SCORE&#10;PERFECT = 100 pts × combo multiplier&#10;GOOD    =  50 pts × combo multiplier&#10;MISS / WRONG = 0 pts"><span class="lab">SCORE</span><span class="val score" id="p2-score">0</span></div>
         <div class="hud-stat has-tip" data-tip="COMBO MULTIPLIER&#10;Climbs every 10 consecutive scored hits&#10;x1 → x2 → x4 → x8&#10;MISS resets it to x1"><span class="lab">COMBO</span><span class="val combo" id="p2-combo">x1</span></div>

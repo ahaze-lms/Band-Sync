@@ -43,7 +43,7 @@ import { createDrumRenderer } from '../render/drums.js';
 // ════════════════════════════════════════════════════════════════
 
 const P1 = {
-  role:           'piano', // P1 is always piano in this screen
+  role:           'piano',
   color:          PLAYER_COLORS[0],
   renderer:       null,
   scorer:         createScorer(),
@@ -91,8 +91,8 @@ let allMidiInputs = [];
 // RENDERERS — build both P2 renderers at init
 // ════════════════════════════════════════════════════════════════
 
-P1.renderer = createPianoRenderer(
-  document.getElementById('p1-canvas'),
+P1.rendererPiano = createPianoRenderer(
+  document.getElementById('p1-canvas-piano'),
   {
     noteMin:   PIANO_NOTE_MIN,
     noteMax:   PIANO_NOTE_MAX,
@@ -101,6 +101,17 @@ P1.renderer = createPianoRenderer(
     onKeyUp:   (note) => P1.heldNotes.delete(note),
   },
 );
+
+P1.rendererDrums = createDrumRenderer(
+  document.getElementById('p1-canvas-drums'),
+  {
+    color:       P1.color,
+    onLaneClick: (abstractName) => handleP1LaneClick(abstractName, 80),
+  },
+);
+
+// Default: piano is active
+P1.renderer = P1.rendererPiano;
 
 P2.rendererDrums = createDrumRenderer(
   document.getElementById('p2-canvas-drums'),
@@ -123,8 +134,39 @@ P2.rendererPiano = createPianoRenderer(
 
 
 // ════════════════════════════════════════════════════════════════
-// P2 ROLE TOGGLE
+// ROLE TOGGLES
 // ════════════════════════════════════════════════════════════════
+
+function applyP1Role(role) {
+  P1.role = role;
+  localStorage.setItem('bandsync_p1_role', role);
+
+  Clock.stopSong();
+  P1.scheduledNotes = [];
+  P1.fallingBlocks  = [];
+  P1.heldNotes.clear();
+  P1.scorer.reset();
+  P2.scheduledNotes = [];
+  P2.fallingBlocks  = [];
+  P2.scorer.reset();
+  resetSongUI();
+
+  document.getElementById('p1-canvas-piano').style.display = role === 'piano' ? '' : 'none';
+  document.getElementById('p1-canvas-drums').style.display = role === 'drums' ? '' : 'none';
+  P1.renderer = role === 'piano' ? P1.rendererPiano : P1.rendererDrums;
+
+  document.getElementById('p1-role-label').textContent = 'P1 ' + (role === 'piano' ? 'PIANO' : 'DRUMS');
+
+  document.getElementById('btn-p1-piano').className = 'role-btn p1' + (role === 'piano' ? ' active' : '');
+  document.getElementById('btn-p1-drums').className = 'role-btn p1' + (role === 'drums' ? ' active' : '');
+
+  if (allMidiInputs.length > 0) {
+    const { p1 } = autoDetect(allMidiInputs);
+    assignP1Device(p1 ? p1.name : null);
+  }
+
+  setStatus('P1 role: ' + (role === 'piano' ? 'PIANO' : 'DRUMS') + ' — pick a test pattern', 'neutral');
+}
 
 function applyP2Role(role) {
   P2.role = role;
@@ -157,8 +199,8 @@ function applyP2Role(role) {
   document.querySelectorAll('.pp-only').forEach(el => el.style.display = role === 'piano' ? '' : 'none');
 
   // Toggle button highlight
-  document.getElementById('btn-p2-drums').className = 'mode-btn' + (role === 'drums' ? ' active' : '');
-  document.getElementById('btn-p2-piano').className = 'mode-btn' + (role === 'piano' ? ' active' : '');
+  document.getElementById('btn-p2-drums').className = 'role-btn p2' + (role === 'drums' ? ' active' : '');
+  document.getElementById('btn-p2-piano').className = 'role-btn p2' + (role === 'piano' ? ' active' : '');
 
   // Re-pick a sensible MIDI device for P2 under the new role
   if (allMidiInputs.length > 0) {
@@ -196,8 +238,17 @@ function handleP2KeyDown(note, velocity) {
   }
 }
 
+function handleP1LaneClick(abstractName, velocity) {
+  if (P1.role !== 'drums') return;
+  if (calOpen) { if (calPlayer === P1) registerCalTap(); return; }
+  P1.laneFlash[abstractName] = performance.now();
+  if (alwaysSound) playDrumSound(abstractName, velocity);
+  if (Clock.isPlaying() && !Clock.isPaused() && Clock.isCountoffDone()) {
+    checkHitDrums(P1, abstractName, velocity);
+  }
+}
+
 function handleP2LaneClick(abstractName, velocity) {
-  // Only fires when P2 is in drum mode
   if (P2.role !== 'drums') return;
   if (calOpen) { if (calPlayer === P2) registerCalTap(); return; }
   P2.laneFlash[abstractName] = performance.now();
@@ -1028,7 +1079,9 @@ function registerCalTap() {
 // DOM WIRING
 // ════════════════════════════════════════════════════════════════
 
-// Mode toggle
+// Role toggles
+document.getElementById('btn-p1-piano').addEventListener('click', () => applyP1Role('piano'));
+document.getElementById('btn-p1-drums').addEventListener('click', () => applyP1Role('drums'));
 document.getElementById('btn-p2-drums').addEventListener('click', () => applyP2Role('drums'));
 document.getElementById('btn-p2-piano').addEventListener('click', () => applyP2Role('piano'));
 
@@ -1080,7 +1133,8 @@ document.getElementById('hitwin').value = DEFAULT_HIT_WINDOW_LEVEL;
 updateSpeedUI(DEFAULT_SPEED_LEVEL);
 updateHitWindowUI(DEFAULT_HIT_WINDOW_LEVEL);
 
-// Apply saved P2 role from localStorage (defaults to drums)
+// Restore saved roles from localStorage
+applyP1Role(localStorage.getItem('bandsync_p1_role') || 'piano');
 applyP2Role(P2.role);
 
 setupMIDI();
