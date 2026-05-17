@@ -1,6 +1,6 @@
 import { updateProfile, isUsernameTaken } from '../services/profile.js';
-import { generateCode, listMyCodes, revokeCode } from '../services/device-codes.js';
-import { AVATARS, ACCENT_COLORS, refreshProfile } from '../app.js';
+import { generateCode, listMyCodes, revokeCode, getRecentUses } from '../services/device-codes.js';
+import { AVATARS, ACCENT_COLORS, refreshProfile, avatarEmoji, timeAgo } from '../app.js';
 
 export function mount(el, ctx, navigate, { onboarding = false } = {}) {
   const { user, profile } = ctx;
@@ -74,6 +74,19 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
         <button class="btn btn-primary" id="btn-gen-code">▸ GENERATE NEW CODE</button>
         <div class="auth-error" id="pairing-error"></div>
         <div class="pairing-list" id="pairing-list">
+          <div class="pairing-empty">Loading…</div>
+        </div>
+      </div>
+
+      <div class="form-card" id="activity-card">
+        <div class="form-card-title">RECENT ACCOUNT ACTIVITY</div>
+        <div class="pairing-explainer">
+          Codes of yours that have been claimed on someone else's device.
+          If you don't recognize one, you can revoke its remaining sessions
+          from the connected device by removing it from your
+          <a href="#" data-screen-link="history" class="history-link">history</a>.
+        </div>
+        <div class="activity-list" id="activity-list">
           <div class="pairing-empty">Loading…</div>
         </div>
       </div>
@@ -237,6 +250,38 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
     if (anyExpired) refreshPairingList();   // re-fetch so expired rows drop off
   }
 
+  // ── Recent activity (audit log: who has used my codes) ────────
+  async function refreshActivityList() {
+    const listEl = document.getElementById('activity-list');
+    if (!listEl) return;
+    try {
+      const rows = await getRecentUses(user.id);
+      if (rows.length === 0) {
+        listEl.innerHTML = '<div class="pairing-empty">NO ONE HAS USED A CODE YET</div>';
+        return;
+      }
+      listEl.innerHTML = rows.map(renderActivityRow).join('');
+    } catch (ex) {
+      listEl.innerHTML = `<div class="pairing-empty" style="color:var(--red)">${esc(ex.message)}</div>`;
+    }
+  }
+
+  function renderActivityRow(r) {
+    const code = formatCode(r.code);
+    const name = r.claimer
+      ? esc(r.claimer.display_name || r.claimer.username || 'someone')
+      : '(unknown)';
+    const av   = r.claimer ? avatarEmoji(r.claimer.avatar) : '·';
+    return `
+      <div class="activity-row">
+        <span class="activity-avatar">${av}</span>
+        <span class="activity-name">${name}</span>
+        <span class="activity-time" title="${esc(new Date(r.used_at).toLocaleString())}">${esc(timeAgo(r.used_at))}</span>
+        <span class="activity-code">${esc(code)}</span>
+      </div>
+    `;
+  }
+
   if (!onboarding) {
     document.getElementById('btn-gen-code').addEventListener('click', async () => {
       const btn    = document.getElementById('btn-gen-code');
@@ -259,7 +304,16 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
       }
     });
 
+    // Inline "history" link in the ACTIVITY explainer.
+    document.querySelectorAll('[data-screen-link]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        navigate(a.dataset.screenLink);
+      });
+    });
+
     refreshPairingList();
+    refreshActivityList();
     countdownTimer = setInterval(paintCountdowns, 1000);
   }
 

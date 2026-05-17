@@ -87,3 +87,33 @@ export async function claimCode(code) {
   if (!Array.isArray(data) || data.length === 0) return null;
   return data[0];
 }
+
+// Friend's side. Audit log: codes of mine that have been claimed by
+// someone, newest first. Each row is augmented with a `claimer` profile
+// snapshot so the UI can show "your code 742 619 was claimed by @sarah".
+//
+// device_codes.used_by_user FKs auth.users, not profiles, so PostgREST
+// can't implicit-join. Fetch profiles in a bulk second query instead.
+export async function getRecentUses(userId, limit = 20) {
+  const { data: codes, error } = await supabase
+    .from('device_codes')
+    .select('code, created_at, expires_at, used_at, used_by_user')
+    .eq('user_id', userId)
+    .not('used_at', 'is', null)
+    .order('used_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  const claimerIds = [...new Set((codes ?? []).map(c => c.used_by_user).filter(Boolean))];
+  let profiles = {};
+  if (claimerIds.length) {
+    const { data: profs, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar, accent_color')
+      .in('id', claimerIds);
+    if (pErr) throw pErr;
+    profiles = Object.fromEntries((profs ?? []).map(p => [p.id, p]));
+  }
+
+  return (codes ?? []).map(c => ({ ...c, claimer: profiles[c.used_by_user] ?? null }));
+}

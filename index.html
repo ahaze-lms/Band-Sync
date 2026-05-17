@@ -572,6 +572,42 @@
       border-color: var(--red);
       color: var(--red);
     }
+
+    /* ── ACTIVITY (audit log of code uses) ───────────────────── */
+    .activity-list {
+      display: flex; flex-direction: column;
+      gap: 2px;
+    }
+    .activity-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      border: 0.5px solid transparent;
+      transition: background 0.15s;
+    }
+    .activity-row:hover { background: var(--bg3); }
+    .activity-avatar {
+      font-size: 16px; text-align: center;
+    }
+    .activity-name {
+      color: #fff; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .activity-time {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px;
+      color: var(--dim);
+    }
+    .activity-code {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; letter-spacing: 3px;
+      color: var(--purple2);
+    }
+
     .color-grid { display: flex; gap: 10px; }
     .color-opt {
       width: 32px; height: 32px;
