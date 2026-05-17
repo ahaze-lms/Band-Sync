@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BandSync — 2-Player</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 10px; }
+    h1 { font-size: 22px; font-weight: 500; letter-spacing: 5px; color: #fff; }
+    h1 .p1 { color: #7F77DD; } h1 .p2 { color: #1D9E75; }
+    .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
+
+    /* STATUS BAR */
+    .status-bar { display: flex; gap: 20px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 1280px; }
+    .player-status { display: flex; align-items: center; gap: 8px; flex: 1; }
+    .player-status.p1 .label { color: #7F77DD; }
+    .player-status.p2 .label { color: #1D9E75; }
+    .player-status .label { font-size: 11px; letter-spacing: 2px; }
+    .device-select { background: #0d0d18; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 4px 10px; font-size: 11px; color: #ccc; cursor: pointer; flex: 1; max-width: 280px; font-family: 'Segoe UI', sans-serif; }
+    .p1 .device-select { color: #AFA9EC; }
+    .p2 .device-select { color: #5DCAA5; }
+    .device-select:focus { outline: none; border-color: #7F77DD; }
+    .offset-tag { font-family: 'Courier New', monospace; font-size: 10px; color: #888; }
+
+    /* PLAYER PANELS */
+    .player-panel { background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 10px; padding: 12px; width: 100%; max-width: 1280px; }
+    .player-panel.p1 { border-color: rgba(127,119,221,0.25); }
+    .player-panel.p2 { border-color: rgba(29,158,117,0.25); }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .panel-title { font-size: 11px; letter-spacing: 3px; font-weight: 500; }
+    .p1 .panel-title { color: #AFA9EC; }
+    .p2 .panel-title { color: #5DCAA5; }
+    .panel-device { font-size: 10px; color: #555; font-family: 'Courier New', monospace; }
+    .panel-row { display: flex; gap: 14px; align-items: flex-start; }
+    .canvas-wrap { border: 0.5px solid #1e1e2a; border-radius: 6px; overflow: hidden; flex-shrink: 0; cursor: pointer; }
+    canvas { display: block; }
+
+    /* SCORE CARD */
+    .score-card { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px; font-family: 'Courier New', monospace; }
+    .sc-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; border-bottom: 0.5px solid #1a1a26; }
+    .sc-row .lab { color: #555; letter-spacing: 1px; }
+    .sc-row .val { color: #fff; font-weight: 500; }
+    .p1 .sc-row .val { color: #AFA9EC; }
+    .p2 .sc-row .val { color: #5DCAA5; }
+    .sc-feedback { font-size: 14px; font-weight: 500; letter-spacing: 3px; text-align: center; padding: 6px 0; min-height: 26px; transition: opacity 0.15s; }
+    .sc-feedback.perfect { color: #AFA9EC; } .sc-feedback.good { color: #9FE1CB; }
+    .sc-feedback.miss { color: #E24B4A; }    .sc-feedback.wrong { color: #BA7517; }
+    .sc-feedback.hidden { opacity: 0; }
+
+    /* CONTROLS */
+    .controls-row { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; max-width: 1280px; justify-content: center; }
+    .file-btn { background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 7px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    .file-btn:hover { border-color: #7F77DD; color: #CECBF6; }
+    input[type=file] { display: none; }
+    .start-btn { background: #3C3489; border: none; border-radius: 6px; padding: 7px 20px; font-size: 12px; color: #fff; cursor: pointer; letter-spacing: 2px; opacity: 0.4; pointer-events: none; transition: all 0.2s; }
+    .start-btn.enabled { opacity: 1; pointer-events: all; }
+    .start-btn.enabled:hover { background: #7F77DD; }
+    button { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 6px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    button:hover { border-color: #7F77DD; color: #CECBF6; }
+    button.active { background: #3C3489; border-color: #7F77DD; color: #CECBF6; }
+    .btn-cal-p1 { border-color: rgba(127,119,221,0.4); color: #AFA9EC; }
+    .btn-cal-p2 { border-color: rgba(29,158,117,0.4); color: #5DCAA5; }
+
+    /* SETTINGS */
+    .settings-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 11px; color: #555; }
+    input[type=range] { accent-color: #7F77DD; }
+
+    /* STATUS MESSAGE */
+    .status-msg { font-size: 11px; letter-spacing: 1px; padding: 4px 12px; min-height: 18px; text-align: center; max-width: 1280px; }
+    .status-msg.green { color: #5DCAA5; }
+    .status-msg.yellow { color: #EF9F27; }
+    .status-msg.red { color: #E24B4A; }
+    .status-msg.neutral { color: #555; }
+
+    .song-label { font-size: 12px; color: #888; letter-spacing: 1px; }
+    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; }
+
+    /* CALIBRATION OVERLAY (shared shape — color comes from class) */
+    .cal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100; flex-direction:column; align-items:center; justify-content:center; gap:20px; }
+    .cal-overlay.open { display:flex; }
+    .cal-which { font-size:11px; letter-spacing:3px; color:#AFA9EC; }
+    .cal-heading { font-size:22px; font-weight:500; letter-spacing:4px; color:#fff; }
+    .cal-sub { font-size:12px; color:#666; letter-spacing:1px; text-align:center; line-height:1.8; }
+    .cal-flash-wrap { position:relative; width:160px; height:160px; display:flex; align-items:center; justify-content:center; }
+    .cal-ring { position:absolute; inset:0; border-radius:50%; border:1.5px solid #2a2a3a; }
+    .cal-circle { width:100px; height:100px; border-radius:50%; background:#1a1a26; border:1.5px solid #2a2a3a; transition:background 0.04s, border-color 0.04s, box-shadow 0.04s; display:flex; align-items:center; justify-content:center; }
+    .cal-circle.flash { background:#534AB7; border-color:#7F77DD; box-shadow:0 0 32px 8px rgba(127,119,221,0.5); }
+    .cal-circle-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-circle.flash .cal-circle-label { color:#CECBF6; }
+    .cal-timer { font-size:32px; font-weight:300; color:#7F77DD; letter-spacing:2px; min-width:40px; text-align:center; }
+    .cal-rounds { display:flex; gap:10px; }
+    .cal-round-dot { width:10px; height:10px; border-radius:50%; background:#1a1a26; border:1px solid #2a2a3a; transition:all 0.2s; }
+    .cal-round-dot.done { background:#534AB7; border-color:#7F77DD; }
+    .cal-round-dot.active { background:#7F77DD; border-color:#AFA9EC; box-shadow:0 0 8px rgba(127,119,221,0.6); }
+    .cal-tap-count { font-size:11px; color:#444; letter-spacing:1px; min-height:16px; }
+    .cal-results { display:none; flex-direction:column; align-items:center; gap:16px; }
+    .cal-results.show { display:flex; }
+    .cal-round-results { display:flex; gap:20px; }
+    .cal-round-result { background:#0d0d14; border:0.5px solid #1e1e2a; border-radius:8px; padding:12px 18px; text-align:center; }
+    .cal-round-result .rr-label { font-size:9px; letter-spacing:2px; color:#444; margin-bottom:6px; }
+    .cal-round-result .rr-val { font-size:20px; font-weight:500; color:#7F77DD; }
+    .cal-round-result .rr-taps { font-size:10px; color:#444; margin-top:4px; }
+    .cal-final { background:#1a1a26; border:1px solid #534AB7; border-radius:12px; padding:16px 32px; text-align:center; }
+    .cal-final .cf-label { font-size:9px; letter-spacing:3px; color:#7F77DD; margin-bottom:8px; }
+    .cal-final .cf-val { font-size:40px; font-weight:300; color:#fff; letter-spacing:2px; }
+    .cal-final .cf-unit { font-size:12px; color:#555; margin-top:4px; }
+    .cal-finetune { display:flex; align-items:center; gap:10px; }
+    .cal-finetune-label { font-size:10px; letter-spacing:2px; color:#555; }
+    .cal-nudge { background:#1a1a26; border:0.5px solid #2a2a3a; border-radius:6px; padding:6px 12px; font-size:11px; color:#888; cursor:pointer; letter-spacing:1px; transition:all 0.15s; }
+    .cal-nudge:hover { border-color:#7F77DD; color:#CECBF6; }
+    .cal-current { font-size:13px; color:#7F77DD; min-width:70px; text-align:center; font-family:'Courier New',monospace; }
+    .cal-actions { display:flex; gap:12px; }
+    .cal-apply { background:#534AB7; border:none; border-radius:6px; padding:9px 28px; font-size:12px; color:#fff; cursor:pointer; letter-spacing:2px; transition:all 0.2s; }
+    .cal-apply:hover { background:#7F77DD; }
+    .cal-cancel { background:transparent; border:0.5px solid #2a2a3a; border-radius:6px; padding:9px 20px; font-size:11px; color:#555; cursor:pointer; letter-spacing:1px; }
+    .cal-cancel:hover { border-color:#555; color:#888; }
+    .cal-device-note { font-size:10px; color:#333; letter-spacing:1px; }
+  </style>
+</head>
+<body>
+  <h1>BAND<span class="p1">SYNC</span></h1>
+  <div class="subtitle">2-PLAYER · PIANO + DRUMS</div>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <div class="player-status p1">
+      <span class="label">P1 PIANO</span>
+      <select class="device-select" id="p1-device-select"></select>
+      <span class="offset-tag" id="p1-offset">0ms</span>
+    </div>
+    <div class="player-status p2">
+      <span class="label">P2 DRUMS</span>
+      <select class="device-select" id="p2-device-select"></select>
+      <span class="offset-tag" id="p2-offset">0ms</span>
+    </div>
+  </div>
+
+  <!-- P1 PANEL -->
+  <div class="player-panel p1">
+    <div class="panel-header">
+      <span class="panel-title">P1 · PIANO</span>
+      <span class="panel-device" id="p1-device-name">—</span>
+    </div>
+    <div class="panel-row">
+      <div class="canvas-wrap"><canvas id="p1-canvas"></canvas></div>
+      <div class="score-card">
+        <div class="sc-row"><span class="lab">SCORE</span><span class="val" id="p1-score">0</span></div>
+        <div class="sc-row"><span class="lab">COMBO</span><span class="val" id="p1-combo">x1</span></div>
+        <div class="sc-row"><span class="lab">ACCURACY</span><span class="val" id="p1-acc">—</span></div>
+        <div class="sc-row"><span class="lab">GRADE</span><span class="val" id="p1-grade">—</span></div>
+        <div class="sc-row"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw">0/0/0/0</span></div>
+        <div class="sc-feedback hidden" id="p1-feedback">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- P2 PANEL -->
+  <div class="player-panel p2">
+    <div class="panel-header">
+      <span class="panel-title">P2 · DRUMS</span>
+      <span class="panel-device" id="p2-device-name">—</span>
+    </div>
+    <div class="panel-row">
+      <div class="canvas-wrap"><canvas id="p2-canvas"></canvas></div>
+      <div class="score-card">
+        <div class="sc-row"><span class="lab">SCORE</span><span class="val" id="p2-score">0</span></div>
+        <div class="sc-row"><span class="lab">COMBO</span><span class="val" id="p2-combo">x1</span></div>
+        <div class="sc-row"><span class="lab">ACCURACY</span><span class="val" id="p2-acc">—</span></div>
+        <div class="sc-row"><span class="lab">GRADE</span><span class="val" id="p2-grade">—</span></div>
+        <div class="sc-row"><span class="lab">P/G/M/W</span><span class="val" id="p2-pgmw">0/0/0/0</span></div>
+        <div class="sc-feedback hidden" id="p2-feedback">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS MESSAGE / SONG LABEL -->
+  <div class="status-msg neutral" id="status-msg">Pick a test pattern or load a MIDI file</div>
+  <div class="song-label" id="song-label"></div>
+
+  <!-- CONTROLS -->
+  <div class="controls-row">
+    <label class="file-btn" id="file-label">♪ LOAD MIDI<input type="file" id="file-input" accept=".mid,.midi"></label>
+    <button id="btn-test-mary-rock">▶ MARY + ROCK</button>
+    <button id="btn-test-scale-hihat">▶ SCALE + HIHAT</button>
+    <button id="btn-test-metro-kick">▶ METRO + KICK</button>
+    <button class="start-btn" id="start-btn">START →</button>
+    <button id="btn-pause" style="display:none;">⏸ PAUSE</button>
+    <button id="btn-reset" style="display:none;">↺ RESET</button>
+    <button id="btn-cal-p1" class="btn-cal-p1">⊙ P1 CALIBRATE</button>
+    <button id="btn-cal-p2" class="btn-cal-p2">⊙ P2 CALIBRATE</button>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings-row">
+    <span>NOTE SPEED</span>
+    <input type="range" id="speed" min="1" max="10" value="3" step="1" style="width:100px;">
+    <span id="speed-val" style="color:#7F77DD;min-width:60px;">3 — 3.0s</span>
+    <span style="margin-left:12px;">HIT WINDOW</span>
+    <input type="range" id="hitwin" min="1" max="5" value="2" step="1" style="width:80px;">
+    <span id="hitwin-val" style="color:#7F77DD;min-width:80px;">Easy</span>
+    <span style="margin-left:12px;">SOUND</span>
+    <button id="sound-toggle" class="active">ALWAYS</button>
+  </div>
+
+  <div class="info">SPACE = pause · R = reset · ESC = close calibration · Click instruments or use MIDI</div>
+
+  <!-- CALIBRATION OVERLAY -->
+  <div class="cal-overlay" id="cal-overlay">
+    <div id="cal-active">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:18px;">
+        <div class="cal-which" id="cal-which">CALIBRATING</div>
+        <div class="cal-heading" id="cal-round-heading">ROUND 1 OF 3</div>
+        <div class="cal-sub" id="cal-instruction">Tap your instrument in time with each flash.<br>Keep going until the round ends.</div>
+        <div class="cal-flash-wrap">
+          <div class="cal-ring"></div>
+          <div class="cal-circle" id="cal-circle"><span class="cal-circle-label" id="cal-circle-label">TAP</span></div>
+        </div>
+        <div class="cal-timer" id="cal-timer">10</div>
+        <div class="cal-rounds">
+          <div class="cal-round-dot active" id="cal-dot-0"></div>
+          <div class="cal-round-dot" id="cal-dot-1"></div>
+          <div class="cal-round-dot" id="cal-dot-2"></div>
+        </div>
+        <div class="cal-tap-count" id="cal-tap-count"></div>
+      </div>
+    </div>
+    <div class="cal-results" id="cal-results">
+      <div class="cal-which">CALIBRATION COMPLETE</div>
+      <div class="cal-round-results" id="cal-round-results"></div>
+      <div class="cal-final">
+        <div class="cf-label">LATENCY OFFSET</div>
+        <div class="cf-val" id="cal-final-val">—</div>
+        <div class="cf-unit">milliseconds</div>
+      </div>
+      <div class="cal-finetune">
+        <span class="cal-finetune-label">FINE TUNE</span>
+        <button class="cal-nudge" id="cal-nudge-m10">−10</button>
+        <button class="cal-nudge" id="cal-nudge-m1">−1</button>
+        <span class="cal-current" id="cal-current-val">0ms</span>
+        <button class="cal-nudge" id="cal-nudge-p1">+1</button>
+        <button class="cal-nudge" id="cal-nudge-p10">+10</button>
+      </div>
+      <div class="cal-actions">
+        <button class="cal-cancel" id="cal-cancel">CANCEL</button>
+        <button class="cal-apply" id="cal-apply">APPLY &amp; SAVE</button>
+      </div>
+      <div class="cal-device-note" id="cal-device-note"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/screens/gameplay.js"></script>
+</body>
+</html>
