@@ -195,8 +195,7 @@ function applyP2Role(role) {
   document.getElementById('p2-canvas-drums').style.display = role === 'drums' ? '' : 'none';
   document.getElementById('p2-canvas-piano').style.display = role === 'piano' ? '' : 'none';
 
-  // Update labels
-  document.getElementById('p2-panel-title').textContent = 'P2 · ' + (role === 'piano' ? 'PIANO' : 'DRUMS');
+  // Update label in device bar
   document.getElementById('p2-role-label').textContent  = 'P2 ' + (role === 'piano' ? 'PIANO' : 'DRUMS');
 
   // Swap the visible test pattern buttons
