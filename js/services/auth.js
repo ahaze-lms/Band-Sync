@@ -1,10 +1,23 @@
 import { supabase } from './supabase.js';
 
+// The URL Supabase sends users to after they click the email-confirmation
+// link. Derived from the current page so it works whether served from
+// /Band-Sync/ on GitHub Pages or from a local dev path. Sends people to
+// index.html so the SPA's onAuthChange picks them up and lands them on
+// home. Must also be allowed in the Supabase dashboard:
+//   Authentication → URL Configuration → Site URL + Redirect URLs.
+function getAuthRedirectUrl() {
+  return new URL('index.html', location.href).href;
+}
+
 export async function signUp(email, password, displayName) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { display_name: displayName } },
+    options: {
+      data: { display_name: displayName },
+      emailRedirectTo: getAuthRedirectUrl(),
+    },
   });
   if (error) throw error;
   return data.user;
