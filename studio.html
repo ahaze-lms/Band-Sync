@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BandSync — Song Creator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #ccc;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 40px 24px;
+    }
+
+    .back-link {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #555;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: #7F77DD; }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: 4px;
+      color: #fff;
+      text-align: center;
+    }
+    .logo span { color: #7F77DD; }
+
+    .page-title {
+      font-size: 11px;
+      letter-spacing: 4px;
+      color: #555;
+      text-align: center;
+      margin-top: -20px;
+    }
+
+    .card {
+      background: #0d0d14;
+      border: 0.5px solid #1e1e2a;
+      border-radius: 12px;
+      padding: 40px 48px;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: #1a1a26;
+      border: 0.5px solid #2a2a3a;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: #7F77DD;
+      align-self: center;
+    }
+
+    .card h2 {
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+
+    .card p {
+      font-size: 12px;
+      line-height: 1.8;
+      color: #555;
+    }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: left;
+    }
+
+    .feature-list li {
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.5;
+    }
+
+    .feature-list li::before {
+      content: '—';
+      color: #333;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .divider {
+      height: 0.5px;
+      background: #1e1e2a;
+    }
+
+    .label {
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: #333;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+  <a class="back-link" href="index.html">← BACK TO MAIN</a>
+
+  <div class="logo">BAND<span>SYNC</span></div>
+  <div class="page-title">SONG CREATOR</div>
+
+  <div class="card">
+    <span class="status-badge">IN DESIGN</span>
+
+    <h2>BUILD YOUR OWN SONGS</h2>
+
+    <p>
+      Record each instrument part one track at a time, tighten up the timing,
+      edit notes in a piano roll, then combine everything into a playable
+      BandSync song.
+    </p>
+
+    <div class="divider"></div>
+
+    <div class="label">MVP FEATURES</div>
+    <ul class="feature-list">
+      <li>Set BPM by typing or tapping tap-tempo</li>
+      <li>Record MIDI input live with a 4-beat count-in</li>
+      <li>One-click quantize — snap notes to the 16th-note grid</li>
+      <li>Piano roll editor — view, move, add, and delete notes</li>
+      <li>Up to 4 tracks — piano, drums, bass, guitar — with mute &amp; solo</li>
+      <li>Playback all tracks together with the existing audio engine</li>
+      <li>Export as .mid and add to your game library</li>
+    </ul>
+
+    <div class="divider"></div>
+
+    <div class="label">COMING LATER</div>
+    <ul class="feature-list">
+      <li>Quantize strength slider (0–100%) and multiple grid resolutions</li>
+      <li>Resize notes by dragging, rubber-band select, copy / paste</li>
+      <li>AI Generate — describe a song, get a full 4-track starting point</li>
+      <li>AI Assist — select a track, ask Claude to improve or add to it</li>
+      <li>Undo / redo, piano roll zoom, per-track volume automation</li>
+    </ul>
+  </div>
+
+</body>
+</html>

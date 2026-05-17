@@ -1,8 +1,8 @@
-# BandSync — Design Document v11
+# BandSync — Design Document v12
 
-> Updated 2026-05-16. Supersedes v10.
+> Updated 2026-05-17. Supersedes v11.
 >
-> Major changes from v10: Per-player instrument picker shipped (both P1 and P2 can independently switch piano/drums at runtime). Dev Lab hub page created (`lab.html`). `play.html` reserved for the real game; prototype moved to `2player.html`. DEV LAB link added to main nav.
+> Major changes from v11: Song Creator / AI Studio designed — full spec in §25. `studio.html` stub added. `play.html` architecture discussion started (see §What's next).
 
 ---
 
@@ -573,6 +573,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-16 | Supabase vendor bundle (`supabase.umd.js`) downloaded and served from `/js/vendor/` — eliminates CDN latency on every load. |
 | 2026-05-16 | Live-first development. GitHub Pages (`ahaze-lms.github.io/Band-Sync`) is the primary target. Local server (`python -m http.server 8000`) is optional fallback for offline work only. |
 | 2026-05-16 | Admin screen added to roadmap — in-app route, admin-only, showing user list, friend graph, recent activity. Supabase Table Editor fills this role in the interim. |
+| 2026-05-17 | Song Creator / AI Studio designed — `studio.html` stub added. Transport + track list + piano roll + AI panel architecture. MVP scope defined; full spec in §25. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -593,7 +594,11 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 
 | Where | What |
 |---|---|
-| `/index.html` | App shell / hub (currently a debug-tool launcher) |
+| `/index.html` | Auth-gated SPA shell (login, home, social) |
+| `/play.html` | Real game — song select → setup → gameplay → results (in design) |
+| `/studio.html` | Song Creator / AI Studio — record, quantize, piano roll, export (in design) |
+| `/2player.html` | 2-player prototype (access via Dev Lab) |
+| `/lab.html` | Dev Lab hub — links to prototype + all debug tools |
 | `/README.md` | Dev workflow + how to run locally |
 | `/DESIGN.md` | This file |
 | `/css/` | Stylesheets (in progress) |
@@ -607,6 +612,153 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | `/songs/` | Bundled `.mid` files |
 | `/debug/` | Standalone debug tools that survived the refactor |
 | `/server/` | Backend code (future) |
+
+---
+
+## 25. Song Creator / AI Studio
+
+Lives at `studio.html`. The tool for building songs that feed into the game library.
+
+### Vision
+
+A lightweight browser-based DAW: record MIDI tracks one at a time, quantize them, edit notes in a piano roll, stack up to four tracks, and export as a `.mid` for `play.html`. AI assists at two points — generating a complete starting song from a text prompt, or suggesting improvements to what you recorded.
+
+**Heart and Soul example:** Record Track 1 (chord accompaniment), Record Track 2 (melody line), export → playable BandSync song.
+
+### User flow
+
+1. **New / Open** — name the song, set BPM (type or tap tempo), choose time signature (default 4/4)
+2. **Record** — arm one of four track slots, hit Record, wait through a 4-beat count-in, play your part, hit Stop
+3. **Quantize** — choose grid resolution, set strength, Apply
+4. **Edit** — piano roll: move notes, resize, delete, add by clicking the grid
+5. **Repeat** — arm a different track, record the next part
+6. **Mix** — mute/solo tracks, adjust volume per track, listen to all tracks together
+7. **Export** — save to game library (Supabase) → appears in `play.html` song select
+
+### Components
+
+| Component | Description |
+|---|---|
+| **Transport bar** | Song name, BPM input + tap-tempo button, time sig, total bars, Record / Play / Stop / Rewind |
+| **Track list** | 4 rows — instrument role, color, mute, solo, volume, arm button |
+| **Piano roll** | Canvas grid: X = time (bars + beats), Y = pitch. Notes as colored bars. |
+| **Quantize panel** | Grid resolution selector, strength slider, Apply button, Auto-quantize toggle |
+| **AI panel** | Generate tab + Assist tab |
+
+### Piano roll interactions
+
+**MVP:**
+- View notes after recording
+- Click-drag to move notes (time and pitch)
+- Right-click to delete
+- Click empty grid to add a note
+
+**Full (v2+):**
+- Drag right edge to resize note duration
+- Rubber-band select multiple notes
+- Copy / paste selection
+- Zoom X (bars visible) and Y (pitch range visible)
+- Snap-to-grid toggle
+
+### Quantization
+
+Grid resolution options: 1/4, 1/8, **1/16 (default)**, 1/32 notes.
+
+Strength: 0% = raw recording, 100% = fully snapped to grid. Values in between blend. Original timestamps always preserved — re-quantize at any strength at any time.
+
+Auto-quantize: optional toggle that applies 100% / 16th-note snap automatically when recording stops.
+
+### AI integration
+
+**Generate tab** — text prompt → complete song
+
+User writes: *"Heart and Soul — 4 tracks, 100 BPM, 32 bars. Track 1: chord accompaniment. Track 2: melody. Track 3: bass line. Track 4: simple drums."*
+
+Claude API returns a note array per track. The studio imports these as pre-populated tracks. User can record over any track, edit notes, or use as-is.
+
+**Assist tab** — select a track or region → ask Claude
+
+Examples:
+- "Add a harmony a third above this melody"
+- "Write a kick/snare pattern that fits this groove"
+- "Simplify this for a 7-year-old"
+- "Transpose the whole track up a fourth"
+- "Make bars 9–12 swing more"
+
+Claude returns a modified note array for the selected track/region. User accepts or rejects.
+
+### Data model
+
+```js
+// Song object — saved to Supabase `songs` table + exported as .mid
+{
+  id: uuid,
+  name: string,
+  bpm: number,
+  timeSignature: { num: 4, den: 4 },
+  bars: number,
+  tracks: [
+    {
+      id: uuid,
+      index: 0,            // 0–3
+      name: string,
+      role: 'piano' | 'drums' | 'bass' | 'guitar',
+      color: string,
+      muted: boolean,
+      solo: boolean,
+      volume: number,      // 0–1
+      notes: [
+        {
+          pitch: number,       // MIDI note number (piano/bass/guitar)
+          drumName: string,    // abstract drum name (drums role only)
+          startTick: number,   // quantized position (ticks from song start)
+          startMsRaw: number,  // original recorded timestamp (preserved)
+          durationTick: number,
+          velocity: number     // 0–127
+        }
+      ]
+    }
+  ]
+}
+```
+
+Tick resolution: 480 ticks per quarter note (standard MIDI PPQ).
+
+### New modules
+
+| File | Purpose |
+|---|---|
+| `js/core/recorder.js` | Capture live MIDI events with timestamps relative to song start while metronome runs |
+| `js/core/quantizer.js` | Snap `startMsRaw` to nearest grid division at given strength; return `startTick` |
+| `js/core/song.js` | Song data model — create, serialize, deserialize, export to `.mid` binary |
+| `js/render/piano-roll.js` | Canvas piano roll — draw notes, handle mouse interaction, manage viewport |
+| `js/services/library.js` | Supabase CRUD for `songs` table — save, list, load, delete |
+
+Reuses: `js/core/midi.js` (device input), `js/core/audio.js` (metronome click + playback synth), `js/core/midi-parser.js` (re-import existing `.mid` files).
+
+### MVP scope (build first)
+
+- BPM input + tap tempo (average last 4 taps)
+- 4-beat count-in before recording starts
+- Record one track at a time (MIDI input → timestamped note array)
+- One-click quantize (16th note, 100% strength)
+- Piano roll: view notes, drag to move, right-click to delete, click grid to add
+- 4 track slots with mute / solo
+- Playback all tracks simultaneously (existing audio synth)
+- Save to Supabase library
+- Export / download as `.mid`
+
+### Deferred to v2
+
+- Quantize strength slider + multiple grid resolutions
+- Note resize by dragging right edge
+- Rubber-band select, copy / paste
+- Piano roll zoom (X and Y)
+- AI Generate tab (Claude API)
+- AI Assist tab (Claude API)
+- Punch-in / overdub recording
+- Undo / redo history
+- Per-track volume automation
 
 ---
 
