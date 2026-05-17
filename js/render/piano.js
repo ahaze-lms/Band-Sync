@@ -77,12 +77,6 @@ export function createPianoRenderer(canvas, options = {}) {
     //                Usually the QWERTY key for keyboard-input players ("Z").
     blockLabel = null,
     blockHint  = null,
-    // Multiplier on the canvas pixel buffer relative to the logical
-    // coordinate system. CSS still sizes the canvas via object-fit:contain
-    // — this just gives the browser more pixels to work with when scaling
-    // up to large displays (4K monitors etc), removing bilinear blur.
-    // Drawing code stays in logical coordinates thanks to ctx.setTransform.
-    pixelRatio = Math.max(2, window.devicePixelRatio || 1),
   } = options;
 
   // ── Build keyboard layout ─────────────────────────────────────
@@ -107,14 +101,38 @@ export function createPianoRenderer(canvas, options = {}) {
   const noteWidthFor = n => isBlackKey(n) ? BLACK_KEY_W * 0.85 : WHITE_KEY_W * 0.8;
 
   // ── Bind canvas ───────────────────────────────────────────────
-  // The pixel buffer is CANVAS_W × CANVAS_H × pixelRatio; the drawing
-  // code stays in logical (CANVAS_W × CANVAS_H) coordinates. Browsers
-  // upscale the larger buffer to the CSS display size with much less
-  // blur than upscaling the small native buffer would.
-  canvas.width  = CANVAS_W * pixelRatio;
-  canvas.height = CANVAS_H * pixelRatio;
+  // The pixel buffer is sized dynamically to match the actual CSS
+  // display size × devicePixelRatio — see syncBufferToDisplay() below.
+  // Initial dimensions are a sane fallback for the first paint before
+  // ResizeObserver fires; drawing code always works in logical coords
+  // (CANVAS_W × CANVAS_H) and the per-frame ctx.setTransform handles
+  // the mapping to actual pixels.
+  canvas.width  = CANVAS_W;
+  canvas.height = CANVAS_H;
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+  // Keep the canvas pixel buffer matched to its CSS display size × DPR.
+  // This is the difference between a crisp keyboard at any screen size
+  // and the bilinear-blur fuzz you get when a small buffer is stretched
+  // by CSS. Cheap — no-op when dimensions haven't changed.
+  function syncBufferToDisplay() {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w   = Math.max(1, Math.round(rect.width  * dpr));
+    const h   = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width === w && canvas.height === h) return;
+    canvas.width  = w;
+    canvas.height = h;
+  }
+
+  // ResizeObserver fires whenever the canvas's CSS box changes
+  // (window resize, panel layout change, mobile rotation, etc).
+  // Setting canvas.width/.height inside doesn't re-trigger this
+  // observer because it watches box size, not buffer size.
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(syncBufferToDisplay).observe(canvas);
+  }
 
   // ── Click detection rects (for mouse → key) ───────────────────
   const whiteKeyRects = whiteKeys.map((note, i) => ({
@@ -389,10 +407,13 @@ export function createPianoRenderer(canvas, options = {}) {
   return {
     // ── Frame draw ────────────────────────────────────────────
     draw({ fallingBlocks = [], heldNotes = new Set(), countoff = null } = {}) {
-      // Re-assert pixelRatio scaling each frame — drawCountoff uses
-      // save/restore which preserves the transform, but this is a cheap
-      // guard against any future code that might leave the matrix dirty.
-      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      // Sync buffer first (cheap, no-op if unchanged), then re-scale
+      // each frame so the logical (CANVAS_W × CANVAS_H) drawing space
+      // maps to whatever pixel resolution the canvas currently has.
+      syncBufferToDisplay();
+      const sx = canvas.width  / CANVAS_W;
+      const sy = canvas.height / CANVAS_H;
+      ctx.setTransform(sx, 0, 0, sy, 0, 0);
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       const notePreview = computePreview(fallingBlocks);
       drawHighway(fallingBlocks, heldNotes);
