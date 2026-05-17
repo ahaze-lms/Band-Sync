@@ -102,18 +102,24 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
 
 - **`play.html` — the real game** (the production gameplay surface)
   - Song select pulling from `songs/manifest.json`
-  - Setup screen with per-player identity / instrument / MIDI device / track pickers
+  - Setup screen with **Speed (1-10) + Difficulty (1-7) selectors** at the top, per-player identity / instrument / MIDI device / track pickers below
   - Identity per slot: Me (host) / Friend (via code) / Guest (editable name)
+  - **Computer Keyboard** is a first-class device option in the picker (with mutex — only one slot can own it). QWERTY → MIDI mapping covers 2 octaves (z-row C4, q-row C5)
   - Gameplay using the extracted `js/core/gameplay-engine.js` — same loop, parameterized for 1–4 players
   - 1/2/3/4-player grid layouts; score strip on top, canvas fills via object-fit
+  - **Warm-up state** — clicking START on setup lands in the game screen with engine alive (audio + input responsive, no count-off, no scoring). Big `▶ START SONG` button kicks off the actual run.
+  - **Always-on note labels** on falling blocks (C, F#, D…) so all players learn note recognition by exposure. Keyboard-input players also see the QWERTY key letter as a secondary hint.
   - Per-player live score card, feedback overlays, song timer, pause/restart
+  - **ResizeObserver-driven crisp canvas** — pixel buffer matches `displaySize × devicePixelRatio` so the keyboard is sharp at any screen size (4K monitors, mobile, anything in between)
   - Results screen with per-slot stats, identity display, **NEW PERSONAL BEST** badge
   - End-of-song persistence to `play_sessions` + `play_session_slots`
+  - PB display under each song on setup (`YOUR BEST: 14,400 · S · 98% · 2d ago`)
 - **`2player.html`** — original prototype, still alive as a dev/test harness (reached via Dev Lab). Has unique features: role toggle, test patterns, file picker, calibration overlay. NOT yet ported to the new engine — `js/screens/gameplay.js` duplicates the loop logic (deferred phase 3c).
-- **Player identity (`DESIGN.md §26`)** — 6-digit device codes for friend-attach, generated on friend's phone (PAIRING in profile), claimed at play.html setup (6-digit modal), scores save to the correct user, friend's audit log under RECENT ACCOUNT ACTIVITY
+- **Player identity (`DESIGN.md §26`)** — 6-digit device codes for friend-attach, generated on friend's phone (PAIRING in profile), claimed at play.html setup (6-digit modal), scores save to the correct user, friend's audit log under RECENT ACCOUNT ACTIVITY. **Identity is in-memory only** today — reload nukes it. The §26 Evolution v2 spec (session attachments + localStorage) fixes this; not yet built.
 - **HISTORY screen** — chronological list of every session you appear in, grouped by date, with PB badges
 - **Social layer** (`index.html`) — Supabase auth, profiles, friend requests, real-time inbox, play invites
-- **Engine fundamentals** — scoring (PERFECT/GOOD/MISS/WRONG, x1→x8 combo, S/A/B/C/D), MIDI auto-detect + shared-device multiplexing, per-device latency calibration, count-off
+- **Mobile pass** (quick wins, not a full redesign): bumped color contrast + base font, inbox flips to single-pane with back button + `dvh` viewport + 16px inputs to avoid iOS auto-zoom, play.html stacks panels vertically and uses default `object-fit:contain` so the keyboard stays visible
+- **Engine fundamentals** — scoring (PERFECT/GOOD/MISS/WRONG, x1→x8 combo, S/A/B/C/D), MIDI auto-detect + shared-device multiplexing, per-device latency calibration, count-off with `Clock.startSong({ countoffStartsAt })` parameterised for the eventual remote-multiplayer synchronised start
 - **Dev Lab** (`lab.html`) — hub for the prototype + all debug tools
 
 ---

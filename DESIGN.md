@@ -10,13 +10,17 @@
 
 **`play.html` — the real game** (production gameplay surface, live):
 - Song select pulling from a generated `songs/manifest.json`
-- Setup screen: per-player identity (Me / Friend / Guest) × instrument × MIDI device × track
-- Identity persists across song-select ↔ setup ↔ game ↔ results loops within a page session
+- Setup screen: Speed (1–10) + Difficulty (1–7) selectors at top; per-player identity (Me / Friend / Guest) × instrument × MIDI device × track below
+- **Computer Keyboard** is a first-class device option with mutex (only one slot per machine) — QWERTY → MIDI mapping covering 2 octaves
+- Identity persists across song-select ↔ setup ↔ game ↔ results loops within a page session (in-memory only — see §26 Evolution v2 for the durable-attachment evolution that's specced but not yet built)
 - Gameplay using the extracted, parameterised `js/core/gameplay-engine.js` (1–N players)
 - 1 / 2 / 3 / 4-player grid layouts; score strip on top of each panel, canvas fills via `object-fit: contain`
+- **Warm-up state** before count-off: engine alive (audio + input responsive) so players can find their hand position before clicking ▶ START SONG
+- **Always-on note name labels** on falling blocks (C, F#, D…) — teaches recognition by exposure regardless of input device. Keyboard players see the QWERTY key as a secondary hint.
+- **ResizeObserver-driven crisp canvas** — pixel buffer matches `displaySize × devicePixelRatio` so the keyboard renders sharp at any size (4K, mobile, anything between)
 - Live per-player score card, hit-feedback overlays, song timer, pause / restart
 - Results screen: per-slot scores + grade + identity, NEW PERSONAL BEST badge when host beats their own PB
-- End-of-song persistence writes one `play_sessions` row + N `play_session_slots` rows
+- End-of-song persistence writes one `play_sessions` row + N `play_session_slots` rows (records actual speed/difficulty used)
 - Personal best displayed under each song on setup ("YOUR BEST: 14,400 · S · 98% · 2d ago")
 
 **Player identity** (`§26`):
@@ -504,12 +508,21 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - ✅ Player identity model (§26) — host / friend-via-code / guest, with editable guest names
 - ✅ Track-picker UI per player at setup; same-track allowed (duel mode)
 - ✅ Bundled PD song library via `tools/build-songs.mjs` (Twinkle, Mary, Ode to Joy, Frère Jacques, Saints, + Twinkle duet)
+- ✅ Computer Keyboard as a first-class input device (mutex per machine) + always-on note labels on falling blocks (teach-by-exposure)
+- ✅ Warm-up state on game screen — engine alive but song paused until ▶ START SONG
+- ✅ Speed (1-10) + Difficulty (1-7) selectors at top of setup; choices persist in `ctx.setup` and save to `play_sessions`
+- ✅ ResizeObserver-driven crisp canvas at any display size (4K → mobile)
+- ✅ Email confirmation redirect fix (`emailRedirectTo` explicit on signUp; Site URL also configured)
+- ✅ Readability + mobile pass — lifted dim contrast, bumped base font, inbox single-pane on mobile with `dvh` viewport + 16px inputs to avoid iOS auto-zoom
+- 🔜 §26 Evolution v2 — durable session attachments (token-based localStorage rehydration so reloads don't kill the friend's identity)
+- 🔜 §27 Remote multiplayer — lobby + clock-sync + score broadcast (~3-4 focused sessions)
 - 🔜 Admin screen — in-app user/data management (admin-only route)
 - 🔜 Real piano + drum samples
 - 🔜 GM drum-map translation so drum tracks reach the engine as abstract names (currently piano-only library)
 - 🔜 Calibration overlay extracted into a shared `js/ui/` module; calibration added to play.html setup
 - 🔜 Phase 3c — port `js/screens/gameplay.js` (2player.html) to use the engine, eliminating the duplicate game loop
 - 🔜 3- and 4-player hardware-tested gameplay (layouts exist; needs ≥3 MIDI devices)
+- 🔜 Mobile touch comfort — keys are small on narrow screens (current state: visible + tappable but not comfortable). Pinch-zoom or "double-size keys" toggle is the path.
 
 ### v1.0 — MVP launchable
 - Real game at `play.html` — song select → setup → gameplay → results
@@ -626,6 +639,13 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-17 | Guest names are editable but optional. Identity cell for guest slots renders as a name input + mini kind-switcher side-by-side; default `Guest N` stays a valid value (empty input reverts to it). Edited name flows through to in-game chips, results row, saved `display_name`, and friend audit log. No schema change required. |
 | 2026-05-17 | §26 evolution: durable session attachments. Friend's 6-digit code is still the one-shot pairing handshake, but on claim Supabase now also issues a session token that the host stores in localStorage. Reloads rehydrate the attached identity by validating the token (24h TTL, revocable from friend's Connected Devices). YouTube-on-TV mental model. Fixes the "have to regen a code every song after every refresh" friction the user hit during testing. Schema adds `session_attachments` + extends `claim_device_code` RPC + new `attach_session` / `revoke_session_attachment` RPCs. Full spec in §26 Evolution v2. |
 | 2026-05-17 | §27 Remote Multiplayer specced. Local-first by design: each player runs their own engine, audio, and hit detection on their own machine; only synchronised start (via existing `Clock.startSong({ countoffStartsAt })`) and score broadcasts (Supabase Realtime, ~1Hz) cross the network. New tables: `lobbies`, `lobby_participants`. Both modes (local couch coop + remote) write the same `play_sessions` / `play_session_slots` rows so HISTORY queries are mode-agnostic. Honest scope: ~3-4 focused sessions to a functional first version, with lobby UI being the only genuinely new architectural surface. |
+| 2026-05-17 | Computer Keyboard input shipped + always-on note labels on falling blocks. Keyboard is a first-class device option in the picker (mutex per machine — one slot owns it). QWERTY mapping covers 2 octaves (z-row = C4 octave, q-row = C5, Garageband-style). Note name (C, F#, etc.) drawn on every falling block for *all* players regardless of input device — teach-by-exposure pedagogy so MIDI users learn note names too. Keyboard players also see the QWERTY letter as a smaller secondary hint. |
+| 2026-05-17 | play.html gameplay screen now opens in a **warm-up state**. The engine spins up immediately (canvas drawing, audio + input responsive) but the song timer doesn't start until the user clicks `▶ START SONG`. Lets players test their device + find hand position before count-off. Hint text "Play a few notes to warm up, then start." Restart re-enters the same flow. |
+| 2026-05-17 | Speed (1–10) and Difficulty (1–7) selectors added to setup. Choices persist in `ctx.setup` (survive song-select ↔ setup loops within a page session) and are passed both to the engine config and to `play_sessions` so HISTORY records what was actually played. Replaces the implicit `DEFAULT_*` constants. |
+| 2026-05-17 | Piano renderer uses a ResizeObserver to keep the canvas pixel buffer matched to `displaySize × devicePixelRatio`. Crisp at any display size — 4K monitors no longer get bilinear blur. Drawing code stays in logical `CANVAS_W × CANVAS_H` coordinates; per-frame `ctx.setTransform` handles the mapping. Drums renderer has the same issue but no one's complained (library is piano-only). |
+| 2026-05-17 | Mobile pass (quick wins, not full responsive redesign). Lifted `--dim` color contrast from `#55556a` to `#8585a0` (was nearly invisible on phones in bright light); bumped base font 14→15px. play.html: panels stack vertically on ≤768px; setup player rows wrap fields below the P# tag. Inbox single-pane with ← BACK button; `#app` uses 100dvh; inputs forced to 16px to stop iOS auto-zoom. Deliberately NOT in scope: full responsive redesign, landscape-specific layouts, pinch-zoom for touch-comfortable keys. |
+| 2026-05-17 | RLS recursion fix migration 0002 — play_sessions ↔ play_session_slots policies cross-referenced each other, so any insert-with-select triggered "infinite recursion detected." Pulled the cross-table existence checks into SECURITY DEFINER helper functions (`user_in_session`, `user_hosts_session`) — same pattern as `claim_device_code`. Surfaced as "COULD NOT SAVE" on every results screen until the migration was applied. |
+| 2026-05-17 | Email confirmation redirect fix — friend's signup link 404'd because Supabase's Site URL fallback didn't match the GitHub Pages path. Added explicit `emailRedirectTo` to `signUp()` deriving from `location.href` so the URL is unambiguous regardless of Supabase config drift. Also documented the Site URL + Redirect URLs dashboard settings (`https://ahaze-lms.github.io/Band-Sync/` and `…/**` allowlist). |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
