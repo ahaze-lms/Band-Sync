@@ -114,9 +114,9 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
 
 ### `play.html` — the real game
 Mini-SPA with 4 states:
-1. Song select — list of `.mid` files from the library
-2. Setup — player count (1–2 for now), instrument per player, MIDI device assignment
-3. Game — same engine as `2player.html`, parameterized by player count
+1. Song select — list of `.mid` files from `songs/`
+2. Setup — player count (1–2 for now); per player: instrument, MIDI device, **and track** (which of the song's tracks they'll play — e.g. Melody vs Bass). Two players can share a track ("duel mode") — same notes, independent scores. Default when song has fewer tracks than players.
+3. Game — same engine as `2player.html`, parameterized by player count and per-player track selection
 4. Results — per-player scores, accuracy, grade, Play Again / Menu
 
 Auth: Supabase auth state persists in localStorage across page loads. Call `supabase.auth.getUser()` at load; redirect to `index.html` if no session. Logged-in user is P1 by default. Play invites: load from `play.html?invite=<id>`.
