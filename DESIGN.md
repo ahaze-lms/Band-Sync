@@ -337,6 +337,8 @@ Every player + every MIDI device pairing has its own latency. Calibration measur
 | `friend_requests` | from_id → to_id, status: pending / accepted / declined |
 | `messages` | from_id → to_id, body, read_at |
 | `play_invites` | from_id → to_id, song_id, status, expires_at (5 min TTL) |
+| `songs` | Song projects — owner, BPM, visibility (private/friends/public), remix_of, full track+notes JSONB blob |
+| `song_collaborators` | Junction — which user can edit which track slot of which song |
 
 All tables have Row Level Security. Users can only read/write their own data or data they're party to. A Postgres trigger auto-creates a `profiles` row on every new `auth.users` insert.
 
@@ -480,6 +482,8 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - 🔜 Calibration-overlay extraction into a shared `js/ui/` module
 
 ### v1.0 — MVP launchable
+- Real game at `play.html` — song select → setup → gameplay → results
+- Song Creator MVP — record piano + drums, one-click quantize, basic piano roll, save/share, async collaboration, publish to library
 - Admin screen with user list, activity log, data management
 - Paywall (free 1-2P, paid 3-4P + custom uploads)
 - Default song library (bundled MIDIs)
@@ -490,11 +494,14 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - Google OAuth (optional — lower friction sign-up)
 
 ### v1.5 — Paid features differentiate
+- Song Creator v2 — quantize strength slider, note resize, rubber-band select, piano roll zoom, real-time collaboration
+- Browse / Discover — public song library, remix / fork any public song
+- AI Generate — text prompt → full 4-track MIDI song (paid)
+- AI Assist — select region, ask Claude to modify it (paid)
 - Custom MIDI upload (paid)
 - AI chart simplification (free limited, paid unlimited)
-- AI MIDI editor v1 (paid)
 - Replay system (paid)
-- Bass instrument view
+- Bass instrument view (piano roll + fretboard)
 
 ### v2.0 — AI Studio era
 - Full AI MIDI editor with conversational suggestions
@@ -573,7 +580,11 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-16 | Supabase vendor bundle (`supabase.umd.js`) downloaded and served from `/js/vendor/` — eliminates CDN latency on every load. |
 | 2026-05-16 | Live-first development. GitHub Pages (`ahaze-lms.github.io/Band-Sync`) is the primary target. Local server (`python -m http.server 8000`) is optional fallback for offline work only. |
 | 2026-05-16 | Admin screen added to roadmap — in-app route, admin-only, showing user list, friend graph, recent activity. Supabase Table Editor fills this role in the interim. |
-| 2026-05-17 | Song Creator / AI Studio designed — `studio.html` stub added. Transport + track list + piano roll + AI panel architecture. MVP scope defined; full spec in §25. |
+| 2026-05-17 | Song Creator / AI Studio designed — `studio.html` stub added. Transport + track list + instrument-specific piano roll + collaboration panel + AI panel. Full spec in §25. |
+| 2026-05-17 | Instrument plan: piano + drums working now; bass (v1.5), guitar (v2.0), vocals (v2.5). Each has a distinct piano roll view. Drum view uses abstract lane names, not MIDI note numbers. |
+| 2026-05-17 | Collaboration model: song owner assigns track slots to specific friends. Assigned collaborator owns their track; owner can always override. Async first, real-time (Supabase Realtime, one person per track) in v2. |
+| 2026-05-17 | Sharing model: two distinct actions — Invite to Collaborate (edit assigned track) vs Publish to Library (play-only). Visibility levels: private / friends / public. |
+| 2026-05-17 | Public library + Remix: public songs discoverable by all users. Any public song can be forked into a new private project; attribution preserved. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -617,39 +628,85 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 
 ## 25. Song Creator / AI Studio
 
-Lives at `studio.html`. The tool for building songs that feed into the game library.
+Lives at `studio.html`. The tool for building songs that feed into the game library, with collaborative multi-user editing and a public song library.
 
 ### Vision
 
-A lightweight browser-based DAW: record MIDI tracks one at a time, quantize them, edit notes in a piano roll, stack up to four tracks, and export as a `.mid` for `play.html`. AI assists at two points — generating a complete starting song from a text prompt, or suggesting improvements to what you recorded.
+A lightweight browser-based DAW: record MIDI tracks one at a time with any connected instrument, quantize, edit notes in an instrument-specific piano roll, stack up to four tracks, and publish to the game library. Friends can be invited to contribute individual tracks. Published songs are playable by anyone — and remixable by anyone into their own project.
 
-**Heart and Soul example:** Record Track 1 (chord accompaniment), Record Track 2 (melody line), export → playable BandSync song.
+**Heart and Soul example:** You record Track 1 (chord accompaniment, piano), invite a friend to record Track 2 (melody), combine and publish → a playable BandSync song any user can discover.
+
+---
+
+### Instruments
+
+Each instrument has its own piano roll view. Piano and drums are working today; the rest are planned.
+
+| Instrument | Status | Piano roll Y axis | Duration? |
+|---|---|---|---|
+| **Piano** | ✅ Working | MIDI pitch (88 keys, keyboard on left) | Yes — sustain matters |
+| **Drums** | ✅ Working | Drum lanes (KICK, SNARE, HH_CLOSED…) | No — hits only |
+| **Bass** | 🔜 v1.5 | 4 strings × frets (fretboard layout) | Yes |
+| **Guitar** | 🔜 v2.0 | 6 strings × frets + chord diagram overlay | Yes |
+| **Vocals** | 🔜 v2.5 | Pitch contour + lyric syllable labels | Yes (held pitch) |
+
+The `piano-roll.js` renderer reads the track's `role` and draws the correct view. Drum tracks use the abstract name system (`KICK`, `SNARE`, etc.) already established in the game engine — the studio never stores raw MIDI note numbers for drums.
+
+---
 
 ### User flow
 
-1. **New / Open** — name the song, set BPM (type or tap tempo), choose time signature (default 4/4)
-2. **Record** — arm one of four track slots, hit Record, wait through a 4-beat count-in, play your part, hit Stop
-3. **Quantize** — choose grid resolution, set strength, Apply
-4. **Edit** — piano roll: move notes, resize, delete, add by clicking the grid
+1. **New / Open** — name the song, set BPM (type or tap tempo), time signature (default 4/4), total bars
+2. **Record** — arm a track slot, assign instrument role, hit Record, 4-beat count-in plays, perform, hit Stop
+3. **Quantize** — choose grid resolution, set strength (0–100%), Apply
+4. **Edit** — instrument-appropriate piano roll: move, resize, delete, add notes
 5. **Repeat** — arm a different track, record the next part
-6. **Mix** — mute/solo tracks, adjust volume per track, listen to all tracks together
-7. **Export** — save to game library (Supabase) → appears in `play.html` song select
+6. **Mix** — mute / solo tracks, adjust volume, listen to everything together
+7. **Collaborate** — invite specific friends to contribute to assigned track slots
+8. **Publish** — set visibility (private / friends / public), add to game library
+
+---
 
 ### Components
 
 | Component | Description |
 |---|---|
-| **Transport bar** | Song name, BPM input + tap-tempo button, time sig, total bars, Record / Play / Stop / Rewind |
-| **Track list** | 4 rows — instrument role, color, mute, solo, volume, arm button |
-| **Piano roll** | Canvas grid: X = time (bars + beats), Y = pitch. Notes as colored bars. |
-| **Quantize panel** | Grid resolution selector, strength slider, Apply button, Auto-quantize toggle |
+| **Transport bar** | Song name, BPM input + tap-tempo, time sig, total bars, Record / Play / Stop / Rewind |
+| **Track list** | 4 rows — instrument role, color, mute, solo, volume, arm button, assigned collaborator avatar |
+| **Piano roll** | Canvas grid, instrument-specific view. X = time (bars + beats), Y = pitch or drum lanes |
+| **Quantize panel** | Grid resolution selector, strength slider (0–100%), Apply button, Auto-quantize toggle |
 | **AI panel** | Generate tab + Assist tab |
+| **Collaboration panel** | Invite friends, track assignments, per-track contribution status |
+| **Publish dialog** | Visibility selector (private / friends / public), title, description, Publish button |
+
+---
+
+### Piano roll — instrument views
+
+**Piano view**
+- Y axis: 88-key piano keyboard on left margin, chromatic pitch
+- Notes: colored bars (pitch × duration) — wider = longer sustained note
+
+**Drum view**
+- Y axis: named drum lanes — KICK, SNARE, HH_CLOSED, HH_OPEN, HH_PEDAL, TOM_1, TOM_2, TOM_3, CRASH, RIDE
+- Notes: fixed-height hit markers (no meaningful duration)
+- Lane labels show abstract name, not MIDI note number
+
+**Bass / Guitar view** (planned v1.5 / v2.0)
+- Y axis: string × fret grid (fretboard layout)
+- Notes: colored bars per string
+
+**Vocal view** (planned v2.5)
+- Y axis: chromatic pitch (no keyboard graphic)
+- Notes: bars with lyric syllable text rendered inside
+
+---
 
 ### Piano roll interactions
 
 **MVP:**
 - View notes after recording
-- Click-drag to move notes (time and pitch)
+- Click-drag to move notes (time + pitch / lane)
 - Right-click to delete
 - Click empty grid to add a note
 
@@ -657,24 +714,65 @@ A lightweight browser-based DAW: record MIDI tracks one at a time, quantize them
 - Drag right edge to resize note duration
 - Rubber-band select multiple notes
 - Copy / paste selection
-- Zoom X (bars visible) and Y (pitch range visible)
+- Zoom X (bars visible) and Y (pitch range)
 - Snap-to-grid toggle
+
+---
 
 ### Quantization
 
-Grid resolution options: 1/4, 1/8, **1/16 (default)**, 1/32 notes.
+Grid resolution: 1/4, 1/8, **1/16 (default)**, 1/32 notes.
 
-Strength: 0% = raw recording, 100% = fully snapped to grid. Values in between blend. Original timestamps always preserved — re-quantize at any strength at any time.
+Strength: 0% = raw recording, 100% = fully snapped. Values in between blend proportionally. Original timestamps always preserved — re-quantize at any strength, any time.
 
 Auto-quantize: optional toggle that applies 100% / 16th-note snap automatically when recording stops.
+
+---
+
+### Collaboration model
+
+**Async first, real-time later.**
+
+*Async (MVP):* A song is a shared document in Supabase. Owner works and saves; collaborators open it later and see the latest state. Like passing a project file, but through the cloud.
+
+*Real-time (v2):* Supabase Realtime channels (already in the stack for inbox) broadcast note changes to all active collaborators. Conflict-free by design: **one person per track at a time**. If everyone is on a different track, there are no conflicts to resolve — the model maps naturally to how a real band works.
+
+**Track ownership rules:**
+- Song owner assigns track slots to specific collaborators: "Track 2 is yours — record the bass line."
+- Assigned collaborator can record, re-record, and edit their track only.
+- Song owner can always reassign or override any track — it's their project.
+- Unassigned tracks are open for any collaborator with edit access to claim.
+
+---
+
+### Sharing model
+
+Two distinct actions with different intents — never conflated in one dialog.
+
+| Action | Who | Access granted |
+|---|---|---|
+| **Invite to Collaborate** | Specific friend(s) | Edit their assigned track(s) |
+| **Publish to Library** | Friends-only *or* Public | Play the song in the game |
+
+**Visibility levels:**
+
+| Level | Who can see it |
+|---|---|
+| `private` | Owner only |
+| `friends` | Owner's friend list |
+| `public` | All BandSync users — discoverable in Browse / Discover |
+
+**Remix:** any public song can be forked into a new private project. The fork is a full copy; the original is unchanged. Attribution preserved: *"Remixed from [title] by @username."*
+
+---
 
 ### AI integration
 
 **Generate tab** — text prompt → complete song
 
-User writes: *"Heart and Soul — 4 tracks, 100 BPM, 32 bars. Track 1: chord accompaniment. Track 2: melody. Track 3: bass line. Track 4: simple drums."*
+User writes: *"Heart and Soul — 4 tracks, 100 BPM, 32 bars. Track 1: chord accompaniment (piano). Track 2: melody (piano). Track 3: bass line. Track 4: simple drums."*
 
-Claude API returns a note array per track. The studio imports these as pre-populated tracks. User can record over any track, edit notes, or use as-is.
+Claude API returns a note array per track in the song data model format. Studio imports these as pre-populated tracks. User can record over any track, edit notes, or use as-is.
 
 **Assist tab** — select a track or region → ask Claude
 
@@ -685,36 +783,45 @@ Examples:
 - "Transpose the whole track up a fourth"
 - "Make bars 9–12 swing more"
 
-Claude returns a modified note array for the selected track/region. User accepts or rejects.
+Claude returns a modified note array for the selected track / region. User accepts or rejects. Original preserved until accepted.
+
+---
 
 ### Data model
 
 ```js
-// Song object — saved to Supabase `songs` table + exported as .mid
+// Song — saved to Supabase `songs` table + exported as .mid
 {
   id: uuid,
+  owner_id: uuid,              // auth.users reference
   name: string,
+  description: string,
   bpm: number,
   timeSignature: { num: 4, den: 4 },
   bars: number,
+  visibility: 'private' | 'friends' | 'public',
+  remix_of: uuid | null,       // source song id if this is a fork
+  created_at: timestamp,
+  updated_at: timestamp,
   tracks: [
     {
       id: uuid,
-      index: 0,            // 0–3
+      index: 0,                // 0–3, maps to game player slot
       name: string,
-      role: 'piano' | 'drums' | 'bass' | 'guitar',
+      role: 'piano' | 'drums' | 'bass' | 'guitar' | 'vocals',
       color: string,
       muted: boolean,
       solo: boolean,
-      volume: number,      // 0–1
+      volume: number,          // 0–1
+      contributor_id: uuid | null,  // which collaborator owns this track
       notes: [
         {
-          pitch: number,       // MIDI note number (piano/bass/guitar)
-          drumName: string,    // abstract drum name (drums role only)
-          startTick: number,   // quantized position (ticks from song start)
-          startMsRaw: number,  // original recorded timestamp (preserved)
+          pitch: number,         // MIDI note number (non-drum roles)
+          drumName: string,      // abstract name (drums role only)
+          startTick: number,     // quantized position (480 PPQ ticks)
+          startMsRaw: number,    // original recorded timestamp, always preserved
           durationTick: number,
-          velocity: number     // 0–127
+          velocity: number       // 0–127
         }
       ]
     }
@@ -722,30 +829,71 @@ Claude returns a modified note array for the selected track/region. User accepts
 }
 ```
 
-Tick resolution: 480 ticks per quarter note (standard MIDI PPQ).
+Tick resolution: 480 PPQ (standard MIDI quarter-note resolution).
+
+---
+
+### Supabase schema additions
+
+```sql
+create table songs (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid references auth.users not null,
+  name        text not null,
+  description text,
+  bpm         integer not null default 120,
+  bars        integer not null default 32,
+  visibility  text not null default 'private'
+                check (visibility in ('private','friends','public')),
+  remix_of    uuid references songs,
+  data        jsonb not null,   -- full tracks + notes blob
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+create table song_collaborators (
+  song_id     uuid references songs not null,
+  user_id     uuid references auth.users not null,
+  track_index integer,          -- null = any unassigned track
+  invited_at  timestamptz default now(),
+  primary key (song_id, user_id)
+);
+
+-- RLS: owner + collaborators can read private songs;
+--      friends-visibility readable by friend list;
+--      public readable by all authenticated users.
+--      Only owner can change visibility or reassign tracks.
+```
+
+---
 
 ### New modules
 
 | File | Purpose |
 |---|---|
-| `js/core/recorder.js` | Capture live MIDI events with timestamps relative to song start while metronome runs |
-| `js/core/quantizer.js` | Snap `startMsRaw` to nearest grid division at given strength; return `startTick` |
+| `js/core/recorder.js` | Capture live MIDI events with timestamps while metronome runs |
+| `js/core/quantizer.js` | Snap `startMsRaw` to nearest grid division at given strength; output `startTick` |
 | `js/core/song.js` | Song data model — create, serialize, deserialize, export to `.mid` binary |
-| `js/render/piano-roll.js` | Canvas piano roll — draw notes, handle mouse interaction, manage viewport |
-| `js/services/library.js` | Supabase CRUD for `songs` table — save, list, load, delete |
+| `js/render/piano-roll.js` | Canvas piano roll — instrument-specific views, mouse interaction, viewport management |
+| `js/services/library.js` | Supabase CRUD for `songs` + `song_collaborators` — save, list, load, invite, publish |
 
-Reuses: `js/core/midi.js` (device input), `js/core/audio.js` (metronome click + playback synth), `js/core/midi-parser.js` (re-import existing `.mid` files).
+Reuses: `js/core/midi.js`, `js/core/audio.js` (metronome + playback synth), `js/core/midi-parser.js` (re-import `.mid`), existing drum-mapping abstraction.
+
+---
 
 ### MVP scope (build first)
 
 - BPM input + tap tempo (average last 4 taps)
-- 4-beat count-in before recording starts
-- Record one track at a time (MIDI input → timestamped note array)
+- Piano and drum track recording (the two working instruments)
+- 4-beat count-in before recording
 - One-click quantize (16th note, 100% strength)
-- Piano roll: view notes, drag to move, right-click to delete, click grid to add
+- Instrument-appropriate piano roll view (piano keys vs. drum lanes)
+- Piano roll: view notes, drag to move, right-click delete, click grid to add
 - 4 track slots with mute / solo
-- Playback all tracks simultaneously (existing audio synth)
-- Save to Supabase library
+- Playback all tracks (existing audio synth)
+- Save to Supabase `songs` table (private by default)
+- Invite a collaborator to a specific track slot (async)
+- Publish: set visibility to `friends` or `public`
 - Export / download as `.mid`
 
 ### Deferred to v2
@@ -753,9 +901,13 @@ Reuses: `js/core/midi.js` (device input), `js/core/audio.js` (metronome click + 
 - Quantize strength slider + multiple grid resolutions
 - Note resize by dragging right edge
 - Rubber-band select, copy / paste
-- Piano roll zoom (X and Y)
+- Piano roll zoom (X and Y axes)
+- Real-time collaboration via Supabase Realtime
+- Browse / Discover public library screen
+- Remix / fork public songs
 - AI Generate tab (Claude API)
 - AI Assist tab (Claude API)
+- Bass, guitar, vocal instrument views
 - Punch-in / overdub recording
 - Undo / redo history
 - Per-track volume automation

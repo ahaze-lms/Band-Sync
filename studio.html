@@ -15,112 +15,97 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 32px;
-      padding: 40px 24px;
+      padding: 40px 24px 60px;
+      gap: 28px;
     }
 
     .back-link {
       position: fixed;
-      top: 24px;
-      left: 24px;
-      font-size: 10px;
-      letter-spacing: 2px;
-      color: #555;
-      text-decoration: none;
-      transition: color 0.15s;
+      top: 24px; left: 24px;
+      font-size: 10px; letter-spacing: 2px; color: #555;
+      text-decoration: none; transition: color 0.15s;
     }
     .back-link:hover { color: #7F77DD; }
 
-    .logo {
-      font-size: 22px;
-      font-weight: 500;
-      letter-spacing: 4px;
-      color: #fff;
-      text-align: center;
-    }
+    .logo { font-size: 22px; font-weight: 500; letter-spacing: 4px; color: #fff; text-align: center; }
     .logo span { color: #7F77DD; }
-
-    .page-title {
-      font-size: 11px;
-      letter-spacing: 4px;
-      color: #555;
-      text-align: center;
-      margin-top: -20px;
-    }
-
-    .card {
-      background: #0d0d14;
-      border: 0.5px solid #1e1e2a;
-      border-radius: 12px;
-      padding: 40px 48px;
-      max-width: 560px;
-      width: 100%;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+    .page-title { font-size: 11px; letter-spacing: 4px; color: #555; text-align: center; margin-top: -20px; }
 
     .status-badge {
       display: inline-block;
-      padding: 4px 12px;
-      border-radius: 20px;
-      background: #1a1a26;
-      border: 0.5px solid #2a2a3a;
-      font-size: 9px;
-      letter-spacing: 3px;
-      color: #7F77DD;
+      padding: 4px 14px; border-radius: 20px;
+      background: #1a1a26; border: 0.5px solid #2a2a3a;
+      font-size: 9px; letter-spacing: 3px; color: #7F77DD;
       align-self: center;
     }
 
-    .card h2 {
-      font-size: 16px;
-      font-weight: 500;
-      letter-spacing: 2px;
-      color: #fff;
+    .section-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      width: 100%; max-width: 960px;
+    }
+
+    .card {
+      background: #0d0d14; border: 0.5px solid #1e1e2a;
+      border-radius: 10px; padding: 22px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+
+    .card-label {
+      font-size: 9px; letter-spacing: 3px; color: #444;
+    }
+
+    .card h3 {
+      font-size: 12px; font-weight: 600; letter-spacing: 2px; color: #fff;
     }
 
     .card p {
-      font-size: 12px;
-      line-height: 1.8;
-      color: #555;
+      font-size: 11px; line-height: 1.7; color: #555;
     }
 
     .feature-list {
       list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      text-align: left;
+      display: flex; flex-direction: column; gap: 8px;
     }
-
     .feature-list li {
+      font-size: 11px; color: #666;
+      display: flex; align-items: flex-start; gap: 8px; line-height: 1.5;
+    }
+    .feature-list li .dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: #7F77DD; flex-shrink: 0; margin-top: 6px;
+    }
+    .feature-list li .dot.teal { background: #1D9E75; }
+    .feature-list li .dot.dim { background: #333; }
+
+    .instrument-table {
+      width: 100%; border-collapse: collapse;
       font-size: 11px;
-      color: #666;
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      line-height: 1.5;
     }
-
-    .feature-list li::before {
-      content: '—';
-      color: #333;
-      flex-shrink: 0;
-      margin-top: 1px;
+    .instrument-table th {
+      text-align: left; font-size: 9px; letter-spacing: 2px;
+      color: #444; font-weight: 400; padding-bottom: 10px;
     }
-
-    .divider {
-      height: 0.5px;
-      background: #1e1e2a;
+    .instrument-table td {
+      padding: 6px 0; color: #666;
+      border-top: 0.5px solid #161620;
+      vertical-align: top;
     }
+    .instrument-table td:first-child { color: #aaa; padding-right: 16px; white-space: nowrap; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 9px; letter-spacing: 1px;
+    }
+    .badge.live { background: #0f2a1e; color: #1D9E75; }
+    .badge.planned { background: #1a1a26; color: #555; }
 
-    .label {
-      font-size: 9px;
-      letter-spacing: 3px;
-      color: #333;
-      text-align: left;
+    .divider { height: 0.5px; background: #1e1e2a; width: 100%; max-width: 960px; }
+
+    .section-label {
+      width: 100%; max-width: 960px;
+      font-size: 9px; letter-spacing: 3px; color: #333;
+      padding-bottom: 6px; border-bottom: 0.5px solid #1a1a26;
     }
   </style>
 </head>
@@ -131,40 +116,147 @@
   <div class="logo">BAND<span>SYNC</span></div>
   <div class="page-title">SONG CREATOR</div>
 
-  <div class="card">
-    <span class="status-badge">IN DESIGN</span>
+  <span class="status-badge">IN DESIGN</span>
 
-    <h2>BUILD YOUR OWN SONGS</h2>
+  <div class="section-label">WHAT IT DOES</div>
+  <div class="section-grid">
 
-    <p>
-      Record each instrument part one track at a time, tighten up the timing,
-      edit notes in a piano roll, then combine everything into a playable
-      BandSync song.
-    </p>
+    <div class="card">
+      <div class="card-label">OVERVIEW</div>
+      <h3>BUILD YOUR OWN SONGS</h3>
+      <p>
+        Record each instrument part one track at a time, tighten up the timing with
+        quantization, edit notes in a piano roll, then combine everything into a
+        playable BandSync song — and share it with friends or the world.
+      </p>
+    </div>
 
-    <div class="divider"></div>
+    <div class="card">
+      <div class="card-label">WORKFLOW</div>
+      <h3>HOW IT WORKS</h3>
+      <ul class="feature-list">
+        <li><span class="dot"></span>Set BPM by typing or tap-tempo</li>
+        <li><span class="dot"></span>Arm a track, hit Record — 4-beat count-in plays</li>
+        <li><span class="dot"></span>Perform your part on any MIDI instrument</li>
+        <li><span class="dot"></span>Quantize: snap notes to the 16th-note grid</li>
+        <li><span class="dot"></span>Edit in the piano roll — move, add, delete notes</li>
+        <li><span class="dot"></span>Repeat for each of the 4 tracks</li>
+        <li><span class="dot"></span>Mix, then publish to the game library</li>
+      </ul>
+    </div>
 
-    <div class="label">MVP FEATURES</div>
-    <ul class="feature-list">
-      <li>Set BPM by typing or tapping tap-tempo</li>
-      <li>Record MIDI input live with a 4-beat count-in</li>
-      <li>One-click quantize — snap notes to the 16th-note grid</li>
-      <li>Piano roll editor — view, move, add, and delete notes</li>
-      <li>Up to 4 tracks — piano, drums, bass, guitar — with mute &amp; solo</li>
-      <li>Playback all tracks together with the existing audio engine</li>
-      <li>Export as .mid and add to your game library</li>
-    </ul>
+  </div>
 
-    <div class="divider"></div>
+  <div class="section-label">INSTRUMENTS</div>
+  <div class="section-grid" style="grid-template-columns: 1fr;">
+    <div class="card">
+      <table class="instrument-table">
+        <thead>
+          <tr>
+            <th>INSTRUMENT</th>
+            <th>STATUS</th>
+            <th>PIANO ROLL VIEW</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Piano</td>
+            <td><span class="badge live">WORKING</span></td>
+            <td>MIDI pitch — 88 keys on left margin, notes as bars (width = duration)</td>
+          </tr>
+          <tr>
+            <td>Drums</td>
+            <td><span class="badge live">WORKING</span></td>
+            <td>Named drum lanes — KICK, SNARE, HH_CLOSED… Hit markers, no duration</td>
+          </tr>
+          <tr>
+            <td>Bass</td>
+            <td><span class="badge planned">v1.5</span></td>
+            <td>4 strings × frets — fretboard layout, notes as bars per string</td>
+          </tr>
+          <tr>
+            <td>Guitar</td>
+            <td><span class="badge planned">v2.0</span></td>
+            <td>6 strings × frets + chord diagram overlay</td>
+          </tr>
+          <tr>
+            <td>Vocals</td>
+            <td><span class="badge planned">v2.5</span></td>
+            <td>Pitch contour with lyric syllable labels inside each note bar</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-    <div class="label">COMING LATER</div>
-    <ul class="feature-list">
-      <li>Quantize strength slider (0–100%) and multiple grid resolutions</li>
-      <li>Resize notes by dragging, rubber-band select, copy / paste</li>
-      <li>AI Generate — describe a song, get a full 4-track starting point</li>
-      <li>AI Assist — select a track, ask Claude to improve or add to it</li>
-      <li>Undo / redo, piano roll zoom, per-track volume automation</li>
-    </ul>
+  <div class="section-label">COLLABORATION &amp; SHARING</div>
+  <div class="section-grid">
+
+    <div class="card">
+      <div class="card-label">COLLABORATE</div>
+      <h3>INVITE FRIENDS TO CONTRIBUTE</h3>
+      <p>
+        Assign any of the 4 track slots to a specific friend. They open the song,
+        hear your tracks playing back, and record their part. You keep ownership;
+        they own their track.
+      </p>
+      <ul class="feature-list">
+        <li><span class="dot teal"></span>Async (v1) — friend records when they're ready</li>
+        <li><span class="dot dim"></span>Real-time (v2) — both editing live, one track each</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-label">SHARING</div>
+      <h3>TWO SEPARATE ACTIONS</h3>
+      <ul class="feature-list">
+        <li><span class="dot"></span><strong style="color:#aaa">Invite to Collaborate</strong> — specific friend, edit access to their assigned track</li>
+        <li><span class="dot teal"></span><strong style="color:#aaa">Publish to Library</strong> — friends-only or public, play-only access</li>
+      </ul>
+      <p style="margin-top:4px">
+        Public songs appear in Browse / Discover. Any public song can be
+        <strong style="color:#aaa">remixed</strong> — forked into your own project
+        with the original attribution preserved.
+      </p>
+    </div>
+
+  </div>
+
+  <div class="section-label">MVP vs LATER</div>
+  <div class="section-grid">
+
+    <div class="card">
+      <div class="card-label">BUILDING FIRST</div>
+      <h3>MVP</h3>
+      <ul class="feature-list">
+        <li><span class="dot"></span>BPM input + tap tempo</li>
+        <li><span class="dot"></span>Piano + drum track recording</li>
+        <li><span class="dot"></span>One-click 16th-note quantize</li>
+        <li><span class="dot"></span>Piano roll — move, add, delete notes</li>
+        <li><span class="dot"></span>Instrument-specific view (keys vs drum lanes)</li>
+        <li><span class="dot"></span>4 tracks, mute / solo, playback</li>
+        <li><span class="dot"></span>Async collaboration + async track assignment</li>
+        <li><span class="dot"></span>Publish private / friends / public</li>
+        <li><span class="dot"></span>Export as .mid</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-label">COMING LATER</div>
+      <h3>V2+</h3>
+      <ul class="feature-list">
+        <li><span class="dot dim"></span>Quantize strength slider + multiple grid sizes</li>
+        <li><span class="dot dim"></span>Note resize, rubber-band select, copy / paste</li>
+        <li><span class="dot dim"></span>Piano roll zoom (X and Y)</li>
+        <li><span class="dot dim"></span>Real-time collaboration</li>
+        <li><span class="dot dim"></span>Browse / Discover public library + remix</li>
+        <li><span class="dot dim"></span>AI Generate — describe a song, get a full 4-track starting point</li>
+        <li><span class="dot dim"></span>AI Assist — select a region, ask Claude to improve it</li>
+        <li><span class="dot dim"></span>Bass, guitar, vocal instrument views</li>
+        <li><span class="dot dim"></span>Undo / redo, punch-in recording</li>
+      </ul>
+    </div>
+
   </div>
 
 </body>
