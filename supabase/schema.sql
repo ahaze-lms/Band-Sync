@@ -101,3 +101,152 @@ alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.play_invites;
 alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.friend_requests;
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- Player Identity & Multi-Account Sessions (DESIGN.md §26)
+-- ═══════════════════════════════════════════════════════════════════
+-- Mirror of migrations/0001_player_identity.sql for fresh installs.
+-- If you're modifying an existing project, run the migration file
+-- instead — running this whole schema.sql against an existing DB
+-- would fail on the original tables above.
+
+-- ── DEVICE CODES ──────────────────────────────────────────────────
+create table public.device_codes (
+  code           text primary key,
+  user_id        uuid references auth.users on delete cascade not null,
+  display_name   text,
+  avatar         text,
+  accent_color   text,
+  created_at     timestamptz default now(),
+  expires_at     timestamptz not null,
+  used_at        timestamptz,
+  used_by_user   uuid references auth.users on delete set null
+);
+
+create index device_codes_user_idx    on public.device_codes (user_id, created_at desc);
+create index device_codes_expires_idx on public.device_codes (expires_at);
+
+alter table public.device_codes enable row level security;
+
+create policy "dc_insert_own" on public.device_codes for insert with check (auth.uid() = user_id);
+create policy "dc_select_own" on public.device_codes for select using (auth.uid() = user_id);
+create policy "dc_update_own" on public.device_codes for update using (auth.uid() = user_id);
+create policy "dc_delete_own" on public.device_codes for delete using (auth.uid() = user_id);
+
+create or replace function public.claim_device_code(p_code text)
+returns table (
+  user_id      uuid,
+  display_name text,
+  avatar       text,
+  accent_color text
+)
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_row public.device_codes%rowtype;
+begin
+  if auth.uid() is null then return; end if;
+
+  select * into v_row
+  from public.device_codes
+  where code = p_code
+    and used_at is null
+    and expires_at > now()
+  for update;
+
+  if not found then return; end if;
+
+  update public.device_codes
+    set used_at = now(), used_by_user = auth.uid()
+    where code = p_code;
+
+  return query
+    select v_row.user_id, v_row.display_name, v_row.avatar, v_row.accent_color;
+end;
+$$;
+
+grant execute on function public.claim_device_code(text) to authenticated;
+
+-- ── PLAY SESSIONS ─────────────────────────────────────────────────
+create table public.play_sessions (
+  id                uuid default gen_random_uuid() primary key,
+  host_user_id      uuid references auth.users on delete set null,
+  song_file         text not null,
+  song_title        text not null,
+  started_at        timestamptz default now(),
+  ended_at          timestamptz,
+  speed_level       int,
+  hit_window_level  int,
+  player_count      int not null check (player_count between 1 and 4)
+);
+
+create index play_sessions_host_idx on public.play_sessions (host_user_id, started_at desc);
+
+-- ── PLAY SESSION SLOTS ────────────────────────────────────────────
+create table public.play_session_slots (
+  session_id    uuid references public.play_sessions on delete cascade not null,
+  slot          int not null check (slot between 1 and 4),
+  identity      text not null check (identity in ('host','friend','guest')),
+  user_id       uuid references auth.users on delete set null,
+  display_name  text not null,
+  instrument    text not null check (instrument in ('piano','drums')),
+  track_index   int not null,
+  track_name    text,
+  score         int default 0,
+  accuracy      int,
+  grade         text,
+  perfect       int default 0,
+  good          int default 0,
+  miss          int default 0,
+  wrong         int default 0,
+  max_combo     int default 0,
+  primary key (session_id, slot)
+);
+
+create index play_session_slots_user_idx on public.play_session_slots (user_id);
+
+-- ── RLS — play_sessions ───────────────────────────────────────────
+alter table public.play_sessions enable row level security;
+
+create policy "ps_insert_host" on public.play_sessions
+  for insert with check (auth.uid() = host_user_id);
+create policy "ps_select_host" on public.play_sessions
+  for select using (auth.uid() = host_user_id);
+create policy "ps_select_participant" on public.play_sessions
+  for select using (
+    exists (
+      select 1 from public.play_session_slots ss
+      where ss.session_id = play_sessions.id and ss.user_id = auth.uid()
+    )
+  );
+create policy "ps_update_host" on public.play_sessions
+  for update using (auth.uid() = host_user_id);
+
+-- ── RLS — play_session_slots ──────────────────────────────────────
+alter table public.play_session_slots enable row level security;
+
+create policy "pss_insert_host" on public.play_session_slots
+  for insert with check (
+    exists (
+      select 1 from public.play_sessions s
+      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
+    )
+  );
+create policy "pss_update_host" on public.play_session_slots
+  for update using (
+    exists (
+      select 1 from public.play_sessions s
+      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
+    )
+  );
+create policy "pss_select_own" on public.play_session_slots
+  for select using (auth.uid() = user_id);
+create policy "pss_select_host" on public.play_session_slots
+  for select using (
+    exists (
+      select 1 from public.play_sessions s
+      where s.id = play_session_slots.session_id and s.host_user_id = auth.uid()
+    )
+  );
