@@ -413,77 +413,85 @@
       font-size: 12px; color: var(--text);
     }
 
+    /* Grid layouts for 1-4 players. Each panel is a column-flex
+       container: score strip on top, canvas filling below. */
     .game-panels {
       display: grid;
-      gap: 10px;
+      gap: 8px;
       min-height: 0;
     }
-    .game-panels.players-1 { grid-template-rows: 1fr; }
-    .game-panels.players-2 { grid-template-columns: 1fr 1fr; min-height: 0; }
-    .game-panels.players-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .game-panels.players-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    .game-panels.players-2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+    .game-panels.players-3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr; }
     .game-panels.players-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 
     .game-panel {
       display: grid;
-      grid-template-columns: 220px 1fr;
-      gap: 12px;
+      grid-template-rows: auto 1fr;          /* score on top, canvas fills below */
+      gap: 6px;
       background: var(--bg2);
       border: 0.5px solid var(--border);
-      border-left-width: 3px;
+      border-top-width: 3px;
       border-radius: var(--radius);
-      padding: 10px 14px;
-      min-height: 0;
+      padding: 6px 10px 8px;
+      min-width: 0; min-height: 0;
       overflow: hidden;
     }
-    .game-panel.p1 { border-left-color: var(--purple); }
-    .game-panel.p2 { border-left-color: var(--teal); }
-    .game-panel.p3 { border-left-color: var(--amber); }
-    .game-panel.p4 { border-left-color: var(--red); }
+    .game-panel.p1 { border-top-color: var(--purple); }
+    .game-panel.p2 { border-top-color: var(--teal); }
+    .game-panel.p3 { border-top-color: var(--amber); }
+    .game-panel.p4 { border-top-color: var(--red); }
 
-    /* Score card column */
+    /* Compact horizontal score strip — flexes to fit any panel width.
+       At small panel widths some items wrap or hide; SCORE always shown. */
     .score-card {
-      display: flex; flex-direction: column; gap: 6px;
-      padding: 8px 10px;
-      align-self: start;
+      display: flex; align-items: center;
+      gap: 14px;
+      padding: 4px 6px;
+      flex-wrap: wrap;
     }
     .score-tag {
       font-family: 'Space Mono', monospace;
-      font-size: 14px; font-weight: 700; letter-spacing: 3px;
-      margin-bottom: 4px;
+      font-size: 12px; font-weight: 700; letter-spacing: 3px;
     }
     .p1 .score-tag { color: var(--purple2); }
     .p2 .score-tag { color: var(--teal2); }
     .p3 .score-tag { color: var(--amber2); }
     .p4 .score-tag { color: var(--red2); }
 
-    .score-row {
-      display: flex; justify-content: space-between; align-items: baseline;
-      font-size: 11px; letter-spacing: 1.5px; color: var(--dim);
+    .score-stat {
+      display: flex; align-items: baseline; gap: 5px;
     }
-    .score-row .val {
+    .score-stat .lab {
+      font-size: 9px; letter-spacing: 2px; color: var(--dim);
+    }
+    .score-stat .val {
       font-family: 'Space Mono', monospace;
       font-size: 13px; color: #fff;
     }
-    .score-row .val.big {
-      font-size: 22px; font-weight: 700;
+    .score-stat .val.big {
+      font-size: 18px; font-weight: 700;
     }
-    .score-row .val.dim { color: var(--dim); }
+    .score-stat .val.dim { color: var(--dim); }
     .score-pgmw {
+      margin-left: auto;
       font-family: 'Space Mono', monospace;
       font-size: 10px; color: var(--dim);
       letter-spacing: 1px;
     }
 
-    /* Canvas + feedback overlay */
+    /* Canvas fills the rest of the panel and scales via object-fit:contain,
+       so the keyboard upsizes at 1-player full screen and downsizes at
+       4-player quad without ever distorting the aspect ratio. */
     .canvas-stage {
       position: relative;
-      display: flex; align-items: center; justify-content: center;
       min-width: 0; min-height: 0;
       overflow: hidden;
     }
     .canvas-stage canvas {
-      max-width: 100%;
-      max-height: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       display: block;
     }
     .feedback-overlay {
@@ -606,6 +614,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=5"></script>
+  <script type="module" src="js/play.js?v=6"></script>
 </body>
 </html>

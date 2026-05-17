@@ -41,7 +41,7 @@ const stateEl      = document.getElementById('state');
 const stateLabelEl = document.getElementById('state-label');
 
 const MAX_PLAYERS     = 4;
-const ENABLED_PLAYERS = 2;   // bump when 3/4-player layouts land
+const ENABLED_PLAYERS = 4;   // 3-4 layouts live; gameplay needs that many devices though
 
 const ctx = {
   user:        null,
@@ -267,10 +267,10 @@ function paintSetup() {
           ${[1, 2, 3, 4].map(n => `
             <button class="count-btn ${setup.playerCount === n ? 'active' : ''}"
                     data-count="${n}"
-                    ${n > ENABLED_PLAYERS ? 'disabled title="3-4 player layouts coming later"' : ''}>${n}</button>
+                    ${n > ENABLED_PLAYERS ? 'disabled' : ''}>${n}</button>
           `).join('')}
           ${ENABLED_PLAYERS < MAX_PLAYERS
-            ? `<div class="count-btn-note">3-4 player layouts coming later</div>`
+            ? `<div class="count-btn-note">${ENABLED_PLAYERS}+ player support coming</div>`
             : ''}
         </div>
       </div>
@@ -652,20 +652,20 @@ function paintGame(playerCount) {
     <div class="game-panel p${i + 1}">
       <div class="score-card">
         <div class="score-tag">P${i + 1}</div>
-        <div class="score-row">
-          <span>SCORE</span>
+        <div class="score-stat">
+          <span class="lab">SCORE</span>
           <span class="val big" data-stat="${i}-score">0</span>
         </div>
-        <div class="score-row">
-          <span>COMBO</span>
+        <div class="score-stat">
+          <span class="lab">COMBO</span>
           <span class="val" data-stat="${i}-combo">x1</span>
         </div>
-        <div class="score-row">
-          <span>ACC</span>
+        <div class="score-stat">
+          <span class="lab">ACC</span>
           <span class="val dim" data-stat="${i}-acc">—</span>
         </div>
-        <div class="score-row">
-          <span>GRADE</span>
+        <div class="score-stat">
+          <span class="lab">GRADE</span>
           <span class="val" data-stat="${i}-grade">—</span>
         </div>
         <div class="score-pgmw" data-stat="${i}-pgmw">0 / 0 / 0 / 0</div>
