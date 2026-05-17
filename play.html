@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BandSync — Play</title>
+  <style>
+    /* ── VARIABLES ─────────────────────────────────────────────── */
+    :root {
+      --bg:       #07070f;
+      --bg2:      #0d0d1a;
+      --bg3:      #111120;
+      --border:   #1e1e30;
+      --border2:  #2a2a40;
+      --purple:   #7F77DD;
+      --purple2:  #AFA9EC;
+      --teal:     #1D9E75;
+      --teal2:    #5DCAA5;
+      --red:      #E24B4A;
+      --text:     #c8c8d8;
+      --dim:      #55556a;
+      --radius:   10px;
+    }
+
+    /* ── RESET ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+    button { cursor: pointer; font-family: inherit; }
+    a { color: inherit; text-decoration: none; }
+
+    /* ── PAGE LAYOUT ───────────────────────────────────────────── */
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .top-bar {
+      display: flex; align-items: center;
+      padding: 14px 24px;
+      gap: 24px;
+      border-bottom: 0.5px solid var(--border);
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .back-link {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--purple); }
+
+    .logo {
+      font-size: 16px; font-weight: 600; letter-spacing: 4px; color: #fff;
+    }
+    .logo span { color: var(--purple); }
+
+    .top-bar .state-label {
+      font-size: 9px; letter-spacing: 3px; color: var(--dim);
+      margin-left: auto;
+    }
+
+    /* ── STATE CONTAINER ───────────────────────────────────────── */
+    #state {
+      flex: 1;
+      padding: 40px 24px;
+      display: flex;
+      justify-content: center;
+    }
+    .state-inner {
+      width: 100%;
+      max-width: 980px;
+    }
+
+    /* ── LOADING / ERROR ───────────────────────────────────────── */
+    .center-msg {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; padding: 80px 24px; text-align: center;
+    }
+    .center-msg .title {
+      font-size: 12px; letter-spacing: 3px; color: var(--dim);
+    }
+    .center-msg.error .title { color: var(--red); }
+    .center-msg pre {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      font-size: 11px; color: var(--text);
+      max-width: 560px; white-space: pre-wrap; text-align: left;
+    }
+
+    /* ── SONG SELECT ───────────────────────────────────────────── */
+    .section-label {
+      font-size: 10px; letter-spacing: 3px; color: var(--dim);
+      margin-bottom: 14px;
+    }
+
+    .song-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .song-card {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      display: flex; flex-direction: column; gap: 10px;
+      text-align: left;
+      color: inherit;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    }
+    .song-card:hover {
+      border-color: var(--purple);
+      background: var(--bg3);
+      transform: translateY(-1px);
+    }
+    .song-title {
+      font-size: 15px; font-weight: 600; color: #fff; line-height: 1.3;
+    }
+    .song-meta {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      font-size: 10px; letter-spacing: 1.5px; color: var(--dim);
+    }
+    .song-meta .pill { display: inline-flex; align-items: center; gap: 5px; }
+    .song-tracks {
+      font-size: 11px; color: var(--purple2);
+      letter-spacing: 1px;
+    }
+    .badge-duet {
+      display: inline-block;
+      padding: 2px 7px;
+      background: rgba(127,119,221,0.12);
+      border: 0.5px solid var(--purple);
+      border-radius: 4px;
+      font-size: 8px; letter-spacing: 2px; color: var(--purple2);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <a class="back-link" href="index.html">← BACK</a>
+      <div class="logo">BAND<span>SYNC</span></div>
+      <div class="state-label" id="state-label"></div>
+    </header>
+    <main id="state">
+      <div class="center-msg"><div class="title">LOADING…</div></div>
+    </main>
+  </div>
+
+  <!-- Supabase UMD bundle, served locally -->
+  <script src="js/vendor/supabase.umd.js"></script>
+  <script type="module" src="js/play.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{
+  "songs": [
+    {
+      "file": "twinkle-twinkle.mid",
+      "title": "Twinkle, Twinkle, Little Star",
+      "bpm": 100,
+      "durationSec": 28.8,
+      "tracks": [
+        {
+          "name": "Piano",
+          "noteCount": 42
+        }
+      ]
+    },
+    {
+      "file": "twinkle-twinkle-duet.mid",
+      "title": "Twinkle, Twinkle (Duet)",
+      "bpm": 100,
+      "durationSec": 28.8,
+      "tracks": [
+        {
+          "name": "Melody",
+          "noteCount": 42
+        },
+        {
+          "name": "Bass",
+          "noteCount": 24
+        }
+      ]
+    },
+    {
+      "file": "mary-had-a-little-lamb.mid",
+      "title": "Mary Had a Little Lamb",
+      "bpm": 96,
+      "durationSec": 20,
+      "tracks": [
+        {
+          "name": "Piano",
+          "noteCount": 26
+        }
+      ]
+    },
+    {
+      "file": "ode-to-joy.mid",
+      "title": "Ode to Joy",
+      "bpm": 112,
+      "durationSec": 34.3,
+      "tracks": [
+        {
+          "name": "Piano",
+          "noteCount": 62
+        }
+      ]
+    },
+    {
+      "file": "frere-jacques.mid",
+      "title": "Frère Jacques",
+      "bpm": 108,
+      "durationSec": 17.8,
+      "tracks": [
+        {
+          "name": "Piano",
+          "noteCount": 32
+        }
+      ]
+    },
+    {
+      "file": "saints-go-marching-in.mid",
+      "title": "When the Saints Go Marching In",
+      "bpm": 120,
+      "durationSec": 28,
+      "tracks": [
+        {
+          "name": "Piano",
+          "noteCount": 32
+        }
+      ]
+    }
+  ]
+}

@@ -83,8 +83,12 @@ function buildPianoTrack(name, notes, { channel = 0, velocity = 96 } = {}) {
   return events;
 }
 
+// Sum beats across a [pitch, beats] note array (rests included).
+const beatsOf = notes => notes.reduce((s, [, b]) => s + b, 0);
+
 // tracks: [{ name, notes, channel? }]  — channel auto-assigns 0,1,2,...
-function writeSong(filename, { bpm, tracks }) {
+// Returns a manifest entry for the song so the caller can collect them.
+function writeSong(filename, { title, bpm, tracks }) {
   const conductor = [tempoEvent(bpm), timeSigEvent(4, 4)];
   const trackChunks = tracks.map((t, i) =>
     trackChunk(buildPianoTrack(t.name, t.notes, { channel: t.channel ?? i }))
@@ -96,9 +100,22 @@ function writeSong(filename, { bpm, tracks }) {
   ];
   mkdirSync(SONGS_DIR, { recursive: true });
   writeFileSync(join(SONGS_DIR, filename), Buffer.from(bytes));
-  const totalNotes = tracks.reduce((s, t) => s + t.notes.filter(n => n[0] !== null).length, 0);
-  const trackList  = tracks.map(t => t.name).join(' + ');
+
+  const totalNotes  = tracks.reduce((s, t) => s + t.notes.filter(n => n[0] !== null).length, 0);
+  const durationSec = (Math.max(...tracks.map(t => beatsOf(t.notes))) * 60) / bpm;
+  const trackList   = tracks.map(t => t.name).join(' + ');
   console.log(`  ✓ ${filename.padEnd(36)} ${String(totalNotes).padStart(3)} notes @ ${bpm} BPM (${trackList})`);
+
+  return {
+    file: filename,
+    title,
+    bpm,
+    durationSec: Math.round(durationSec * 10) / 10,
+    tracks: tracks.map(t => ({
+      name: t.name,
+      noteCount: t.notes.filter(n => n[0] !== null).length,
+    })),
+  };
 }
 
 // ── Pitch shorthand (middle-C octave centered) ────────────────────
@@ -181,31 +198,42 @@ const SAINTS = [
 // ── Run ───────────────────────────────────────────────────────────
 
 console.log('Generating bundled songs →', SONGS_DIR);
-writeSong('twinkle-twinkle.mid', {
-  bpm: 100,
-  tracks: [{ name: 'Piano', notes: TWINKLE }],
-});
-writeSong('twinkle-twinkle-duet.mid', {
-  bpm: 100,
-  tracks: [
-    { name: 'Melody', notes: TWINKLE },
-    { name: 'Bass',   notes: TWINKLE_BASS },
-  ],
-});
-writeSong('mary-had-a-little-lamb.mid', {
-  bpm: 96,
-  tracks: [{ name: 'Piano', notes: MARY }],
-});
-writeSong('ode-to-joy.mid', {
-  bpm: 112,
-  tracks: [{ name: 'Piano', notes: ODE_TO_JOY }],
-});
-writeSong('frere-jacques.mid', {
-  bpm: 108,
-  tracks: [{ name: 'Piano', notes: FRERE_JACQUES }],
-});
-writeSong('saints-go-marching-in.mid', {
-  bpm: 120,
-  tracks: [{ name: 'Piano', notes: SAINTS }],
-});
+const manifest = { songs: [
+  writeSong('twinkle-twinkle.mid', {
+    title: 'Twinkle, Twinkle, Little Star',
+    bpm: 100,
+    tracks: [{ name: 'Piano', notes: TWINKLE }],
+  }),
+  writeSong('twinkle-twinkle-duet.mid', {
+    title: 'Twinkle, Twinkle (Duet)',
+    bpm: 100,
+    tracks: [
+      { name: 'Melody', notes: TWINKLE },
+      { name: 'Bass',   notes: TWINKLE_BASS },
+    ],
+  }),
+  writeSong('mary-had-a-little-lamb.mid', {
+    title: 'Mary Had a Little Lamb',
+    bpm: 96,
+    tracks: [{ name: 'Piano', notes: MARY }],
+  }),
+  writeSong('ode-to-joy.mid', {
+    title: 'Ode to Joy',
+    bpm: 112,
+    tracks: [{ name: 'Piano', notes: ODE_TO_JOY }],
+  }),
+  writeSong('frere-jacques.mid', {
+    title: 'Frère Jacques',
+    bpm: 108,
+    tracks: [{ name: 'Piano', notes: FRERE_JACQUES }],
+  }),
+  writeSong('saints-go-marching-in.mid', {
+    title: 'When the Saints Go Marching In',
+    bpm: 120,
+    tracks: [{ name: 'Piano', notes: SAINTS }],
+  }),
+]};
+
+writeFileSync(join(SONGS_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+console.log(`  ✓ manifest.json                       ${manifest.songs.length} songs`);
 console.log('Done.');
