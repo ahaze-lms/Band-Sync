@@ -53,6 +53,7 @@ const ctx = {
   setup:       null,  // per-song setup state (player count, choices, identities)
   midi:        null,  // { ok, reason?, inputCount }
   activeGame:    null,  // current gameplay engine instance, or null
+  gameStarted:   false, // false while in warm-up (engine alive but song not started)
   gameTimer:     null,  // requestAnimationFrame id for the song timer
   gameStartedAt: null,  // ISO timestamp when current run began (refreshed on restart)
   lastResults:   null,  // [{ identity, stats, ... }, ...] for results screen
@@ -686,10 +687,12 @@ async function renderGame() {
     };
   });
 
-  startGameTimer();
+  ctx.gameStarted = false;
+  paintGameTimeDisplay();   // shows "READY · 0:32"
 
+  document.getElementById('btn-start-song').addEventListener('click', startSongRun);
   document.getElementById('btn-pause').addEventListener('click', () => {
-    if (!ctx.activeGame) return;
+    if (!ctx.activeGame || !ctx.gameStarted) return;
     const nowPaused = ctx.activeGame.togglePause();
     document.getElementById('btn-pause').textContent = nowPaused ? '▶ RESUME' : '⏸ PAUSE';
   });
@@ -697,20 +700,33 @@ async function renderGame() {
     if (!ctx.activeGame) return;
     ctx.activeGame.reset();
     document.getElementById('btn-pause').textContent = '⏸ PAUSE';
-    ctx.saveStatus    = null;
-    ctx.gameStartedAt = new Date().toISOString();
-    ctx.activeGame.start();
+    startSongRun();
   });
   document.getElementById('btn-exit-game').addEventListener('click', renderSetup);
+}
 
-  // Snapshot PBs before the run so onSongComplete can detect a fresh best.
-  // (Captures the host's PBs at game start — friend / guest PB detection
-  // would require reading their slot history, which RLS blocks.)
-  ctx.oldBests = { ...(ctx.bests || {}) };
-
+// Flip from warm-up state into the actual run. Snapshot PBs first so
+// onSongComplete can detect a fresh best, capture startedAt for the
+// session record, swap the controls, kick off the timer.
+function startSongRun() {
+  if (!ctx.activeGame) return;
+  ctx.oldBests      = { ...(ctx.bests || {}) };
   ctx.saveStatus    = null;
   ctx.gameStartedAt = new Date().toISOString();
+  ctx.gameStarted   = true;
+
+  // Swap controls — hide START + warm-up hint, show PAUSE + RESTART.
+  const startBtn = document.getElementById('btn-start-song');
+  if (startBtn) startBtn.style.display = 'none';
+  const hint = document.querySelector('.warmup-hint');
+  if (hint) hint.style.display = 'none';
+  const pauseBtn   = document.getElementById('btn-pause');
+  const restartBtn = document.getElementById('btn-restart');
+  if (pauseBtn)   { pauseBtn.style.display   = ''; pauseBtn.textContent = '⏸ PAUSE'; }
+  if (restartBtn) { restartBtn.style.display = ''; }
+
   ctx.activeGame.start();
+  startGameTimer();
 }
 
 function paintGame(playerCount) {
@@ -761,7 +777,7 @@ function paintGame(playerCount) {
         <div class="game-song">${esc(song.title)}</div>
         <div class="game-meta">${song.bpm} BPM &middot; ${mm}:${ss}</div>
         <div class="game-meta" style="margin-left:18px">${identityChips}</div>
-        <div class="game-time" id="game-time">0:00 / ${mm}:${ss}</div>
+        <div class="game-time" id="game-time">READY · ${mm}:${ss}</div>
       </div>
       <div class="game-panels players-${playerCount}">
         ${panels}
@@ -769,11 +785,24 @@ function paintGame(playerCount) {
       <div class="game-controls">
         <button class="btn-ghost" id="btn-exit-game">← EXIT</button>
         <div class="spacer"></div>
-        <button class="btn-ghost" id="btn-restart">↺ RESTART</button>
-        <button class="btn-ghost" id="btn-pause">⏸ PAUSE</button>
+        <div class="warmup-hint">Play a few notes to warm up, then start.</div>
+        <button class="btn-ghost"   id="btn-restart" style="display:none">↺ RESTART</button>
+        <button class="btn-ghost"   id="btn-pause"   style="display:none">⏸ PAUSE</button>
+        <button class="btn-primary" id="btn-start-song">▶ START SONG</button>
       </div>
     </div>
   `;
+}
+
+// One-shot paint of the time display (used pre-start). Once the run
+// begins, startGameTimer's rAF loop takes over and updates per frame.
+function paintGameTimeDisplay() {
+  const el = document.getElementById('game-time');
+  if (!el || !ctx.activeGame) return;
+  const total = ctx.activeGame.getSongDuration?.() ?? 0;
+  const mmT = Math.floor(total / 60000);
+  const ssT = String(Math.floor((total / 1000) % 60)).padStart(2, '0');
+  el.textContent = `READY · ${mmT}:${ssT}`;
 }
 
 function updateScoreCard(idx, stats) {
