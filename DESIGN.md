@@ -10,7 +10,7 @@
 
 **Two layers working:**
 
-**Gameplay** (`play.html`) — 2-player split-screen verified on physical MIDI hardware. See `README.md` for the full feature checklist.
+**Gameplay** (`2player.html`) — 2-player split-screen verified on physical MIDI hardware. See `README.md` for the full feature checklist.
 
 **Social / account layer** (`index.html`) — live at <https://ahaze-lms.github.io/Band-Sync/>
 - Email/password auth via Supabase
@@ -23,7 +23,7 @@
 ### What's next
 
 1. **Admin screen** — in-app view of users, friend graph, messages. Supabase Table Editor works for now; a proper `/admin` screen is planned.
-2. **Connect the two layers** — home screen's PLAY NOW links to `play.html`; wire the session so `play.html` knows which Supabase users are playing.
+2. **Connect the two layers** — home screen's PLAY NOW links to `2player.html`; wire the session so `2player.html` knows which Supabase users are playing.
 3. **Real piano + drum samples** — biggest perceived-quality jump for the least work.
 4. **Proper results screen** — full per-player scores, accuracy bars, personal-best flags, Replay / Play Again buttons.
 5. **Session history** — every completed song saved to the user's profile in Supabase.
@@ -450,7 +450,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - ✅ Modular refactor — shared engine modules under `/js/core`
 - ✅ Piano debug + drum debug on shared modules
 - ✅ Render module extraction (`render/piano.js`, `render/drums.js`)
-- ✅ 2-player split-screen gameplay (`play.html`)
+- ✅ 2-player split-screen gameplay (`2player.html`)
 - ✅ P2 role toggle (drums or second piano) with localStorage persistence
 - ✅ Combined test patterns (piano + drums; piano + piano)
 - ✅ Multi-device MIDI routing with auto-detect + override
@@ -464,7 +464,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - ✅ Live on GitHub Pages — no local server required for users
 - ✅ Supabase vendor bundle served locally (no CDN latency)
 - 🔜 Admin screen — in-app user/data management (admin-only route)
-- 🔜 Connect social → gameplay (pass logged-in user into play.html session)
+- 🔜 Connect social → gameplay (pass logged-in user into 2player.html session)
 - 🔜 3- and 4-player layouts
 - 🔜 Real piano + drum samples
 - 🔜 Proper results screen (replacing the single-line song-complete text)
@@ -557,7 +557,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-16 | Vision expanded to commercial product with user accounts, paywall, and AI tools. |
 | 2026-05-16 | AI scope focused on MIDI domain (editor + simplification + chart generation). Explicit non-goal: text-to-audio synthesis. |
 | 2026-05-16 | Render modules extracted — `createPianoRenderer(canvas, opts)` and `createDrumRenderer(canvas, opts)` factory functions. Both debug tools and the gameplay screen compose them. |
-| 2026-05-16 | First playable prototype shipped — `play.html` with 2-player split-screen, verified on physical MIDI hardware (MPK Mini 3 + Casio CDP). |
+| 2026-05-16 | First playable prototype shipped — `2player.html` with 2-player split-screen, verified on physical MIDI hardware (MPK Mini 3 + Casio CDP). |
 | 2026-05-16 | P2 role is runtime-switchable (drums ↔ piano). Drum work fully preserved. |
 | 2026-05-16 | Single-MIDI-device shared between both players is allowed and multiplexes one event stream into both `onP1Midi` and `onP2Midi`. Useful when only one keyboard is plugged in. |
 | 2026-05-16 | Hit window scale extended from 5 to 7 levels — Practice (±250/±500) and Beginner (±180/±350) added for younger players. |

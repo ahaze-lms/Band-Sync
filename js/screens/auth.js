@@ -46,7 +46,7 @@ export function mount(container, navigate) {
           <button class="btn btn-primary btn-full" type="submit" id="su-btn">CREATE ACCOUNT</button>
         </form>
       </div>
-      <div class="auth-footer">Chrome required · Web MIDI · No account needed to use the <a href="play.html">2-player prototype</a></div>
+      <div class="auth-footer">Chrome required · Web MIDI · No account needed to use the <a href="2player.html">2-player prototype</a></div>
     </div>
   `;
 

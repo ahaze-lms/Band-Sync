@@ -15,7 +15,7 @@ export function mount(el, ctx, navigate) {
             <div class="home-tagline">${esc(profile?.tagline ?? '')}</div>
           </div>
         </div>
-        <a class="btn btn-play" href="play.html" target="_blank">▶ PLAY NOW</a>
+        <a class="btn btn-play" href="2player.html" target="_blank">▶ PLAY NOW</a>
       </div>
 
       <div class="home-panels">
