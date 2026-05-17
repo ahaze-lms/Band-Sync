@@ -1,48 +1,70 @@
-# BandSync — Design Document v12
+# BandSync — Design Document v13
 
-> Updated 2026-05-17. Supersedes v11.
+> Updated 2026-05-17. Supersedes v12.
 >
-> Major changes from v11: Song Creator / AI Studio designed — full spec in §25. `studio.html` stub added. `play.html` architecture discussion started (see §What's next).
+> Major changes from v12: `play.html` shipped end-to-end (song select → setup → game → results) and is now the production gameplay surface. Player identity model (`§26`) built across phases 1–7: Supabase schema, friend-code generation/claim flow, host-side picker, score persistence, HISTORY screen, account-activity audit log. Gameplay engine extracted into `js/core/gameplay-engine.js`. 1–4 player layouts wired. Personal-best display + NEW PB badge. Editable guest names.
 
 ---
 
-## 🚦 Current state (2026-05-16)
+## 🚦 Current state (2026-05-17)
 
-**Three layers working:**
+**`play.html` — the real game** (production gameplay surface, live):
+- Song select pulling from a generated `songs/manifest.json`
+- Setup screen: per-player identity (Me / Friend / Guest) × instrument × MIDI device × track
+- Identity persists across song-select ↔ setup ↔ game ↔ results loops within a page session
+- Gameplay using the extracted, parameterised `js/core/gameplay-engine.js` (1–N players)
+- 1 / 2 / 3 / 4-player grid layouts; score strip on top of each panel, canvas fills via `object-fit: contain`
+- Live per-player score card, hit-feedback overlays, song timer, pause / restart
+- Results screen: per-slot scores + grade + identity, NEW PERSONAL BEST badge when host beats their own PB
+- End-of-song persistence writes one `play_sessions` row + N `play_session_slots` rows
+- Personal best displayed under each song on setup ("YOUR BEST: 14,400 · S · 98% · 2d ago")
 
-**Gameplay prototype** (`2player.html`) — 2-player split-screen verified on physical MIDI hardware. Both players independently choose piano or drums at runtime. See `README.md` for the full feature checklist.
+**Player identity** (`§26`):
+- Friend generates a 6-digit code in their profile's PAIRING card (snapshots their identity, 10-min TTL, single-use)
+- Host claims it at `play.html → setup → IDENTITY: Join with code…` (6-digit modal, paste-friendly)
+- Friend's identity attaches to the slot; scores save to their account
+- Friend's profile shows recent uses under RECENT ACCOUNT ACTIVITY (who used my code, when)
 
-**Social / account layer** (`index.html`) — live at <https://ahaze-lms.github.io/Band-Sync/>
+**HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
+
+**`2player.html` — prototype + dev harness** (reached via Dev Lab). NOT migrated to the new engine; `js/screens/gameplay.js` still has its own loop. Has unique features (role toggle, test patterns, file picker, calibration overlay) that the production game doesn't expose yet.
+
+**Social / account layer** (`index.html`):
 - Email/password auth via Supabase
-- User profiles (username, display name, avatar, accent color, tagline)
-- Friend requests, friend list, online presence
-- Real-time inbox (direct messages)
-- Play invites between friends
+- Profiles (username, display name, avatar, accent color, tagline)
+- Friend requests, friend list, online presence, real-time inbox, play invites
 - Profile setup onboarding
 
-**Dev Lab** (`lab.html`) — hub page accessible from the main nav. Links to the 2-player prototype and all debug/test tools. Each tool has a ← LAB back link.
+**Dev Lab** (`lab.html`) — hub linked from the main nav.
 
 **URL convention:**
-- `play.html` — reserved for the real game (not yet built)
-- `2player.html` — current prototype (reached via Dev Lab)
+- `play.html` — real game (production)
+- `2player.html` — prototype + dev harness
+- `studio.html` — Song Creator (stub only; build is next major effort)
 
 ### What's next
 
-1. **Real game** (`play.html`) — the actual game experience users reach via PLAY NOW. Architecture TBD; start here next session.
-2. **Admin screen** — in-app view of users, friend graph, messages. Supabase Table Editor works for now; a proper `/admin` screen is planned.
-3. **Connect social → gameplay** — wire the session so `play.html` knows which Supabase users are playing.
-4. **Real piano + drum samples** — biggest perceived-quality jump for the least work.
-5. **Proper results screen** — full per-player scores, accuracy bars, personal-best flags, Replay / Play Again buttons.
-6. **Session history** — every completed song saved to the user's profile in Supabase.
-7. **Track-picker UI** for multi-track MIDI files.
-8. **3- and 4-player layouts** — CSS-grid + extra renderers.
-9. **Calibration overlay extraction** — currently duplicated across 3 screens.
+**Major candidates:**
+
+1. **`studio.html` — Song Creator** (§25). Biggest unbuilt thing. Spec ready: live MIDI record, quantize, instrument-specific piano roll, save to Supabase, async collaboration, publish to library.
+2. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
+3. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
+4. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
+5. **Phase 3c — port `js/screens/gameplay.js`** to the new engine, eliminating the duplicate loop. Pure cleanup; deferred unless 2player.html starts getting active engine changes.
+
+**Smaller polish items:**
+
+- Twilio SMS invites (§26 → Future enhancements)
+- Connected-devices "revoke all" button
+- In-game banner when a friend is attached (currently a small chip in the game header)
+- Accuracy-bar animations on the results screen
+- 3-4 player hardware-tested gameplay (layout exists; needs real devices)
 
 ### Open architectural decisions
 
 - Pricing tiers ($/mo)
 - Domain name
-- AI scope — which capability to ship first (see §14)
+- AI scope — which Studio capability ships first (see §14, §25)
 
 ---
 
@@ -472,14 +494,22 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 - ✅ Real-time inbox via Supabase Realtime channels
 - ✅ Live on GitHub Pages — no local server required for users
 - ✅ Supabase vendor bundle served locally (no CDN latency)
+- ✅ `play.html` — real game (song select → setup → gameplay → results)
+- ✅ `js/core/gameplay-engine.js` extracted, parameterised for 1–N players
+- ✅ 1 / 2 / 3 / 4-player grid layouts; 3-4 hardware-gated
+- ✅ Per-song personal best display + NEW PB badge on results
+- ✅ Proper results screen with per-player breakdown
+- ✅ Session history saved to Supabase (`play_sessions` + `play_session_slots`)
+- ✅ HISTORY nav screen with PB badges and date grouping
+- ✅ Player identity model (§26) — host / friend-via-code / guest, with editable guest names
+- ✅ Track-picker UI per player at setup; same-track allowed (duel mode)
+- ✅ Bundled PD song library via `tools/build-songs.mjs` (Twinkle, Mary, Ode to Joy, Frère Jacques, Saints, + Twinkle duet)
 - 🔜 Admin screen — in-app user/data management (admin-only route)
-- 🔜 Connect social → gameplay (pass logged-in user into 2player.html session)
-- 🔜 3- and 4-player layouts
 - 🔜 Real piano + drum samples
-- 🔜 Proper results screen (replacing the single-line song-complete text)
-- 🔜 Session history saved to Supabase per user
-- 🔜 Track-picker UI — part of `play.html` setup; each player picks which song track they play (with a duel-mode toggle when sharing a track)
-- 🔜 Calibration-overlay extraction into a shared `js/ui/` module
+- 🔜 GM drum-map translation so drum tracks reach the engine as abstract names (currently piano-only library)
+- 🔜 Calibration overlay extracted into a shared `js/ui/` module; calibration added to play.html setup
+- 🔜 Phase 3c — port `js/screens/gameplay.js` (2player.html) to use the engine, eliminating the duplicate game loop
+- 🔜 3- and 4-player hardware-tested gameplay (layouts exist; needs ≥3 MIDI devices)
 
 ### v1.0 — MVP launchable
 - Real game at `play.html` — song select → setup → gameplay → results
@@ -590,6 +620,10 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-17 | Gameplay engine extracted into `js/core/gameplay-engine.js` — pure, parameterized for 1-N players, no DOM. `play.html` uses it; `js/screens/gameplay.js` (2player.html) still duplicates the loop and is scheduled to be ported. The engine's local-first design (audio clock local, MIDI local, hits judged locally) honors CLAUDE.md principle #2 and is exactly the shape remote multiplayer (v2.5) needs as its foundation. |
 | 2026-05-17 | `Clock.startSong()` parameterized with optional `{ countoffStartsAt: localTimestamp }` so all clients can fire beat 1 at the same wall-clock moment when remote multiplayer ships. Default = "now" so existing callers behave identically. `tickCountoff` + `justCrossedBeat` tolerate elapsed-negative (scheduled-future) starts. |
 | 2026-05-17 | Player identity model designed — three modes per slot: Host (logged-in user, default P1), Friend (attached via 6-digit device code generated on friend's phone, single-use, 10-min TTL), Guest (anonymous, scores save to session row only). Friend-attach borrows the YouTube-on-TV pairing UX. Full spec in §26. Schema: `device_codes`, `play_sessions`, `play_session_slots`. Threat model: a malicious host can grief a friend's scores but cannot read/modify any of their other data. |
+| 2026-05-17 | Player identity MVP shipped — phases 1-7 from §26 all live: Supabase migration, friend-side code generation (PAIRING card in profile-edit), host-side identity picker in play.html setup, claim modal (6-digit input with paste support), score persistence on song complete, HISTORY nav screen with date grouping and PB badges, RECENT ACCOUNT ACTIVITY audit card. End-to-end loop verified. |
+| 2026-05-17 | `play.html` gameplay layout optimized for 1-4 players. Score card flipped from a 220px side column to a compact horizontal strip on top of each panel; canvas fills remaining space via `object-fit: contain` so the keyboard upscales at 1-player full screen and downscales cleanly at 4-player quad. Grids: 1-col / 2-col / 3-col / 2×2. `ENABLED_PLAYERS` raised to 4 (3-4 are layout-ready; gameplay still needs ≥3 MIDI devices). |
+| 2026-05-17 | Personal best surfaced in two places: "YOUR BEST: 14,400 · S · 98% · 2d ago" line under each song on the setup screen, and a "NEW PERSONAL BEST" pill on the host's results row when they beat their previous PB. Triggered only when there *was* a previous best (first plays just record quietly). Friend/guest slots don't get the badge — friends' PBs are blocked by RLS, guests have no account. |
+| 2026-05-17 | Guest names are editable but optional. Identity cell for guest slots renders as a name input + mini kind-switcher side-by-side; default `Guest N` stays a valid value (empty input reverts to it). Edited name flows through to in-game chips, results row, saved `display_name`, and friend audit log. No schema change required. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |

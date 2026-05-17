@@ -100,26 +100,35 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
 
 ## What's working today
 
-- **2-player gameplay** (`2player.html`) — piano + drums or two pianos, verified on physical MIDI hardware
-- **Per-player instrument picker** — P1 and P2 independently switch piano/drums at runtime
-- **Scoring** — PERFECT/GOOD/MISS/WRONG, combo multiplier (x1→x8), S/A/B/C/D grades per player
-- **MIDI** — auto-detect, per-device routing, shared-device multiplexing, manual override
-- **Calibration** — per-device latency offset, 3-round averaging, fine-tune buttons
+- **`play.html` — the real game** (the production gameplay surface)
+  - Song select pulling from `songs/manifest.json`
+  - Setup screen with per-player identity / instrument / MIDI device / track pickers
+  - Identity per slot: Me (host) / Friend (via code) / Guest (editable name)
+  - Gameplay using the extracted `js/core/gameplay-engine.js` — same loop, parameterized for 1–4 players
+  - 1/2/3/4-player grid layouts; score strip on top, canvas fills via object-fit
+  - Per-player live score card, feedback overlays, song timer, pause/restart
+  - Results screen with per-slot stats, identity display, **NEW PERSONAL BEST** badge
+  - End-of-song persistence to `play_sessions` + `play_session_slots`
+- **`2player.html`** — original prototype, still alive as a dev/test harness (reached via Dev Lab). Has unique features: role toggle, test patterns, file picker, calibration overlay. NOT yet ported to the new engine — `js/screens/gameplay.js` duplicates the loop logic (deferred phase 3c).
+- **Player identity (`DESIGN.md §26`)** — 6-digit device codes for friend-attach, generated on friend's phone (PAIRING in profile), claimed at play.html setup (6-digit modal), scores save to the correct user, friend's audit log under RECENT ACCOUNT ACTIVITY
+- **HISTORY screen** — chronological list of every session you appear in, grouped by date, with PB badges
 - **Social layer** (`index.html`) — Supabase auth, profiles, friend requests, real-time inbox, play invites
-- **Dev Lab** (`lab.html`) — hub page in the nav, links to prototype + debug tools
+- **Engine fundamentals** — scoring (PERFECT/GOOD/MISS/WRONG, x1→x8 combo, S/A/B/C/D), MIDI auto-detect + shared-device multiplexing, per-device latency calibration, count-off
+- **Dev Lab** (`lab.html`) — hub for the prototype + all debug tools
 
 ---
 
 ## What's being built next
 
-### `play.html` — the real game
-Mini-SPA with 4 states:
-1. Song select — list of `.mid` files from `songs/`
-2. Setup — **up to 4 players** (UI currently exposes 1–2; design supports 1–4). Per player: instrument, MIDI device, **and track** (which of the song's tracks they'll play — e.g. Melody vs Bass). Any subset of players can share a track ("duel mode") — same notes, independent scores. Auto-defaults when player count exceeds track count, but is also a free choice.
-3. Game — same engine as `2player.html`, parameterized by player count and per-player track selection
-4. Results — per-player scores, accuracy, grade, Play Again / Menu
+Primary candidates (no specific order — pick by appetite):
 
-Auth: Supabase auth state persists in localStorage across page loads. Call `supabase.auth.getUser()` at load; redirect to `index.html` if no session. Logged-in user is P1 by default. Play invites: load from `play.html?invite=<id>`.
+- **`studio.html` — Song Creator** (the biggest unbuilt thing). Spec in `DESIGN.md §25`: record live MIDI, quantize, instrument-specific piano roll, save to Supabase, async collaboration, publish to library.
+- **Drum-track playback in songs**. Needs a GM drum-map translation in `js/core/midi-parser.js` so drum tracks reach the engine as abstract names. Bundled songs are all piano-only today.
+- **Calibration in `play.html`**. The 2player.html prototype has a calibration overlay; extracting it into a shared `js/ui/calibration-overlay.js` module unlocks adding it to play.html too. Flagged as duplicated across 3 screens.
+- **Real piano + drum samples**. Replaces synthesised audio; biggest perceived-quality jump for the least work per `DESIGN.md §18`.
+- **Phase 3c**: port `js/screens/gameplay.js` to use the engine, eliminating the duplicate loop. Pure cleanup, no user-visible payoff — defer unless 2player.html is going to get active changes.
+
+Smaller polish items still on the board: Twilio SMS invites (`DESIGN.md §26 → Future enhancements`), connected-devices revoke-all, in-game banner when friend is attached, accuracy-bar animations on results.
 
 ### `studio.html` — Song Creator
 Full spec in `DESIGN.md §25`. Key decisions:
