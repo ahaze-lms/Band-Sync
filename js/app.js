@@ -7,6 +7,7 @@ import { mount as mountHome }        from './screens/home.js';
 import { mount as mountProfileEdit } from './screens/profile-edit.js?v=2';
 import { mount as mountFriends }     from './screens/friends.js';
 import { mount as mountInbox }       from './screens/inbox.js';
+import { mount as mountHistory }     from './screens/history.js';
 
 const app   = document.getElementById('app');
 const nav   = document.getElementById('main-nav');
@@ -18,7 +19,13 @@ let unsubInbox = null;
 
 // ── NAVIGATION ────────────────────────────────────────────────────
 
-const SCREENS = { home: mountHome, profile: mountProfileEdit, friends: mountFriends, inbox: mountInbox };
+const SCREENS = {
+  home:    mountHome,
+  profile: mountProfileEdit,
+  friends: mountFriends,
+  inbox:   mountInbox,
+  history: mountHistory,
+};
 
 export function navigate(screen, params = {}) {
   if (currentScreen?.destroy) currentScreen.destroy();
@@ -44,6 +51,7 @@ function renderNav() {
       <a class="nav-link" data-screen="home"    href="#">HOME</a>
       <a class="nav-link" data-screen="friends" href="#">FRIENDS <span class="badge" id="badge-friends"></span></a>
       <a class="nav-link" data-screen="inbox"   href="#">INBOX   <span class="badge" id="badge-inbox"></span></a>
+      <a class="nav-link" data-screen="history" href="#">HISTORY</a>
       <a class="nav-link nav-lab" href="lab.html" target="_blank">DEV LAB</a>
     </div>
     <div class="nav-right">

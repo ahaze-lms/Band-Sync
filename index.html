@@ -365,6 +365,156 @@
     }
     .avatar-opt:hover  { border-color: var(--purple); }
     .avatar-opt.selected { border-color: var(--purple); background: rgba(127,119,221,0.15); }
+    /* ── HISTORY ─────────────────────────────────────────────── */
+    .history-page {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    .history-loading {
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--dim);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+    }
+    .history-empty {
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--dim);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      line-height: 2;
+    }
+    .history-link { color: var(--purple2); text-decoration: underline; }
+    .history-header {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    .history-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      letter-spacing: 4px;
+      color: #fff;
+    }
+    .history-meta {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--dim);
+    }
+    .history-section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--dim);
+      margin: 22px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .history-section-label:first-of-type { margin-top: 0; }
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .history-card {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+    }
+    .history-card-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .history-song {
+      font-size: 13px; font-weight: 600; color: #fff;
+    }
+    .history-time {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--dim);
+    }
+    .history-card-foot {
+      margin-top: 8px;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+    .history-slots {
+      display: flex; flex-direction: column;
+      gap: 2px;
+    }
+    .history-slot {
+      display: grid;
+      grid-template-columns: 36px 1.4fr 1fr 80px 60px 40px;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 4px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .history-slot.me {
+      background: rgba(127,119,221,0.06);
+      padding: 6px 8px;
+    }
+    .hs-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      font-weight: 700;
+    }
+    .hs-tag.p1 { color: var(--purple2); }
+    .hs-tag.p2 { color: var(--teal2); }
+    .hs-tag.p3 { color: var(--amber); }
+    .hs-tag.p4 { color: var(--red); }
+    .hs-identity {
+      display: flex; align-items: center; gap: 6px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hs-avatar { font-size: 11px; color: var(--dim); }
+    .hs-track {
+      font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hs-score {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; font-weight: 700; color: #fff;
+      text-align: right;
+    }
+    .hs-acc {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      text-align: right;
+    }
+    .hs-grade {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; font-weight: 700;
+      text-align: center; color: #fff;
+    }
+    .pb-badge {
+      display: inline-block;
+      background: rgba(29,158,117,0.18);
+      border: 0.5px solid var(--teal);
+      color: var(--teal2);
+      font-family: 'Space Mono', monospace;
+      font-size: 8px; letter-spacing: 1.5px; font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 4px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .identity-host   { color: var(--purple2); }
+    .identity-friend { color: var(--teal2); }
+    .identity-guest  { color: var(--dim); font-style: italic; }
+
     /* ── PAIRING (device codes) ──────────────────────────────── */
     .pairing-explainer {
       font-size: 12px; color: var(--dim); line-height: 1.55;
@@ -564,6 +714,6 @@
       _errBox('JAVASCRIPT ERROR', `${msg}\n${src} : ${line}`, 'Open DevTools (F12) → Console for full details');
     };
   </script>
-  <script type="module" src="js/app.js?v=2"></script>
+  <script type="module" src="js/app.js?v=3"></script>
 </body>
 </html>
