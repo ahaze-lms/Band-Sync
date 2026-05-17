@@ -5,85 +5,219 @@
   <title>BandSync — 2-Player</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0a0f; color: #ccc; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 10px; }
-    h1 { font-size: 22px; font-weight: 500; letter-spacing: 5px; color: #fff; }
-    h1 .p1 { color: #7F77DD; } h1 .p2 { color: #1D9E75; }
-    .subtitle { font-size: 10px; letter-spacing: 2px; color: #555; margin-top: -6px; }
+    html, body { height: 100%; }
+    body {
+      background: #0a0a0f;
+      color: #ccc;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 14px;
+      gap: 8px;
+      overflow: hidden;
+    }
 
-    /* MODE TOGGLE */
-    .mode-row { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: 2px; color: #555; }
-    .mode-label { color: #555; }
-    .mode-btn { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 5px 14px; font-size: 10px; color: #888; cursor: pointer; letter-spacing: 2px; transition: all 0.15s; }
+    /* ───── HEADER (compact) ─────────────────────────────── */
+    .top-bar {
+      display: flex; align-items: center; gap: 18px; flex-shrink: 0;
+    }
+    .logo {
+      font-size: 18px; font-weight: 500; letter-spacing: 4px; color: #fff;
+    }
+    .logo .p1 { color: #7F77DD; }
+    .logo .p2 { color: #1D9E75; }
+    .subtitle {
+      font-size: 9px; letter-spacing: 2px; color: #555;
+    }
+
+    /* mode toggle, compact, inline in top bar */
+    .mode-group { display: flex; align-items: center; gap: 6px; }
+    .mode-label { font-size: 9px; letter-spacing: 2px; color: #555; }
+    .mode-btn {
+      background: transparent; border: 0.5px solid #2a2a3a; border-radius: 5px;
+      padding: 4px 12px; font-size: 10px; color: #888; cursor: pointer;
+      letter-spacing: 2px; transition: all 0.15s;
+    }
     .mode-btn:hover { border-color: #5DCAA5; color: #5DCAA5; }
     .mode-btn.active { background: #04342C; border-color: #0F6E56; color: #5DCAA5; }
 
-    /* STATUS BAR */
-    .status-bar { display: flex; gap: 20px; background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 1280px; }
-    .player-status { display: flex; align-items: center; gap: 8px; flex: 1; }
-    .player-status.p1 .label { color: #7F77DD; }
-    .player-status.p2 .label { color: #1D9E75; }
-    .player-status .label { font-size: 11px; letter-spacing: 2px; }
-    .device-select { background: #0d0d18; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 4px 10px; font-size: 11px; color: #ccc; cursor: pointer; flex: 1; max-width: 280px; font-family: 'Segoe UI', sans-serif; }
+    .top-bar .spacer { flex: 1; }
+
+    /* device pickers in top bar */
+    .device-group {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .device-group .lab {
+      font-size: 10px; letter-spacing: 2px;
+    }
+    .device-group.p1 .lab { color: #7F77DD; }
+    .device-group.p2 .lab { color: #1D9E75; }
+    .device-select {
+      background: #0d0d18; border: 0.5px solid #2a2a3a; border-radius: 5px;
+      padding: 3px 8px; font-size: 10px; color: #ccc; cursor: pointer;
+      max-width: 200px; font-family: 'Segoe UI', sans-serif;
+    }
     .p1 .device-select { color: #AFA9EC; }
     .p2 .device-select { color: #5DCAA5; }
-    .device-select:focus { outline: none; border-color: #7F77DD; }
-    .offset-tag { font-family: 'Courier New', monospace; font-size: 10px; color: #888; }
+    .offset-tag { font-family: 'Courier New', monospace; font-size: 9px; color: #888; }
 
-    /* PLAYER PANELS */
-    .player-panel { background: #0d0d14; border: 0.5px solid #1e1e2a; border-radius: 10px; padding: 12px; width: 100%; max-width: 1280px; }
-    .player-panel.p1 { border-color: rgba(127,119,221,0.25); }
-    .player-panel.p2 { border-color: rgba(29,158,117,0.25); }
-    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .panel-title { font-size: 11px; letter-spacing: 3px; font-weight: 500; }
-    .p1 .panel-title { color: #AFA9EC; }
-    .p2 .panel-title { color: #5DCAA5; }
-    .panel-device { font-size: 10px; color: #555; font-family: 'Courier New', monospace; }
-    .panel-row { display: flex; gap: 14px; align-items: flex-start; }
-    .canvas-wrap { border: 0.5px solid #1e1e2a; border-radius: 6px; overflow: hidden; flex-shrink: 0; cursor: pointer; }
-    canvas { display: block; }
+    /* ───── PLAYERS ROW — side-by-side ───────────────────── */
+    .players-row {
+      display: flex; gap: 12px; flex: 1; min-height: 0; width: 100%;
+    }
 
-    /* SCORE CARD */
-    .score-card { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px; font-family: 'Courier New', monospace; }
-    .sc-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 8px; border-bottom: 0.5px solid #1a1a26; }
-    .sc-row .lab { color: #555; letter-spacing: 1px; }
-    .sc-row .val { color: #fff; font-weight: 500; }
-    .p1 .sc-row .val { color: #AFA9EC; }
-    .p2 .sc-row .val { color: #5DCAA5; }
-    .sc-feedback { font-size: 14px; font-weight: 500; letter-spacing: 3px; text-align: center; padding: 6px 0; min-height: 26px; transition: opacity 0.15s; }
-    .sc-feedback.perfect { color: #AFA9EC; } .sc-feedback.good { color: #9FE1CB; }
-    .sc-feedback.miss { color: #E24B4A; }    .sc-feedback.wrong { color: #BA7517; }
-    .sc-feedback.hidden { opacity: 0; }
+    .player-panel {
+      flex: 1 1 50%;
+      display: flex; flex-direction: column;
+      background: #0d0d14;
+      border-radius: 10px;
+      padding: 10px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .player-panel.p1 {
+      border: 1px solid rgba(127,119,221,0.4);
+      box-shadow: 0 0 24px rgba(127,119,221,0.08);
+    }
+    .player-panel.p2 {
+      border: 1px solid rgba(29,158,117,0.4);
+      box-shadow: 0 0 24px rgba(29,158,117,0.08);
+    }
 
-    /* CONTROLS */
-    .controls-row { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; max-width: 1280px; justify-content: center; }
-    .file-btn { background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 7px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    /* ── HUD strip above canvas ──────────────────────────── */
+    .player-hud {
+      display: flex; align-items: center; gap: 14px;
+      padding-bottom: 8px;
+      border-bottom: 0.5px solid #1e1e2a;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .player-name {
+      font-size: 14px; font-weight: 500; letter-spacing: 3px;
+    }
+    .p1 .player-name { color: #AFA9EC; }
+    .p2 .player-name { color: #5DCAA5; }
+    .player-device {
+      font-size: 9px; color: #555; font-family: 'Courier New', monospace;
+      flex: 1;
+    }
+    .hud-stat {
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      min-width: 48px;
+    }
+    .hud-stat .lab {
+      font-size: 8px; letter-spacing: 2px; color: #555;
+    }
+    .hud-stat .val {
+      font-family: 'Courier New', monospace;
+      font-size: 18px; font-weight: 500; color: #fff;
+    }
+    .p1 .hud-stat .val { color: #AFA9EC; }
+    .p2 .hud-stat .val { color: #5DCAA5; }
+    .hud-stat .val.score { font-size: 22px; }
+    .hud-stat .val.combo { font-size: 18px; }
+    .hud-stat .val.grade { font-size: 22px; font-weight: 600; }
+
+    /* ── Canvas + big hit-feedback overlay ──────────────── */
+    .canvas-stage {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .canvas-stage canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      /* scale up so the canvases fill the available area */
+      transform: scale(1.6);
+      transform-origin: center;
+      image-rendering: -webkit-optimize-contrast;
+    }
+    /* shrink scale when there's less room */
+    @media (max-height: 900px) {
+      .canvas-stage canvas { transform: scale(1.4); }
+    }
+    @media (max-height: 800px) {
+      .canvas-stage canvas { transform: scale(1.2); }
+    }
+    @media (max-height: 700px) {
+      .canvas-stage canvas { transform: scale(1); }
+    }
+
+    .feedback-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center; justify-content: center;
+      pointer-events: none;
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      text-shadow: 0 0 30px currentColor, 0 4px 12px rgba(0,0,0,0.8);
+      transition: opacity 0.2s, transform 0.2s;
+      opacity: 0;
+      transform: scale(0.6);
+      z-index: 5;
+    }
+    .feedback-overlay.show {
+      opacity: 0.95; transform: scale(1.0);
+    }
+    .feedback-overlay.perfect { color: #AFA9EC; }
+    .feedback-overlay.good    { color: #9FE1CB; }
+    .feedback-overlay.miss    { color: #E24B4A; }
+    .feedback-overlay.wrong   { color: #BA7517; }
+
+    /* ───── FOOTER controls (compact) ────────────────────── */
+    .footer-row {
+      display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+      flex-shrink: 0;
+    }
+    .file-btn {
+      background: #1a1a26; border: 0.5px solid #2a2a3a; border-radius: 5px;
+      padding: 5px 10px; font-size: 10px; color: #888; cursor: pointer;
+      letter-spacing: 1px; transition: all 0.15s;
+    }
     .file-btn:hover { border-color: #7F77DD; color: #CECBF6; }
     input[type=file] { display: none; }
-    .start-btn { background: #3C3489; border: none; border-radius: 6px; padding: 7px 20px; font-size: 12px; color: #fff; cursor: pointer; letter-spacing: 2px; opacity: 0.4; pointer-events: none; transition: all 0.2s; }
+    .start-btn {
+      background: #3C3489; border: none; border-radius: 5px;
+      padding: 5px 16px; font-size: 11px; color: #fff; cursor: pointer;
+      letter-spacing: 2px; opacity: 0.4; pointer-events: none; transition: all 0.2s;
+    }
     .start-btn.enabled { opacity: 1; pointer-events: all; }
     .start-btn.enabled:hover { background: #7F77DD; }
-    button { background: transparent; border: 0.5px solid #2a2a3a; border-radius: 6px; padding: 6px 14px; font-size: 11px; color: #888; cursor: pointer; letter-spacing: 1px; transition: all 0.15s; }
+    button {
+      background: transparent; border: 0.5px solid #2a2a3a; border-radius: 5px;
+      padding: 5px 10px; font-size: 10px; color: #888; cursor: pointer;
+      letter-spacing: 1px; transition: all 0.15s;
+    }
     button:hover { border-color: #7F77DD; color: #CECBF6; }
     button.active { background: #3C3489; border-color: #7F77DD; color: #CECBF6; }
     .btn-cal-p1 { border-color: rgba(127,119,221,0.4); color: #AFA9EC; }
     .btn-cal-p2 { border-color: rgba(29,158,117,0.4); color: #5DCAA5; }
 
-    /* SETTINGS */
-    .settings-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 11px; color: #555; }
+    .settings-row {
+      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+      justify-content: center; font-size: 10px; color: #555;
+      flex-shrink: 0;
+    }
     input[type=range] { accent-color: #7F77DD; }
 
-    /* STATUS MESSAGE */
-    .status-msg { font-size: 11px; letter-spacing: 1px; padding: 4px 12px; min-height: 18px; text-align: center; max-width: 1280px; }
-    .status-msg.green { color: #5DCAA5; }
+    .status-msg {
+      font-size: 10px; letter-spacing: 1px; padding: 2px 12px;
+      text-align: center; flex-shrink: 0;
+    }
+    .status-msg.green  { color: #5DCAA5; }
     .status-msg.yellow { color: #EF9F27; }
-    .status-msg.red { color: #E24B4A; }
+    .status-msg.red    { color: #E24B4A; }
     .status-msg.neutral { color: #555; }
 
-    .song-label { font-size: 12px; color: #888; letter-spacing: 1px; }
-    .info { font-size: 10px; color: #2a2a3a; letter-spacing: 1px; }
-
-    /* CALIBRATION OVERLAY (shared shape — color comes from class) */
-    .cal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100; flex-direction:column; align-items:center; justify-content:center; gap:20px; }
+    /* ───── CALIBRATION OVERLAY (unchanged) ──────────────── */
+    .cal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:100; flex-direction:column; align-items:center; justify-content:center; gap:18px; }
     .cal-overlay.open { display:flex; }
     .cal-which { font-size:11px; letter-spacing:3px; color:#AFA9EC; }
     .cal-heading { font-size:22px; font-weight:500; letter-spacing:4px; color:#fff; }
@@ -125,107 +259,110 @@
   </style>
 </head>
 <body>
-  <h1>BAND<span class="p1">SYNC</span></h1>
-  <div class="subtitle">2-PLAYER · PIANO + DRUMS</div>
 
-  <!-- MODE TOGGLE -->
-  <div class="mode-row">
-    <span class="mode-label">P2 ROLE:</span>
-    <button id="btn-p2-drums" class="mode-btn active">DRUMS</button>
-    <button id="btn-p2-piano" class="mode-btn">PIANO</button>
-  </div>
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div>
+      <div class="logo">BAND<span class="p1">SYNC</span></div>
+      <div class="subtitle">2-PLAYER</div>
+    </div>
 
-  <!-- STATUS BAR -->
-  <div class="status-bar">
-    <div class="player-status p1">
-      <span class="label">P1 PIANO</span>
+    <div class="mode-group">
+      <span class="mode-label">P2:</span>
+      <button id="btn-p2-drums" class="mode-btn active">DRUMS</button>
+      <button id="btn-p2-piano" class="mode-btn">PIANO</button>
+    </div>
+
+    <span class="spacer"></span>
+
+    <div class="device-group p1">
+      <span class="lab" id="p1-role-label">P1 PIANO</span>
       <select class="device-select" id="p1-device-select"></select>
       <span class="offset-tag" id="p1-offset">0ms</span>
     </div>
-    <div class="player-status p2">
-      <span class="label" id="p2-role-label">P2 DRUMS</span>
+
+    <div class="device-group p2">
+      <span class="lab" id="p2-role-label">P2 DRUMS</span>
       <select class="device-select" id="p2-device-select"></select>
       <span class="offset-tag" id="p2-offset">0ms</span>
     </div>
   </div>
 
-  <!-- P1 PANEL -->
-  <div class="player-panel p1">
-    <div class="panel-header">
-      <span class="panel-title">P1 · PIANO</span>
-      <span class="panel-device" id="p1-device-name">—</span>
-    </div>
-    <div class="panel-row">
-      <div class="canvas-wrap"><canvas id="p1-canvas"></canvas></div>
-      <div class="score-card">
-        <div class="sc-row"><span class="lab">SCORE</span><span class="val" id="p1-score">0</span></div>
-        <div class="sc-row"><span class="lab">COMBO</span><span class="val" id="p1-combo">x1</span></div>
-        <div class="sc-row"><span class="lab">ACCURACY</span><span class="val" id="p1-acc">—</span></div>
-        <div class="sc-row"><span class="lab">GRADE</span><span class="val" id="p1-grade">—</span></div>
-        <div class="sc-row"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw">0/0/0/0</span></div>
-        <div class="sc-feedback hidden" id="p1-feedback">—</div>
+  <!-- PLAYERS — side-by-side -->
+  <div class="players-row">
+
+    <!-- P1 PANEL -->
+    <div class="player-panel p1">
+      <div class="player-hud">
+        <span class="player-name" id="p1-panel-title">P1 · PIANO</span>
+        <span class="player-device" id="p1-device-name">—</span>
+        <div class="hud-stat"><span class="lab">SCORE</span><span class="val score" id="p1-score">0</span></div>
+        <div class="hud-stat"><span class="lab">COMBO</span><span class="val combo" id="p1-combo">x1</span></div>
+        <div class="hud-stat"><span class="lab">ACC</span><span class="val" id="p1-acc">—</span></div>
+        <div class="hud-stat"><span class="lab">GRADE</span><span class="val grade" id="p1-grade">—</span></div>
+        <div class="hud-stat"><span class="lab">P/G/M/W</span><span class="val" id="p1-pgmw" style="font-size:11px;">0/0/0/0</span></div>
+      </div>
+      <div class="canvas-stage">
+        <canvas id="p1-canvas"></canvas>
+        <div class="feedback-overlay" id="p1-feedback"></div>
       </div>
     </div>
-  </div>
 
-  <!-- P2 PANEL -->
-  <div class="player-panel p2">
-    <div class="panel-header">
-      <span class="panel-title" id="p2-panel-title">P2 · DRUMS</span>
-      <span class="panel-device" id="p2-device-name">—</span>
-    </div>
-    <div class="panel-row">
-      <div class="canvas-wrap" id="p2-canvas-drums-wrap"><canvas id="p2-canvas-drums"></canvas></div>
-      <div class="canvas-wrap" id="p2-canvas-piano-wrap" style="display:none;"><canvas id="p2-canvas-piano"></canvas></div>
-      <div class="score-card">
-        <div class="sc-row"><span class="lab">SCORE</span><span class="val" id="p2-score">0</span></div>
-        <div class="sc-row"><span class="lab">COMBO</span><span class="val" id="p2-combo">x1</span></div>
-        <div class="sc-row"><span class="lab">ACCURACY</span><span class="val" id="p2-acc">—</span></div>
-        <div class="sc-row"><span class="lab">GRADE</span><span class="val" id="p2-grade">—</span></div>
-        <div class="sc-row"><span class="lab">P/G/M/W</span><span class="val" id="p2-pgmw">0/0/0/0</span></div>
-        <div class="sc-feedback hidden" id="p2-feedback">—</div>
+    <!-- P2 PANEL -->
+    <div class="player-panel p2">
+      <div class="player-hud">
+        <span class="player-name" id="p2-panel-title">P2 · DRUMS</span>
+        <span class="player-device" id="p2-device-name">—</span>
+        <div class="hud-stat"><span class="lab">SCORE</span><span class="val score" id="p2-score">0</span></div>
+        <div class="hud-stat"><span class="lab">COMBO</span><span class="val combo" id="p2-combo">x1</span></div>
+        <div class="hud-stat"><span class="lab">ACC</span><span class="val" id="p2-acc">—</span></div>
+        <div class="hud-stat"><span class="lab">GRADE</span><span class="val grade" id="p2-grade">—</span></div>
+        <div class="hud-stat"><span class="lab">P/G/M/W</span><span class="val" id="p2-pgmw" style="font-size:11px;">0/0/0/0</span></div>
+      </div>
+      <div class="canvas-stage">
+        <canvas id="p2-canvas-drums"></canvas>
+        <canvas id="p2-canvas-piano" style="display:none;"></canvas>
+        <div class="feedback-overlay" id="p2-feedback"></div>
       </div>
     </div>
+
   </div>
 
-  <!-- STATUS MESSAGE / SONG LABEL -->
+  <!-- STATUS MESSAGE -->
   <div class="status-msg neutral" id="status-msg">Pick a test pattern or load a MIDI file</div>
-  <div class="song-label" id="song-label"></div>
 
   <!-- CONTROLS -->
-  <div class="controls-row">
+  <div class="footer-row">
     <label class="file-btn" id="file-label">♪ LOAD MIDI<input type="file" id="file-input" accept=".mid,.midi"></label>
 
-    <!-- Piano + Drums patterns (visible in P+D mode) -->
+    <!-- Piano + Drums patterns -->
     <button class="pd-only" id="btn-test-mary-rock">▶ MARY + ROCK</button>
     <button class="pd-only" id="btn-test-scale-hihat">▶ SCALE + HIHAT</button>
     <button class="pd-only" id="btn-test-metro-kick">▶ METRO + KICK</button>
 
-    <!-- Piano + Piano patterns (visible in P+P mode) -->
+    <!-- Piano + Piano patterns -->
     <button class="pp-only" id="btn-test-mary-unison" style="display:none;">▶ MARY UNISON</button>
     <button class="pp-only" id="btn-test-mary-octaves" style="display:none;">▶ MARY OCTAVES</button>
-    <button class="pp-only" id="btn-test-scale-thirds" style="display:none;">▶ SCALES IN 3rds</button>
+    <button class="pp-only" id="btn-test-scale-thirds" style="display:none;">▶ SCALES 3rds</button>
 
     <button class="start-btn" id="start-btn">START →</button>
     <button id="btn-pause" style="display:none;">⏸ PAUSE</button>
     <button id="btn-reset" style="display:none;">↺ RESET</button>
-    <button id="btn-cal-p1" class="btn-cal-p1">⊙ P1 CALIBRATE</button>
-    <button id="btn-cal-p2" class="btn-cal-p2">⊙ P2 CALIBRATE</button>
+    <button id="btn-cal-p1" class="btn-cal-p1">⊙ P1 CAL</button>
+    <button id="btn-cal-p2" class="btn-cal-p2">⊙ P2 CAL</button>
   </div>
 
-  <!-- SETTINGS -->
   <div class="settings-row">
-    <span>NOTE SPEED</span>
-    <input type="range" id="speed" min="1" max="10" value="3" step="1" style="width:100px;">
-    <span id="speed-val" style="color:#7F77DD;min-width:60px;">3 — 3.0s</span>
-    <span style="margin-left:12px;">HIT WINDOW</span>
-    <input type="range" id="hitwin" min="1" max="5" value="2" step="1" style="width:80px;">
-    <span id="hitwin-val" style="color:#7F77DD;min-width:80px;">Easy</span>
-    <span style="margin-left:12px;">SOUND</span>
+    <span>SPEED</span>
+    <input type="range" id="speed" min="1" max="10" value="3" step="1" style="width:90px;">
+    <span id="speed-val" style="color:#7F77DD;min-width:54px;">3 — 3.0s</span>
+    <span>WINDOW</span>
+    <input type="range" id="hitwin" min="1" max="5" value="2" step="1" style="width:70px;">
+    <span id="hitwin-val" style="color:#7F77DD;min-width:64px;">Easy</span>
+    <span>SOUND</span>
     <button id="sound-toggle" class="active">ALWAYS</button>
+    <span id="song-label" style="margin-left:14px;color:#888;"></span>
   </div>
-
-  <div class="info">SPACE = pause · R = reset · ESC = close calibration · Click instruments or use MIDI</div>
 
   <!-- CALIBRATION OVERLAY -->
   <div class="cal-overlay" id="cal-overlay">

@@ -435,9 +435,9 @@ function showFeedback(player, text, cls) {
   const el = document.getElementById((player === P1 ? 'p1' : 'p2') + '-feedback');
   if (!el) return;
   el.textContent = text;
-  el.className   = 'sc-feedback ' + cls;
+  el.className   = 'feedback-overlay show ' + cls;
   clearTimeout(player.feedbackTimer);
-  player.feedbackTimer = setTimeout(() => { el.className = 'sc-feedback hidden'; }, 500);
+  player.feedbackTimer = setTimeout(() => { el.className = 'feedback-overlay ' + cls; }, 550);
 }
 
 
@@ -673,8 +673,8 @@ function resetSongUI() {
   document.getElementById('btn-reset').style.display = 'none';
   document.getElementById('btn-pause').textContent   = '⏸ PAUSE';
   document.getElementById('btn-pause').className     = '';
-  document.getElementById('p1-feedback').className   = 'sc-feedback hidden';
-  document.getElementById('p2-feedback').className   = 'sc-feedback hidden';
+  document.getElementById('p1-feedback').className   = 'feedback-overlay';
+  document.getElementById('p2-feedback').className   = 'feedback-overlay';
   if (!P1.scheduledNotes.length && !P2.scheduledNotes.length) {
     document.getElementById('start-btn').className = 'start-btn';
   }
