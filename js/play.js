@@ -21,6 +21,7 @@ import { getUser }            from './services/auth.js';
 import { getProfile }         from './services/profile.js';
 import { claimCode }          from './services/device-codes.js';
 import { saveSession }        from './services/play-sessions.js';
+import { getMyPersonalBests } from './services/history.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
 import { parseMIDIFile }      from './core/midi-parser.js';
 import { loadOffset }         from './core/calibration.js';
@@ -55,6 +56,8 @@ const ctx = {
   gameStartedAt: null,  // ISO timestamp when current run began (refreshed on restart)
   lastResults:   null,  // [{ identity, stats, ... }, ...] for results screen
   saveStatus:    null,  // { state: 'saving'|'saved'|'failed', sessionId?, error? }
+  bests:         null,  // host's personal bests: { [song_file]: { score, grade, ... } }
+  oldBests:      null,  // snapshot of bests at game start — for NEW PB detection on results
 };
 
 let setupTeardown = null;
@@ -74,6 +77,11 @@ async function init() {
   // Load host profile (for the "Me" identity display).
   try { ctx.profile = await getProfile(user.id); }
   catch (err) { console.warn('play.js: getProfile failed, using fallbacks', err); }
+
+  // Load host personal bests (for setup display + NEW PB badge on results).
+  // Best-effort; an empty/failed fetch just means no PB displays.
+  try { ctx.bests = await getMyPersonalBests(user.id); }
+  catch (err) { console.warn('play.js: getMyPersonalBests failed', err); ctx.bests = {}; }
 
   // Library manifest.
   try {
@@ -259,6 +267,7 @@ function paintSetup() {
           ${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'}
           (${tracks.map(t => esc(t.name)).join(', ')})
         </div>
+        ${renderSetupPB(song)}
       </div>
 
       <div class="setup-section">
@@ -522,6 +531,21 @@ function showClaimModal({ slotIdx, onClaimed }) {
   backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
 }
 
+function renderSetupPB(song) {
+  const myBest = ctx.bests?.[song.file];
+  if (!myBest) {
+    return `<div class="setup-song-pb empty">YOUR BEST: — set it now</div>`;
+  }
+  return `
+    <div class="setup-song-pb">
+      YOUR BEST: ${myBest.score.toLocaleString()} &middot;
+      ${esc(myBest.grade || '—')} &middot;
+      ${myBest.accuracy ?? '—'}% &middot;
+      ${esc(timeAgo(myBest.played_at))}
+    </div>
+  `;
+}
+
 function midiStatusText() {
   if (!ctx.midi) return 'MIDI: initializing…';
   if (!ctx.midi.ok && ctx.midi.reason === 'unsupported') {
@@ -629,6 +653,11 @@ async function renderGame() {
     ctx.activeGame.start();
   });
   document.getElementById('btn-exit-game').addEventListener('click', renderSetup);
+
+  // Snapshot PBs before the run so onSongComplete can detect a fresh best.
+  // (Captures the host's PBs at game start — friend / guest PB detection
+  // would require reading their slot history, which RLS blocks.)
+  ctx.oldBests = { ...(ctx.bests || {}) };
 
   ctx.saveStatus    = null;
   ctx.gameStartedAt = new Date().toISOString();
@@ -778,6 +807,8 @@ function onSongComplete() {
   }).then(sessionId => {
     ctx.saveStatus = { state: 'saved', sessionId };
     refreshSaveStatusUI();
+    // Refresh PBs so the next setup screen reads current data.
+    getMyPersonalBests(ctx.user.id).then(b => { ctx.bests = b; }).catch(() => {});
   }).catch(err => {
     console.error('play.js: saveSession failed', err);
     ctx.saveStatus = { state: 'failed', error: err.message };
@@ -835,14 +866,23 @@ function renderResults() {
 
 function resultsRow(i, r) {
   const s = r.stats ?? { score: 0, accuracy: 0, grade: '—', perfect: 0, good: 0, miss: 0, wrong: 0 };
+  // NEW PB only for the host slot — we don't have friends' PBs (RLS) and
+  // guests have no account to record against. Also only triggers when
+  // there was a previous best to beat (first plays just record quietly).
+  const isHostSlot = r.identity.kind === 'host';
+  const oldBest    = ctx.oldBests?.[ctx.song.file]?.score ?? 0;
+  const newPB      = isHostSlot && oldBest > 0 && s.score > oldBest;
+
   const identityLine = r.identity.kind === 'guest'
     ? `<span class="identity-guest">${esc(r.identity.displayName)}</span>`
     : `${avatarEmoji(r.identity.avatar)} <span class="${r.identity.kind === 'host' ? 'identity-host' : 'identity-friend'}">${esc(r.identity.displayName)}</span>`;
+  const pbBadge = newPB ? '<span class="pb-new-badge">NEW PERSONAL BEST</span>' : '';
+
   return `
     <div class="results-row p${i + 1}">
       <div class="results-tag">P${i + 1}</div>
       <div>
-        <div style="font-size:13px;color:#fff">${identityLine}</div>
+        <div style="font-size:13px;color:#fff">${identityLine} ${pbBadge}</div>
         <div class="results-pgmw">${esc(r.trackName)} &middot; ${s.perfect} / ${s.good} / ${s.miss} / ${s.wrong}</div>
       </div>
       <div class="results-score">${s.score}</div>
@@ -881,4 +921,15 @@ function esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Inline relative-time formatter — small enough not to be worth a shared util.
+// app.js has the same function but we don't import from it (play.html doesn't
+// expose the DOM elements app.js touches on import).
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }

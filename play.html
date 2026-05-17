@@ -164,6 +164,27 @@
       font-size: 10px; letter-spacing: 2px; color: var(--dim);
       margin-top: 4px;
     }
+    .setup-song-pb {
+      margin-top: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; letter-spacing: 1.5px;
+      color: var(--teal2);
+    }
+    .setup-song-pb.empty {
+      color: var(--dim); font-style: italic;
+    }
+    .pb-new-badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 3px 8px;
+      background: rgba(29,158,117,0.2);
+      border: 0.5px solid var(--teal);
+      color: var(--teal2);
+      font-family: 'Space Mono', monospace;
+      font-size: 9px; letter-spacing: 2px; font-weight: 700;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
 
     .setup-section {
       margin-bottom: 28px;
@@ -614,6 +635,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=6"></script>
+  <script type="module" src="js/play.js?v=7"></script>
 </body>
 </html>
