@@ -46,10 +46,14 @@ const P1 = {
   role:           'piano',
   color:          PLAYER_COLORS[0],
   renderer:       null,
+  rendererPiano:  null,
+  rendererDrums:  null,
   scorer:         createScorer(),
   scheduledNotes: [],
   fallingBlocks:  [],
   heldNotes:      new Set(),
+  laneFlash:      {},
+  drumMapping:    {},
   userOffset:     0,
   deviceName:     'unknown',
   feedbackTimer:  null,
@@ -145,6 +149,7 @@ function applyP1Role(role) {
   P1.scheduledNotes = [];
   P1.fallingBlocks  = [];
   P1.heldNotes.clear();
+  P1.laneFlash      = {};
   P1.scorer.reset();
   P2.scheduledNotes = [];
   P2.fallingBlocks  = [];
@@ -918,7 +923,11 @@ function spawnDrumBlocks(player, songTime) {
 }
 
 function drawAll(countoff) {
-  P1.renderer.draw({ fallingBlocks: P1.fallingBlocks, heldNotes: P1.heldNotes, countoff });
+  if (P1.role === 'piano') {
+    P1.renderer.draw({ fallingBlocks: P1.fallingBlocks, heldNotes: P1.heldNotes, countoff });
+  } else {
+    P1.renderer.draw({ fallingBlocks: P1.fallingBlocks, laneFlash: P1.laneFlash, countoff });
+  }
   if (P2.role === 'piano') {
     P2.rendererPiano.draw({ fallingBlocks: P2.fallingBlocks, heldNotes: P2.heldNotes, countoff });
   } else {
