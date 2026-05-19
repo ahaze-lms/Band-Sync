@@ -4,7 +4,7 @@ import { subscribeToInbox, getPendingIncoming, getUnreadCount } from './services
 
 import { mount as mountAuth }        from './screens/auth.js';
 import { mount as mountHome }        from './screens/home.js';
-import { mount as mountProfileEdit } from './screens/profile-edit.js?v=4';
+import { mount as mountProfileEdit } from './screens/profile-edit.js?v=5';
 import { mount as mountFriends }     from './screens/friends.js';
 import { mount as mountInbox }       from './screens/inbox.js?v=2';
 import { mount as mountHistory }     from './screens/history.js';

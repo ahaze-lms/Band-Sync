@@ -301,10 +301,6 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
     if (!listEl) return;
     try {
       const rows = await sessionAttachments.listForUser(user.id);
-      console.log('[devices] listForUser returned', rows);
-      rows.forEach((r, i) => {
-        console.log(`[devices] row ${i} host_user_id=${r.host_user_id} host=`, r.host);
-      });
       if (rows.length === 0) {
         listEl.innerHTML = '<div class="pairing-empty">NO ACTIVE DEVICES</div>';
         return;
@@ -320,12 +316,11 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
       ? esc(r.host.display_name || r.host.username || 'someone')
       : '(unknown)';
     const av  = r.host ? avatarEmoji(r.host.avatar) : '·';
-    const lastUsed = `last used ${esc(timeAgo(r.last_used_at))}`;
     return `
       <div class="activity-row" data-token="${esc(r.token)}">
         <span class="activity-avatar">${av}</span>
         <span class="activity-name">${name}</span>
-        <span class="activity-time" title="${esc(new Date(r.last_used_at).toLocaleString())}">${lastUsed}</span>
+        <span class="activity-time" title="last used ${esc(new Date(r.last_used_at).toLocaleString())}">${esc(timeAgo(r.last_used_at))}</span>
         <button class="btn-revoke" data-revoke-token="${esc(r.token)}">REVOKE</button>
       </div>
     `;
