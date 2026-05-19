@@ -83,7 +83,11 @@
 - ~~**Remote warm-up countdown** — shipped. "STARTING IN X" counts down the 8s lead in the game-time display.~~
 - ~~**Lobby warmup instrument + device picker** — shipped. Device select in participant row + live piano/drum canvas below lobby cards.~~
 - ~~**Mobile pass + theme lift** — shipped. 480px breakpoint, 44px touch targets, dark-navy theme variables.~~
-- ~~**Personal replay** — shipped. Records actual performance during a run; "⏪ REPLAY" button on results re-runs it through the engine.~~
+- ~~**Personal replay** — shipped. Records actual performance during a run; "⏪ REPLAY" button on results re-runs it through the engine. Fixed for multiplayer: `playerIdx` is stored per event and restored on inject.~~
+- ~~**Piano warmup touch + click** — shipped. `touchstart`/`touchmove`/`touchend` in `piano.js`; slide-across-keys glissando supported. `onKeyDown`/`onKeyUp` wired in warmup.~~
+- ~~**Piano warmup `keyboardOnly` mode** — shipped. Canvas renders just the key strip (72px, no highway). `rebuildLobbyWarmup` toggles `.lobby-warmup-drums` on the wrapper so drums still crop correctly.~~
+- ~~**`,` = C5 alias** — shipped. Comma key triggers C5 alongside Q; shows `,` hint on falling blocks.~~
+- **Lobby invite on song select** — under discussion. Proposal: create lobby when REMOTE LOBBY is clicked (before song pick) so the invite link is available immediately. `lobbies.song_id` starts null, set when host picks a song. Deferred pending decision.
 - **History integration for replay** — `ctx.lastReplayLog` is in-memory only (lost on reload). Could serialise and store in `play_session_slots` as a JSONB column for persistent replay.
 - Twilio SMS invites (§26 → Future enhancements)
 - Connected-devices "revoke all" button
