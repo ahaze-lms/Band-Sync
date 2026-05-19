@@ -472,6 +472,25 @@
     .track-row-remove:hover { color: var(--red); background: var(--bg3); }
     .track-row-remove:disabled { opacity: 0.2; cursor: not-allowed; }
 
+    /* Mute / Solo toggles per track. Tiny + always visible; click
+       state shows lit color (red for M, yellow for S). */
+    .ms-toggle {
+      width: 28px; height: 28px;
+      background: var(--bg3); color: var(--dim);
+      border: 1px solid var(--bg3); border-radius: 4px;
+      font-size: 11px; font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      padding: 0;
+    }
+    .ms-toggle:hover { color: var(--text); border-color: var(--purple); }
+    .ms-toggle.m-on  { background: rgba(224, 83, 60, 0.20);
+                       border-color: var(--red);
+                       color: var(--red); }
+    .ms-toggle.s-on  { background: rgba(224, 160, 64, 0.20);
+                       border-color: #E0A040;
+                       color: #E0A040; }
+
     /* ADD TRACK button — sits at the end of the track list. */
     .add-track-btn {
       background: transparent;
@@ -890,7 +909,46 @@
     let playStartedAt = 0;
     let playRafId     = null;
     let playTimeouts  = [];
+    let overdubTimeouts = [];    // notes from non-active tracks scheduled to play while recording
+    let recStartedAt    = 0;     // performance.now() when recording started — used to time overdub
     let playPositionMs = 0;      // "play from" position; user drags the ruler to set it
+
+    // A track is audible when it's not muted, OR — if any track is
+    // soloed — when it has solo on. Standard DAW mute/solo semantics.
+    function isTrackAudible(track) {
+      if (track.muted) return false;
+      const anySolo = song.tracks.some(t => t.solo);
+      if (anySolo) return !!track.solo;
+      return true;
+    }
+
+    // ── Overdub playback ──────────────────────────────────────────
+    // While recording, the OTHER tracks' notes play through so the
+    // user can play along with what's already there. Mute / solo
+    // still apply. The active track is skipped (it's what's being
+    // recorded — we don't want it doubling).
+    function startOverdubPlayback() {
+      cancelOverdubPlayback();
+      recStartedAt = performance.now();
+      const activeId = song.activeTrackId;
+      for (const track of song.tracks) {
+        if (track.id === activeId) continue;
+        if (!isTrackAudible(track)) continue;
+        for (const note of track.notes) {
+          // Note times are relative to song-start which is the same
+          // moment recording started (recorder uses performance.now()
+          // identically). Plain setTimeout delays line up.
+          const id = setTimeout(() => {
+            if (recorder.isRecording()) playPianoNote(note.pitch, note.velocity);
+          }, note.startMs);
+          overdubTimeouts.push(id);
+        }
+      }
+    }
+    function cancelOverdubPlayback() {
+      for (const id of overdubTimeouts) clearTimeout(id);
+      overdubTimeouts = [];
+    }
 
     // ── Library state (Phase 4) ───────────────────────────────────
     let currentUser   = null;    // null = signed out, library buttons disabled
@@ -1141,6 +1199,7 @@
           getActiveTrack(song).activeGrid = 'raw';   // fresh take is unquantized
           playPositionMs = 0;         // and starts from bar 1
           renderer.setSelected(null); // any prior selection no longer exists
+          startOverdubPlayback();     // other tracks play through while you record
           renderTrackList();          // re-paint the active row's quantize buttons
           updateButtons();
           timeDisplay.textContent = 'Rec 0.0s';
@@ -1155,8 +1214,9 @@
     stopBtn.addEventListener('click', () => {
       if (recorder.isRecording()) {
         recorder.stop();
+        cancelOverdubPlayback();   // other tracks were playing through — stop them too
         const secs = (durationMs(song) / 1000).toFixed(1);
-        timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
+        timeDisplay.textContent = `Recorded ${secs}s · ${totalNoteCount(song)} notes`;
         // Fresh take — playhead returns to start so the obvious PLAY
         // hears the whole thing.
         playPositionMs = 0;
@@ -1176,8 +1236,9 @@
     // Plays from playPositionMs (set via ruler drag), not always 0.
     // playStartedAt is "pre-rolled" so elapsed-since-start equals the
     // requested offset — the tick loop's playhead math stays simple.
+    // Plays all audible tracks (mute / solo respected) at once.
     playBtn.addEventListener('click', async () => {
-      if (song.notes.length === 0) return;
+      if (!songHasNotes(song)) return;
       if (recorder.isRecording() || countingIn) return;
       await resumeIfSuspended();
 
@@ -1186,14 +1247,18 @@
       playing = true;
       updateButtons();
 
-      // Schedule only notes that haven't already passed the playhead.
-      for (const note of song.notes) {
-        const delay = note.startMs - startOffset;
-        if (delay < 0) continue;
-        const id = setTimeout(() => {
-          if (playing) playPianoNote(note.pitch, note.velocity);
-        }, delay);
-        playTimeouts.push(id);
+      // Schedule notes from every audible track. Each track's notes
+      // fire from the same playStartedAt clock so they stay aligned.
+      for (const track of song.tracks) {
+        if (!isTrackAudible(track)) continue;
+        for (const note of track.notes) {
+          const delay = note.startMs - startOffset;
+          if (delay < 0) continue;
+          const id = setTimeout(() => {
+            if (playing) playPianoNote(note.pitch, note.velocity);
+          }, delay);
+          playTimeouts.push(id);
+        }
       }
 
       const total = durationMs(song);
@@ -1249,6 +1314,38 @@
         tag.className = 'track-tag';
         tag.textContent = `${track.name.toUpperCase()} · ${track.role.toUpperCase()}`;
         row.appendChild(tag);
+
+        // Mute / Solo toggles. Stop click propagation so toggling
+        // them doesn't also switch the active track.
+        const mBtn = document.createElement('button');
+        mBtn.type = 'button';
+        mBtn.className = 'ms-toggle' + (track.muted ? ' m-on' : '');
+        mBtn.textContent = 'M';
+        mBtn.title = 'Mute';
+        mBtn.setAttribute('aria-label', 'Mute track');
+        mBtn.setAttribute('aria-pressed', track.muted ? 'true' : 'false');
+        mBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          track.muted = !track.muted;
+          pushHistory();
+          renderTrackList();
+        });
+        row.appendChild(mBtn);
+
+        const sBtn = document.createElement('button');
+        sBtn.type = 'button';
+        sBtn.className = 'ms-toggle' + (track.solo ? ' s-on' : '');
+        sBtn.textContent = 'S';
+        sBtn.title = 'Solo';
+        sBtn.setAttribute('aria-label', 'Solo track');
+        sBtn.setAttribute('aria-pressed', track.solo ? 'true' : 'false');
+        sBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          track.solo = !track.solo;
+          pushHistory();
+          renderTrackList();
+        });
+        row.appendChild(sBtn);
 
         // Active track gets the quantize cluster.
         const tools = document.createElement('div');
@@ -1671,7 +1768,7 @@
           stopPlayback();
         } else if (recorder.isRecording() || countingIn) {
           stopBtn.click();
-        } else if (song.notes.length > 0) {
+        } else if (songHasNotes(song)) {
           playBtn.click();
         }
         return;
@@ -1750,9 +1847,9 @@
       playBtn.classList.toggle('active', playing);
       recordBtn.disabled = rec || countingIn || playing;
       stopBtn.disabled   = !rec && !countingIn && !playing;
-      // PLAY only checks the active track since playback for Phase 5a
-      // is active-track only. Phase 5b will broaden to all unmuted tracks.
-      playBtn.disabled   = rec || countingIn || getActiveTrack(song).notes.length === 0;
+      // PLAY enabled whenever ANY track has notes — playback iterates
+      // every audible track (Phase 5b multi-track playback).
+      playBtn.disabled   = rec || countingIn || !songHasNotes(song);
 
       // Per-track quantize buttons live in track-list DOM and are
       // (re)rendered by renderTrackList. Nothing to refresh here, but
