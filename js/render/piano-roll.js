@@ -28,7 +28,9 @@ const PITCH_MIN  = 36;      // C2
 const PITCH_MAX  = 96;      // C7
 const PITCH_COUNT = PITCH_MAX - PITCH_MIN + 1;
 
-const KEY_STRIP_W = 56;     // left margin width (key labels live here)
+const KEY_STRIP_W = 56;     // left column reserved for key labels
+const RULER_H     = 24;     // top strip reserved for bar/beat ruler + draggable playhead
+const GRID_H      = ROLL_H - RULER_H;   // remaining vertical space for note rows
 
 // Black-key semitones within an octave (relative to C).
 const BLACK_KEY_SET = new Set([1, 3, 6, 8, 10]);
@@ -37,14 +39,16 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   const ctx = canvas.getContext('2d');
 
   const {
-    onAdd    = null,   // (pitch, startMs)         — empty grid tapped
-    onSelect = null,   // (note | null)             — note tapped, ring drawn
-    onMove   = null,   // (note)                    — drag finished
-    onDelete = null,   // (note)                    — long-press / right-click
+    onAdd          = null,   // (pitch, startMs)   — empty grid tapped
+    onSelect       = null,   // (note | null)       — note tapped, ring drawn
+    onMove         = null,   // (note)              — drag finished
+    onDelete       = null,   // (note)              — long-press / right-click
+    onPlayheadDrag = null,   // (ms)                — fires while ruler is being dragged
   } = options;
 
-  let playheadMs   = -1;        // -1 = don't draw playhead
+  let playheadMs   = 0;         // current playhead position; always drawn
   let selectedNote = null;      // highlighted note, or null
+  let rulerDragging = false;    // true while user is dragging the top ruler
 
   // Pointer interaction state — shared between mouse + touch via Pointer Events.
   let drag = null;
@@ -82,13 +86,14 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = ROLL_H / PITCH_COUNT;
+    const rowH    = GRID_H / PITCH_COUNT;
 
     drawRowBands(rowH);
     drawGridlines(totalMs, pxPerMs);
     drawNotes(pxPerMs, rowH);
     drawPlayhead(pxPerMs);
     drawKeyStrip(rowH);
+    drawRuler(totalMs, pxPerMs);   // last — sits on top of everything in the top strip
   }
 
   // ── Internal ────────────────────────────────────────────────────
@@ -109,7 +114,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       const pitch = PITCH_MAX - i;
       const isBlack = BLACK_KEY_SET.has(pitch % 12);
       ctx.fillStyle = isBlack ? '#0c0c18' : '#11111e';
-      ctx.fillRect(KEY_STRIP_W, i * rowH, ROLL_W - KEY_STRIP_W, rowH);
+      ctx.fillRect(KEY_STRIP_W, RULER_H + i * rowH, ROLL_W - KEY_STRIP_W, rowH);
     }
     // Octave separator at every C — slightly brighter horizontal line.
     ctx.strokeStyle = '#1a1a28';
@@ -117,7 +122,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     for (let i = 0; i < PITCH_COUNT; i++) {
       const pitch = PITCH_MAX - i;
       if (pitch % 12 === 0) {
-        const y = (i + 1) * rowH;
+        const y = RULER_H + (i + 1) * rowH;
         ctx.beginPath();
         ctx.moveTo(KEY_STRIP_W, y);
         ctx.lineTo(ROLL_W, y);
@@ -126,7 +131,8 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     }
   }
 
-  // Beat + bar vertical gridlines.
+  // Beat + bar vertical gridlines (drawn through the grid area; the
+  // ruler has its own ticks).
   function drawGridlines(totalMs, pxPerMs) {
     const beatMs = 60_000 / song.bpm;
     const beatsVisible = Math.floor(totalMs / beatMs) + 1;
@@ -137,7 +143,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       ctx.strokeStyle = isBarLine ? '#2a2a40' : '#181826';
       ctx.lineWidth   = isBarLine ? 1 : 0.5;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
+      ctx.moveTo(x, RULER_H);
       ctx.lineTo(x, ROLL_H);
       ctx.stroke();
     }
@@ -152,7 +158,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       const x = KEY_STRIP_W + note.startMs * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
       const yIdx = PITCH_MAX - note.pitch;
-      const y = yIdx * rowH;
+      const y = RULER_H + yIdx * rowH;
 
       ctx.fillStyle = '#7F77DD';
       ctx.fillRect(x, y + 1, w, rowH - 2);
@@ -171,31 +177,34 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   function drawPlayhead(pxPerMs) {
-    if (playheadMs < 0) return;
-    const x = KEY_STRIP_W + playheadMs * pxPerMs;
+    const x = KEY_STRIP_W + Math.max(0, playheadMs) * pxPerMs;
     if (x > ROLL_W) return;
     ctx.strokeStyle = '#1D9E75';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
+    ctx.moveTo(x, 0);            // extends through the ruler so the user can grab it there
     ctx.lineTo(x, ROLL_H);
     ctx.stroke();
   }
 
   // Left-margin mini keyboard — alternating black/white blocks per
-  // semitone, octave labels on each C.
+  // semitone, octave labels on each C. Starts below the ruler.
   function drawKeyStrip(rowH) {
+    // Top-left corner above the keys (covered by ruler styling later, but fill so it's clean)
+    ctx.fillStyle = '#0d0d18';
+    ctx.fillRect(0, 0, KEY_STRIP_W, RULER_H);
+
     for (let i = 0; i < PITCH_COUNT; i++) {
       const pitch = PITCH_MAX - i;
       const isBlack = BLACK_KEY_SET.has(pitch % 12);
       ctx.fillStyle = isBlack ? '#0a0a14' : '#1c1c2a';
-      ctx.fillRect(0, i * rowH, KEY_STRIP_W, rowH);
+      ctx.fillRect(0, RULER_H + i * rowH, KEY_STRIP_W, rowH);
 
       if (pitch % 12 === 0) {
         const octave = Math.floor(pitch / 12) - 1;
         ctx.fillStyle = '#666';
         ctx.font = '11px "Segoe UI", sans-serif';
-        ctx.fillText(`C${octave}`, 6, i * rowH + rowH - 3);
+        ctx.fillText(`C${octave}`, 6, RULER_H + i * rowH + rowH - 3);
       }
     }
     // Right border separating strip from roll area.
@@ -205,6 +214,59 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     ctx.moveTo(KEY_STRIP_W, 0);
     ctx.lineTo(KEY_STRIP_W, ROLL_H);
     ctx.stroke();
+  }
+
+  // Top ruler — dark strip showing bar numbers. Click + drag here to
+  // set the playhead position. Drawn last so the playhead line passes
+  // behind the labels but the ruler background covers any gridlines
+  // that may have leaked into the strip.
+  function drawRuler(totalMs, pxPerMs) {
+    // Background fills the full ruler row (the key-strip portion was
+    // already filled by drawKeyStrip).
+    ctx.fillStyle = '#0d0d18';
+    ctx.fillRect(KEY_STRIP_W, 0, ROLL_W - KEY_STRIP_W, RULER_H);
+
+    // Bottom border under the ruler — separates it from the grid.
+    ctx.strokeStyle = '#2a2a40';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(KEY_STRIP_W, RULER_H);
+    ctx.lineTo(ROLL_W, RULER_H);
+    ctx.stroke();
+
+    // Bar tick marks + numbers (every 4 beats).
+    const beatMs = 60_000 / song.bpm;
+    const barMs  = beatMs * 4;
+    const barsVisible = Math.ceil(totalMs / barMs);
+
+    ctx.font = '10px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#8585a0';
+    ctx.textBaseline = 'middle';
+
+    for (let bar = 0; bar <= barsVisible; bar++) {
+      const x = KEY_STRIP_W + bar * barMs * pxPerMs;
+      if (x > ROLL_W) break;
+      ctx.strokeStyle = '#3a3a52';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, RULER_H - 5);
+      ctx.lineTo(x, RULER_H);
+      ctx.stroke();
+      ctx.fillText(`${bar + 1}`, x + 4, RULER_H / 2 + 1);
+    }
+
+    // Playhead handle — a small notch in the ruler so you can see
+    // where to grab it.
+    const phX = KEY_STRIP_W + Math.max(0, playheadMs) * pxPerMs;
+    if (phX <= ROLL_W) {
+      ctx.fillStyle = '#1D9E75';
+      ctx.beginPath();
+      ctx.moveTo(phX - 5, 2);
+      ctx.lineTo(phX + 5, 2);
+      ctx.lineTo(phX,     RULER_H - 4);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // ── Hit-testing (logical coords) ────────────────────────────────
@@ -218,9 +280,10 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
   function noteAtLogical(lx, ly) {
     if (lx < KEY_STRIP_W) return null;
+    if (ly < RULER_H)     return null;
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = ROLL_H / PITCH_COUNT;
+    const rowH    = GRID_H / PITCH_COUNT;
     // Iterate in reverse so the top-most rendered note wins ties.
     for (let i = song.notes.length - 1; i >= 0; i--) {
       const note = song.notes[i];
@@ -228,7 +291,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       const x = KEY_STRIP_W + note.startMs * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
       const yIdx = PITCH_MAX - note.pitch;
-      const y = yIdx * rowH;
+      const y = RULER_H + yIdx * rowH;
       if (lx >= x && lx <= x + w && ly >= y && ly <= y + rowH) return note;
     }
     return null;
@@ -236,14 +299,27 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
   function gridPosAtLogical(lx, ly) {
     if (lx < KEY_STRIP_W) return null;
+    if (ly < RULER_H)     return null;
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = ROLL_H / PITCH_COUNT;
+    const rowH    = GRID_H / PITCH_COUNT;
     const startMs = Math.max(0, (lx - KEY_STRIP_W) / pxPerMs);
-    const yIdx    = Math.floor(ly / rowH);
+    const yIdx    = Math.floor((ly - RULER_H) / rowH);
     const pitch   = PITCH_MAX - yIdx;
     if (pitch < PITCH_MIN || pitch > PITCH_MAX) return null;
     return { pitch, startMs };
+  }
+
+  // Returns the song-time (ms) at a given logical X, clamped to >= 0.
+  // Used by the ruler-drag path.
+  function msAtLogicalX(lx) {
+    const totalMs = computeViewMs();
+    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+    return Math.max(0, (lx - KEY_STRIP_W) / pxPerMs);
+  }
+
+  function isInRulerLogical(lx, ly) {
+    return lx >= KEY_STRIP_W && ly >= 0 && ly < RULER_H;
   }
 
   // ── Pointer interaction ────────────────────────────────────────
@@ -251,7 +327,20 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   // pointerdown-on-note timer for the touch-friendly "long-press to
   // delete" gesture.
   canvas.addEventListener('pointerdown', (e) => {
-    const pt   = clientToLogical(e.clientX, e.clientY);
+    const pt = clientToLogical(e.clientX, e.clientY);
+
+    // Ruler click → start a playhead drag. Fires onPlayheadDrag every
+    // pointermove tick until release. The renderer doesn't decide
+    // whether the drag is "allowed" (e.g. during playback) — that's
+    // up to the consumer to enforce inside its callback.
+    if (isInRulerLogical(pt.x, pt.y)) {
+      e.preventDefault();
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      rulerDragging = true;
+      if (onPlayheadDrag) onPlayheadDrag(msAtLogicalX(pt.x));
+      return;
+    }
+
     const note = noteAtLogical(pt.x, pt.y);
     const grid = note ? null : gridPosAtLogical(pt.x, pt.y);
     if (!note && !grid) return;     // clicked the key strip — ignore
@@ -277,6 +366,11 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    if (rulerDragging) {
+      const pt = clientToLogical(e.clientX, e.clientY);
+      if (onPlayheadDrag) onPlayheadDrag(msAtLogicalX(pt.x));
+      return;
+    }
     if (!drag || !drag.note) return;       // only existing notes are draggable
     const dx = e.clientX - drag.startClientX;
     const dy = e.clientY - drag.startClientY;
@@ -291,9 +385,9 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const pt = clientToLogical(e.clientX, e.clientY);
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = ROLL_H / PITCH_COUNT;
+    const rowH    = GRID_H / PITCH_COUNT;
     const newStart = Math.max(0, (pt.x - KEY_STRIP_W) / pxPerMs);
-    const yIdx     = Math.floor(pt.y / rowH);
+    const yIdx     = Math.floor((pt.y - RULER_H) / rowH);
     const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, PITCH_MAX - yIdx));
     // Move updates BOTH startMs and startMsRaw — otherwise a later
     // quantize toggle would snap the moved note back to its original
@@ -304,6 +398,11 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   });
 
   canvas.addEventListener('pointerup', (e) => {
+    if (rulerDragging) {
+      rulerDragging = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
     if (!drag) return;
     if (drag.longPressTimer) {
       clearTimeout(drag.longPressTimer);
@@ -328,6 +427,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   });
 
   canvas.addEventListener('pointercancel', () => {
+    rulerDragging = false;
     if (drag && drag.longPressTimer) clearTimeout(drag.longPressTimer);
     drag = null;
   });

@@ -556,7 +556,7 @@
     import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=2';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=2';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=3';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
@@ -598,6 +598,14 @@
       onDelete: (note) => {
         removeNote(song, note);
       },
+      // User dragged the top ruler. Ignored while playing / recording
+      // so the playhead doesn't fight the animation. Otherwise commit
+      // the position so the next PLAY starts from there.
+      onPlayheadDrag: (ms) => {
+        if (playing || countingIn || recorder.isRecording()) return;
+        playPositionMs = Math.max(0, ms);
+        renderer.setPlayhead(playPositionMs);
+      },
     });
     // Shared between MIDI and on-screen keyboard — lights up the
     // touch keyboard whenever any source is holding a note.
@@ -634,6 +642,7 @@
     let playRafId     = null;
     let playTimeouts  = [];
     let activeGrid    = 'raw';   // active quantize grid; resets to 'raw' on each new take
+    let playPositionMs = 0;      // "play from" position; user drags the ruler to set it
 
     // ── Library state (Phase 4) ───────────────────────────────────
     let currentUser   = null;    // null = signed out, library buttons disabled
@@ -651,8 +660,15 @@
     const emptyHint   = document.getElementById('empty-hint');
 
     // ── Continuous draw loop ──────────────────────────────────────
+    // Playhead source switches based on state:
+    //   recording → recorder.elapsedMs()      (live recording head)
+    //   playing   → playStartedAt offset      (animated through the take)
+    //   idle      → playPositionMs            (where PLAY would start)
     function tick() {
-      if (recorder.isRecording()) renderer.setPlayhead(recorder.elapsedMs());
+      let head = playPositionMs;
+      if (recorder.isRecording())  head = recorder.elapsedMs();
+      else if (playing)            head = performance.now() - playStartedAt;
+      renderer.setPlayhead(head);
       renderer.draw();
       kbRenderer.draw({ fallingBlocks: [], heldNotes, countoff: null });
       requestAnimationFrame(tick);
@@ -816,7 +832,8 @@
         if (countInBeat >= 4) {
           countingIn = false;
           recorder.start();
-          activeGrid = 'raw';        // fresh take is unquantized by default
+          activeGrid = 'raw';         // fresh take is unquantized by default
+          playPositionMs = 0;         // and starts from bar 1
           renderer.setSelected(null); // any prior selection no longer exists
           updateButtons();
           timeDisplay.textContent = 'Rec 0.0s';
@@ -833,35 +850,41 @@
         recorder.stop();
         const secs = (durationMs(song) / 1000).toFixed(1);
         timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
+        // Fresh take — playhead returns to start so the obvious PLAY
+        // hears the whole thing.
+        playPositionMs = 0;
       } else if (countingIn) {
         countingIn = false;
         if (countInTimer) clearTimeout(countInTimer);
         countInTimer = null;
         timeDisplay.textContent = 'Ready';
       } else if (playing) {
-        stopPlayback();
+        stopPlayback();  // sets playPositionMs itself (Cubase-style)
       }
-      renderer.setPlayhead(-1);
       updateButtons();
     });
 
     // ── Transport: PLAY ───────────────────────────────────────────
+    // Plays from playPositionMs (set via ruler drag), not always 0.
+    // playStartedAt is "pre-rolled" so elapsed-since-start equals the
+    // requested offset — the tick loop's playhead math stays simple.
     playBtn.addEventListener('click', async () => {
       if (song.notes.length === 0) return;
       if (recorder.isRecording() || countingIn) return;
       await resumeIfSuspended();
 
-      playStartedAt = performance.now();
+      const startOffset = playPositionMs;
+      playStartedAt = performance.now() - startOffset;
       playing = true;
       updateButtons();
 
-      // Schedule each note. setTimeout is good enough for phase 1 —
-      // sub-10ms scheduling drift won't be noticed for melodic playback.
-      // Real Web-Audio precise scheduling can come with samples.
+      // Schedule only notes that haven't already passed the playhead.
       for (const note of song.notes) {
+        const delay = note.startMs - startOffset;
+        if (delay < 0) continue;
         const id = setTimeout(() => {
           if (playing) playPianoNote(note.pitch, note.velocity);
-        }, note.startMs);
+        }, delay);
         playTimeouts.push(id);
       }
 
@@ -869,9 +892,11 @@
       const updatePlayhead = () => {
         if (!playing) return;
         const elapsed = performance.now() - playStartedAt;
-        renderer.setPlayhead(elapsed);
-        timeDisplay.textContent = `Play ${(elapsed / 1000).toFixed(1)}s / ${(total / 1000).toFixed(1)}s`;
+        timeDisplay.textContent = `Play · ${formatBarsBeats(elapsed, song.bpm)} · ${(elapsed / 1000).toFixed(1)}s / ${(total / 1000).toFixed(1)}s`;
         if (elapsed >= total + 100) {
+          // Natural end: park playhead at the very end so user can
+          // PLAY again from there or drag back to a different spot.
+          playPositionMs = total;
           stopPlayback();
           return;
         }
@@ -881,12 +906,16 @@
     });
 
     function stopPlayback() {
+      // Cubase-style: keep the playhead wherever it stopped so the
+      // next PLAY resumes from there. Use the actual elapsed time
+      // rather than playPositionMs, which is the *original* start.
+      const stoppedAt = performance.now() - playStartedAt;
+      playPositionMs = Math.max(0, Math.min(stoppedAt, durationMs(song)));
       playing = false;
       if (playRafId) cancelAnimationFrame(playRafId);
       playRafId = null;
       for (const id of playTimeouts) clearTimeout(id);
       playTimeouts = [];
-      renderer.setPlayhead(-1);
       const secs = (durationMs(song) / 1000).toFixed(1);
       timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
       updateButtons();
@@ -1013,6 +1042,7 @@
       currentSongId = null;
       titleInput.value = '';
       activeGrid = 'raw';
+      playPositionMs = 0;
       setStatus('New song');
       updateButtons();
     });
@@ -1115,6 +1145,7 @@
         currentSongId = row.id;
         titleInput.value = row.name;
         activeGrid = 'raw';
+        playPositionMs = 0;
         renderer.setSelected(null);
         closeSongsModal();
         setStatus(`Opened "${row.name}"`, 'success');
@@ -1150,6 +1181,91 @@
       return when.toLocaleDateString();
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // KEYBOARD SHORTCUTS (Phase 4.5 — DAW polish)
+    // ════════════════════════════════════════════════════════════════
+    // Space  → play / stop (toggle whichever transport state is live)
+    // Delete → remove selected note (Backspace too, since laptops vary)
+    // ←/→    → nudge selected note time by the current quantize grid
+    //          (defaults to 1/16 when grid is 'raw')
+    // ↑/↓    → nudge selected note pitch by 1 semitone
+    // Shift+↑/↓ → nudge by an octave
+    //
+    // isFormTarget() suppresses shortcuts while the user is typing in
+    // a title / BPM / select — without it Space would play/stop every
+    // time you space-bar a song title.
+    const GRID_DIVISORS = { 'raw': 16, '1/4': 4, '1/8': 8, '1/16': 16, '1/32': 32 };
+
+    function isFormTarget(el) {
+      if (!el || !el.tagName) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (isFormTarget(e.target)) return;
+
+      // Spacebar — transport toggle.
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (playing) {
+          stopPlayback();
+        } else if (recorder.isRecording() || countingIn) {
+          stopBtn.click();
+        } else if (song.notes.length > 0) {
+          playBtn.click();
+        }
+        return;
+      }
+
+      // Delete / Backspace — remove the selected note.
+      if (e.code === 'Delete' || e.code === 'Backspace') {
+        const sel = renderer.getSelected();
+        if (!sel) return;
+        e.preventDefault();
+        removeNote(song, sel);
+        renderer.setSelected(null);
+        return;
+      }
+
+      // Arrow keys — nudge selected note.
+      if (e.code.startsWith('Arrow')) {
+        const sel = renderer.getSelected();
+        if (!sel) return;
+        const beatMs = 60_000 / song.bpm;
+        const divisor = GRID_DIVISORS[activeGrid] || 16;
+        const stepMs  = beatMs * (4 / divisor);
+
+        if (e.code === 'ArrowLeft') {
+          sel.startMs    = Math.max(0, sel.startMs - stepMs);
+          sel.startMsRaw = sel.startMs;
+        } else if (e.code === 'ArrowRight') {
+          sel.startMs   += stepMs;
+          sel.startMsRaw = sel.startMs;
+        } else if (e.code === 'ArrowUp') {
+          const delta = e.shiftKey ? 12 : 1;
+          sel.pitch = Math.min(96, sel.pitch + delta);
+        } else if (e.code === 'ArrowDown') {
+          const delta = e.shiftKey ? 12 : 1;
+          sel.pitch = Math.max(36, sel.pitch - delta);
+        } else {
+          return;
+        }
+        e.preventDefault();
+      }
+    });
+
+    // "Bar.Beat" musical-position formatter (4/4 assumed). 0ms → 1.1.
+    // Used in the recording / playback time display so the readout
+    // looks like a DAW rather than just a stopwatch.
+    function formatBarsBeats(ms, bpm) {
+      const beatMs = 60_000 / bpm;
+      const totalBeats = ms / beatMs;
+      const bar  = Math.floor(totalBeats / 4) + 1;
+      const beat = Math.floor(totalBeats % 4) + 1;
+      return `${bar}.${beat}`;
+    }
+
     // ── Button state machine ──────────────────────────────────────
     function updateButtons() {
       const rec = recorder.isRecording();
@@ -1173,7 +1289,8 @@
     // Periodic refresh for live timer + enabling PLAY after a take.
     setInterval(() => {
       if (recorder.isRecording()) {
-        timeDisplay.textContent = `Rec ${(recorder.elapsedMs() / 1000).toFixed(1)}s · ${song.notes.length} notes`;
+        const elapsed = recorder.elapsedMs();
+        timeDisplay.textContent = `Rec · ${formatBarsBeats(elapsed, song.bpm)} · ${(elapsed / 1000).toFixed(1)}s · ${song.notes.length} notes`;
       }
       updateButtons();
     }, 100);
