@@ -804,7 +804,7 @@
     } from './js/core/song.js?v=4';
     import { createRecorder } from './js/core/recorder.js?v=3';
     import { quantize } from './js/core/quantizer.js?v=2';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=8';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=9';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
@@ -833,22 +833,26 @@
         playPianoNote(pitch, 80);
         pushHistory();
       },
-      // Selection is owned by the renderer; we still preview the
-      // selected note's pitch so you can hear what you grabbed.
-      // Selection is UI state — deliberately not snapshotted.
-      onSelect: (note) => {
-        if (note) {
+      // Selection now passes an array of selected notes (one for a
+      // plain click, multiple for a rubber-band lasso or shift-click
+      // accumulation). Preview-audio only fires when a single note
+      // is freshly selected — playing a chord on group-select would
+      // be cacophonous.
+      onSelect: (notes) => {
+        if (Array.isArray(notes) && notes.length === 1) {
           resumeIfSuspended();
-          playPianoNote(note.pitch, note.velocity);
+          playPianoNote(notes[0].pitch, notes[0].velocity);
         }
       },
-      // Drag finishes — the renderer already mutated note position
-      // in place every pointermove tick. Snapshot the final state
-      // (not every intermediate frame, which would flood history).
+      // Drag finishes — the renderer already mutated each selected
+      // note's position in place every pointermove tick. We just
+      // commit the final state to history as one undoable event.
       onMove: () => { pushHistory(); },
-      // Right-click / long-press a note → delete it from the song.
-      onDelete: (note) => {
-        removeNote(song, note);
+      // Long-press / right-click deletes either the single targeted
+      // note or the whole selection (if the targeted note is in it).
+      // Either way, onDelete receives an array.
+      onDelete: (notes) => {
+        for (const n of notes) removeNote(song, n);
         pushHistory();
       },
       // User dragged the top ruler. Ignored while playing / recording
@@ -1455,31 +1459,38 @@
 
     dButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        const selected = renderer.getSelected();
-        if (!selected) return;
+        const sel = renderer.getSelectedSet();
+        if (sel.size === 0) return;
         const beats  = parseFloat(btn.dataset.beats);
         const beatMs = 60_000 / song.bpm;
-        selected.durationMs = beats * beatMs;
+        const newLen = beats * beatMs;
+        for (const n of sel) n.durationMs = newLen;
         pushHistory();
         refreshDurationPanel();
       });
     });
 
     function refreshDurationPanel() {
-      const selected = renderer.getSelected();
-      if (!selected) {
+      const sel = renderer.getSelectedSet();
+      if (sel.size === 0) {
         durationPanel.hidden = true;
         return;
       }
       durationPanel.hidden = false;
       const beatMs = 60_000 / song.bpm;
-      const currentBeats = selected.durationMs / beatMs;
+      // For a multi-selection, only highlight a length button when
+      // ALL selected notes share that length — otherwise no button
+      // lights up (more accurate than guessing).
+      const firstLen = sel.values().next().value.durationMs;
+      let allSame = true;
+      for (const n of sel) {
+        if (Math.abs(n.durationMs - firstLen) >= DURATION_MATCH_TOLERANCE_MS) {
+          allSame = false; break;
+        }
+      }
       dButtons.forEach(b => {
         const beats = parseFloat(b.dataset.beats);
-        // "Active" when the note's length matches this button within
-        // 1ms — exact-only, so partial / dragged durations highlight
-        // nothing rather than guessing.
-        const matches = Math.abs(beats * beatMs - selected.durationMs) < DURATION_MATCH_TOLERANCE_MS;
+        const matches = allSame && Math.abs(beats * beatMs - firstLen) < DURATION_MATCH_TOLERANCE_MS;
         b.classList.toggle('active', matches);
       });
     }
@@ -1788,12 +1799,12 @@
         return;
       }
 
-      // Delete / Backspace — remove the selected note.
+      // Delete / Backspace — remove every selected note.
       if (e.code === 'Delete' || e.code === 'Backspace') {
-        const sel = renderer.getSelected();
-        if (!sel) return;
+        const sel = renderer.getSelectedSet();
+        if (sel.size === 0) return;
         e.preventDefault();
-        removeNote(song, sel);
+        for (const n of [...sel]) removeNote(song, n);
         renderer.setSelected(null);
         pushHistory();
         return;
@@ -1812,27 +1823,31 @@
         return;
       }
 
-      // Arrow keys — nudge selected note.
+      // Arrow keys — nudge every selected note by the same amount.
       if (e.code.startsWith('Arrow')) {
-        const sel = renderer.getSelected();
-        if (!sel) return;
+        const sel = renderer.getSelectedSet();
+        if (sel.size === 0) return;
         const beatMs = 60_000 / song.bpm;
         const grid = getActiveTrack(song).activeGrid ?? 'raw';
         const divisor = GRID_DIVISORS[grid] || 16;
         const stepMs  = beatMs * (4 / divisor);
 
         if (e.code === 'ArrowLeft') {
-          sel.startMs    = Math.max(0, sel.startMs - stepMs);
-          sel.startMsRaw = sel.startMs;
+          for (const n of sel) {
+            n.startMs    = Math.max(0, n.startMs - stepMs);
+            n.startMsRaw = n.startMs;
+          }
         } else if (e.code === 'ArrowRight') {
-          sel.startMs   += stepMs;
-          sel.startMsRaw = sel.startMs;
+          for (const n of sel) {
+            n.startMs   += stepMs;
+            n.startMsRaw = n.startMs;
+          }
         } else if (e.code === 'ArrowUp') {
           const delta = e.shiftKey ? 12 : 1;
-          sel.pitch = Math.min(96, sel.pitch + delta);
+          for (const n of sel) n.pitch = Math.min(96, n.pitch + delta);
         } else if (e.code === 'ArrowDown') {
           const delta = e.shiftKey ? 12 : 1;
-          sel.pitch = Math.max(36, sel.pitch - delta);
+          for (const n of sel) n.pitch = Math.max(36, n.pitch - delta);
         } else {
           return;
         }

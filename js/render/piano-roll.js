@@ -47,8 +47,15 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   } = options;
 
   let playheadMs    = 0;        // current playhead position; always drawn
-  let selectedNote  = null;     // highlighted note, or null
+  // Multi-select: Set of selected note objects. A "single selection"
+  // is just a one-entry Set. Renderer draws an outline ring around
+  // every member.
+  const selectedNotes = new Set();
   let rulerDragging = false;    // true while user is dragging the top ruler
+  // Rubber-band lasso: when user drags from empty grid, this becomes
+  // an object with the start + current canvas-logical coordinates so
+  // we can draw the rectangle and hit-test it on release.
+  let lasso = null;
 
   // Zoom state. 1 = fit-all (default). 2 = show half, 4 = quarter, etc.
   // viewOffsetMs is the song-time at the left edge of the visible
@@ -86,8 +93,25 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     playheadMs = ms;
     ensurePlayheadVisible();
   }
-  function setSelected(note) { selectedNote = note; }
-  function getSelected() { return selectedNote; }
+  // Selection API. setSelected(null) clears; setSelected(note) selects
+  // just that one; setSelected(iterable) selects exactly those.
+  function setSelected(arg) {
+    selectedNotes.clear();
+    if (arg == null) return;
+    if (arg && typeof arg[Symbol.iterator] === 'function' && typeof arg !== 'string') {
+      for (const n of arg) selectedNotes.add(n);
+    } else {
+      selectedNotes.add(arg);
+    }
+  }
+  // Returns a single selected note when exactly one is selected,
+  // null otherwise. Used by the duration-length toolbar which only
+  // makes sense for single-selection.
+  function getSelected() {
+    if (selectedNotes.size === 1) return selectedNotes.values().next().value;
+    return null;
+  }
+  function getSelectedSet() { return selectedNotes; }
 
   // Zoom anchored on the playhead — the spot you care about stays
   // in view across zoom changes. setZoom clamps to [MIN_ZOOM, MAX_ZOOM].
@@ -123,7 +147,26 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     drawNotes(pxPerMs, yView);
     drawPlayhead(pxPerMs);
     drawKeyStrip(yView);
-    drawRuler(totalMs, pxPerMs);   // last — sits on top of everything in the top strip
+    drawRuler(totalMs, pxPerMs);   // sits on top of everything in the top strip
+    drawLasso();                   // last — sits on top of every other element
+  }
+
+  // Translucent selection rectangle drawn while the user is rubber-
+  // band-dragging on empty grid. The actual hit-test against notes
+  // happens on pointerup (see the pointer handlers below).
+  function drawLasso() {
+    if (!lasso) return;
+    const x = Math.min(lasso.x0, lasso.x1);
+    const y = Math.min(lasso.y0, lasso.y1);
+    const w = Math.abs(lasso.x1 - lasso.x0);
+    const h = Math.abs(lasso.y1 - lasso.y0);
+    ctx.fillStyle = 'rgba(127, 119, 221, 0.18)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#AFA9EC';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.setLineDash([]);
   }
 
   // ── Internal ────────────────────────────────────────────────────
@@ -306,7 +349,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
           ctx.fillRect(x + radius, y + 1, Math.max(0, w - 2 * radius), 1);
         }
 
-        if (note === selectedNote) {
+        if (selectedNotes.has(note)) {
           ctx.strokeStyle = '#FFFFFF';
           ctx.lineWidth   = 1.5;
           ctx.beginPath();
@@ -531,19 +574,40 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     if (!note && !grid) return;     // clicked the key strip — ignore
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+
+    // Snapshot initial positions of every currently-selected note so
+    // a group drag can apply the same delta to all of them.
+    const groupInitial = new Map();
+    for (const n of selectedNotes) {
+      groupInitial.set(n, {
+        startMs: n.startMs,
+        startMsRaw: n.startMsRaw,
+        pitch:   n.pitch,
+      });
+    }
+
     drag = {
       note,
       gridPos: grid,
+      shift:   e.shiftKey,
       startClientX: e.clientX,
       startClientY: e.clientY,
       started: false,
       longPressTimer: null,
+      groupInitial,        // {note → {startMs, startMsRaw, pitch}} for group drag
+      anchorInitial: note ? { startMs: note.startMs, pitch: note.pitch } : null,
     };
     if (note) {
+      // Long-press a note to delete. If the long-pressed note is part
+      // of a selection, delete the whole selection; otherwise just
+      // delete that one.
       drag.longPressTimer = setTimeout(() => {
         if (drag && drag.note === note && !drag.started) {
-          if (selectedNote === note) selectedNote = null;
-          if (onDelete) onDelete(note);
+          const toDelete = selectedNotes.has(note)
+            ? [...selectedNotes]
+            : [note];
+          for (const n of toDelete) selectedNotes.delete(n);
+          if (onDelete) onDelete(toDelete);
           drag = null;
         }
       }, LONG_PRESS_MS);
@@ -556,7 +620,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       if (onPlayheadDrag) onPlayheadDrag(msAtLogicalX(pt.x));
       return;
     }
-    if (!drag || !drag.note) return;       // only existing notes are draggable
+    if (!drag) return;
     const dx = e.clientX - drag.startClientX;
     const dy = e.clientY - drag.startClientY;
     if (!drag.started && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
@@ -565,21 +629,63 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
         clearTimeout(drag.longPressTimer);
         drag.longPressTimer = null;
       }
+      // First time we confirm a drag started — for a note drag, if
+      // the clicked note isn't already in selection, make it the only
+      // selected note so the group drag operates on what the user
+      // grabbed. For an empty-grid drag, kick off a rubber-band lasso.
+      if (drag.note) {
+        if (!selectedNotes.has(drag.note)) {
+          selectedNotes.clear();
+          selectedNotes.add(drag.note);
+          drag.groupInitial.clear();
+          drag.groupInitial.set(drag.note, {
+            startMs: drag.note.startMs,
+            startMsRaw: drag.note.startMsRaw,
+            pitch:   drag.note.pitch,
+          });
+          if (onSelect) onSelect([drag.note]);
+        }
+      } else if (drag.gridPos) {
+        const pt = clientToLogical(e.clientX, e.clientY);
+        lasso = { x0: drag.startClientX, y0: drag.startClientY,
+                  x1: e.clientX,         y1: e.clientY,
+                  // Cache logical-coord versions for later hit-test.
+                  startLogical: { x: 0, y: 0 } };
+        // Recompute the start point in logical coords (drag.startClientX
+        // is in client coords; we need logical for the hit-test).
+        const startLogical = clientToLogical(drag.startClientX, drag.startClientY);
+        lasso.startLogical = startLogical;
+      }
     }
     if (!drag.started) return;
-    const pt = clientToLogical(e.clientX, e.clientY);
-    const totalMs = computeViewMs();
-    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const yView   = computeYView();
-    const newStart = Math.max(0, viewOffsetMs + (pt.x - KEY_STRIP_W) / pxPerMs);
-    const yIdx     = Math.floor((pt.y - RULER_H) / yView.rowH);
-    const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, yView.viewPitchTop - yIdx));
-    // Move updates BOTH startMs and startMsRaw — otherwise a later
-    // quantize toggle would snap the moved note back to its original
-    // recorded location, which is not what the user expects.
-    drag.note.startMs    = newStart;
-    drag.note.startMsRaw = newStart;
-    drag.note.pitch      = newPitch;
+
+    if (drag.note) {
+      // Group drag — apply the same (dStart, dPitch) delta to every
+      // initially-selected note. Anchor on the dragged note's initial
+      // position so what's under the cursor matches.
+      const pt = clientToLogical(e.clientX, e.clientY);
+      const totalMs = computeViewMs();
+      const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+      const yView   = computeYView();
+      const targetStart = Math.max(0, viewOffsetMs + (pt.x - KEY_STRIP_W) / pxPerMs);
+      const yIdx        = Math.floor((pt.y - RULER_H) / yView.rowH);
+      const targetPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, yView.viewPitchTop - yIdx));
+      const dStart = targetStart - drag.anchorInitial.startMs;
+      const dPitch = targetPitch - drag.anchorInitial.pitch;
+      for (const [n, init] of drag.groupInitial) {
+        const newStart = Math.max(0, init.startMs + dStart);
+        n.startMs    = newStart;
+        n.startMsRaw = newStart;
+        n.pitch      = Math.max(PITCH_MIN, Math.min(PITCH_MAX, init.pitch + dPitch));
+      }
+    } else if (lasso) {
+      // Rubber-band: track the current pointer in logical coords.
+      const pt = clientToLogical(e.clientX, e.clientY);
+      lasso.x0 = lasso.startLogical.x;
+      lasso.y0 = lasso.startLogical.y;
+      lasso.x1 = pt.x;
+      lasso.y1 = pt.y;
+    }
   });
 
   canvas.addEventListener('pointerup', (e) => {
@@ -596,16 +702,37 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
 
     if (drag.started && drag.note) {
-      if (onMove) onMove(drag.note);
+      // Finished a group drag.
+      if (onMove) onMove([...selectedNotes]);
+    } else if (drag.started && lasso) {
+      // Finished a rubber-band. Hit-test every note against the rect
+      // and replace the selection (or extend if shift was held).
+      const x0 = Math.min(lasso.x0, lasso.x1);
+      const x1 = Math.max(lasso.x0, lasso.x1);
+      const y0 = Math.min(lasso.y0, lasso.y1);
+      const y1 = Math.max(lasso.y0, lasso.y1);
+      const inside = notesInRect(x0, y0, x1, y1);
+      if (!drag.shift) selectedNotes.clear();
+      for (const n of inside) selectedNotes.add(n);
+      if (onSelect) onSelect([...selectedNotes]);
+      lasso = null;
     } else if (drag.note) {
-      // Tap on a note — select it.
-      selectedNote = drag.note;
-      if (onSelect) onSelect(drag.note);
+      // Plain tap on a note. Shift toggles in/out; plain click selects
+      // just this one (unless it was already the sole selection, in
+      // which case we leave it alone).
+      if (drag.shift) {
+        if (selectedNotes.has(drag.note)) selectedNotes.delete(drag.note);
+        else                              selectedNotes.add(drag.note);
+        if (onSelect) onSelect([...selectedNotes]);
+      } else {
+        selectedNotes.clear();
+        selectedNotes.add(drag.note);
+        if (onSelect) onSelect([drag.note]);
+      }
     } else if (drag.gridPos) {
-      // Tap on empty grid — add a note. Selection clears (the user is
-      // creating, not editing an existing).
-      selectedNote = null;
-      if (onSelect) onSelect(null);
+      // Tap on empty grid — deselect, then add a note at that position.
+      selectedNotes.clear();
+      if (onSelect) onSelect([]);
       if (onAdd) onAdd(drag.gridPos.pitch, drag.gridPos.startMs);
     }
     drag = null;
@@ -615,20 +742,48 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     rulerDragging = false;
     if (drag && drag.longPressTimer) clearTimeout(drag.longPressTimer);
     drag = null;
+    lasso = null;
   });
 
   // Right-click anywhere on the grid: if it's on a note, delete it.
+  // Mirrors the long-press logic — selection-aware.
   canvas.addEventListener('contextmenu', (e) => {
     const pt = clientToLogical(e.clientX, e.clientY);
     const note = noteAtLogical(pt.x, pt.y);
     if (!note) return;
     e.preventDefault();
-    if (selectedNote === note) selectedNote = null;
-    if (onDelete) onDelete(note);
+    const toDelete = selectedNotes.has(note) ? [...selectedNotes] : [note];
+    for (const n of toDelete) selectedNotes.delete(n);
+    if (onDelete) onDelete(toDelete);
   });
 
+  // Returns the list of notes whose visible rect overlaps the given
+  // logical-coord rectangle. Used by the rubber-band hit-test.
+  function notesInRect(x0, y0, x1, y1) {
+    const hits = [];
+    const totalMs = computeViewMs();
+    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+    const yView   = computeYView();
+    const { viewPitchTop, rowH, visibleRows } = yView;
+    const visiblePitchMin = viewPitchTop - visibleRows + 1;
+    for (const track of song.tracks) {
+      for (const note of track.notes) {
+        if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
+        const nx = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
+        const nw = Math.max(2, note.durationMs * pxPerMs);
+        const yIdx = viewPitchTop - note.pitch;
+        const ny = RULER_H + yIdx * rowH;
+        // Standard AABB overlap.
+        if (nx + nw < x0 || nx > x1) continue;
+        if (ny + rowH < y0 || ny > y1) continue;
+        hits.push(note);
+      }
+    }
+    return hits;
+  }
+
   return {
-    draw, setPlayhead, setSelected, getSelected,
+    draw, setPlayhead, setSelected, getSelected, getSelectedSet,
     setZoom, getZoom, zoomIn, zoomOut, zoomFit,
   };
 }
