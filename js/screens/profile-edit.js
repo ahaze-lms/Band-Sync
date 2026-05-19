@@ -302,6 +302,9 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
     try {
       const rows = await sessionAttachments.listForUser(user.id);
       console.log('[devices] listForUser returned', rows);
+      rows.forEach((r, i) => {
+        console.log(`[devices] row ${i} host_user_id=${r.host_user_id} host=`, r.host);
+      });
       if (rows.length === 0) {
         listEl.innerHTML = '<div class="pairing-empty">NO ACTIVE DEVICES</div>';
         return;
