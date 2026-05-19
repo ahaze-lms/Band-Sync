@@ -43,6 +43,16 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 - ✅ Durable session attachments — claim issues a localStorage token so reloads rehydrate without a fresh code (24h TTL, revocable from CONNECTED DEVICES)
 - ✅ Paired-friend dropdown for one-tap reattach within the token window
 
+### Song Creator — early at `studio.html` (§25, phase 1 + 1.5 shipped)
+
+- ✅ Transport bar — BPM number input + tap-tempo + RECORD / STOP / PLAY + live time display
+- ✅ MIDI live recording into a song; 4-beat count-in before the take starts
+- ✅ Piano-roll canvas — C2–C7 range, beat + bar gridlines, purple note rectangles with velocity-shaded top edge, teal playhead during playback
+- ✅ Playback through the existing `audio.js` piano synth
+- ✅ On-screen touch keyboard (phase 1.5) — slide-across-keys works; phones without Web MIDI (incl. iOS Safari) can record end-to-end
+- ✅ Mobile-first layout: stacked transport on phones, 44px+ touch targets, DPR-crisp at 4K
+- 🔜 Quantize panel (phase 2), then edit (phase 3), Supabase save/load (phase 4), multi-track + drum view (phase 5), publish + export `.mid` + collaboration (phase 6)
+
 ### Social & account layer — live at `index.html`
 
 - ✅ Email/password auth (Supabase Auth)
@@ -66,7 +76,7 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 Band-Sync/
 ├── index.html              Auth-gated SPA shell (login, home, friends, inbox, profile)
 ├── play.html               Real game — song select → setup → game → results, plus remote lobby
-├── studio.html             Song Creator — stub only; build is next major effort (DESIGN.md §25)
+├── studio.html             Song Creator — phase 1 + 1.5 shipped (record / view / playback + touch keyboard); see DESIGN.md §25
 ├── 2player.html            Original 2-player prototype (access via Dev Lab)
 ├── lab.html                Dev Lab hub — links to prototype + all debug tools
 ├── js/

@@ -1,12 +1,12 @@
-# BandSync — Design Document v18
+# BandSync — Design Document v19
 
-> Updated 2026-05-18. Supersedes v17.
+> Updated 2026-05-19. Supersedes v18.
 >
-> Major changes from v17: **Remote warm-up countdown** ("STARTING IN X") during the 8s lead time. **Lobby warmup panel** — device picker (keyboard/MIDI) + playable piano or drum canvas below the lobby cards so players warm up before the song starts. **Mobile-friendly pass** — new 480px breakpoint, 44px touch targets, lifted dark-navy theme for daylight readability. **Personal replay** — records every noteOn during a run, lets you watch your own performance back from the results screen; `onRawInput` + `injectInput()` added to gameplay-engine.
+> Major changes from v18: **Studio phase 1 shipped** — `studio.html` replaces the marketing stub with a working record / view / playback loop. New modules `js/core/song.js`, `js/core/recorder.js`, `js/render/piano-roll.js`. MIDI input live-records into a song model; piano roll canvas (C2–C7) draws notes with crisp DPR-aware rendering; PLAY schedules through `audio.js`; BPM number input + tap-tempo + 4-beat count-in. **Studio phase 1.5 shipped** — on-screen touch keyboard reusing `js/render/piano.js` in `keyboardOnly` mode; phones (incl. iOS Safari) can now record without MIDI; shared `heldNotes` lights up the keyboard regardless of input source. **Setup screen sliders** — speed + difficulty changed from dropdowns to range inputs with live value readout. **Solo workflow documented** — CLAUDE.md and process now explicit: push directly to `main`, no PRs or feature branches for solo work.
 
 ---
 
-## 🚦 Current state (2026-05-18)
+## 🚦 Current state (2026-05-19)
 
 **`play.html` — the real game** (production gameplay surface, live):
 - Song select pulling from a generated `songs/manifest.json`
@@ -43,6 +43,15 @@
 - **Lobby warmup panel** — device picker (Computer Keyboard or any connected MIDI device) in participant row + a live playable canvas below lobby cards. Piano: shows keyboard only (CSS crop — container `height: 140px; overflow: hidden`, canvas `position: absolute; bottom: 0; height: 520px`). Drums: shows full drum-pad view. Switching instrument or device calls `rebuildLobbyWarmup()` immediately (reads DOM before DB round-trip). `stopLobbyWarmup()` cleans up on state change.
 - **Phase 8 RLS:** `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session` — remote players write and read their own slot rows.
 
+**Studio** (`studio.html`) — phase 1 + 1.5 shipped:
+- Transport bar: BPM number input + TAP button + RECORD / STOP / PLAY + live time display
+- MIDI input live-records into a song (`js/core/song.js` + `js/core/recorder.js`); on-screen touch keyboard via `js/render/piano.js` in `keyboardOnly` mode handles phones without MIDI
+- Piano roll canvas (`js/render/piano-roll.js`) — C2–C7 pitch range, black/white row bands, beat + bar gridlines, purple note rectangles with velocity shading, teal playhead during playback. Crisp DPR-aware via the same ResizeObserver pattern as `piano.js`
+- 4-beat count-in (reuses `audio.js` `playClick`); playback via `setTimeout`-scheduled notes through `playPianoNote`
+- Mobile-first CSS: full single-column layout on phones, transport wraps, 44px+ touch targets, 16px+ form input sizing to avoid iOS auto-zoom, `touch-action: none` on the keyboard canvas so dragging across keys doesn't scroll the page
+- Shared `heldNotes` set so MIDI, mouse, and touch all light up the same key visually
+- Not yet built: quantize, edit (drag / delete / add notes), Supabase persistence, multi-track, drums view, export `.mid`, collaboration, publish
+
 **HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
 
 **`2player.html` — prototype + dev harness** (reached via Dev Lab). NOT migrated to the new engine; `js/screens/gameplay.js` still has its own loop. Has unique features (role toggle, test patterns, file picker, calibration overlay) that the production game doesn't expose yet.
@@ -71,7 +80,7 @@
 
 **Major candidates:**
 
-1. **`studio.html` — Song Creator** (§25). Biggest unbuilt thing. Spec ready: live MIDI record, quantize, instrument-specific piano roll, save to Supabase, async collaboration, publish to library.
+1. **`studio.html` — Song Creator** (§25). Phase 1 + 1.5 shipped (record / view / playback, on-screen touch keyboard). Remaining phases, in suggested order: **phase 2 quantize** (1/4 · 1/8 · 1/16 · 1/32 buttons, default 1/16, original timestamps preserved for re-quantize), **phase 3 edit** (click-to-add, drag-to-move, long-press-or-right-click-to-delete — share hit-test code across all three), **phase 4 save to Supabase** (`songs` + `song_collaborators` tables — see §25), **phase 5 multi-track + mute/solo + drum view**, **phase 6 publish + visibility + collaboration + export `.mid`**.
 2. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
 3. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
 4. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
@@ -681,6 +690,10 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-18 | §27 phase 7 shipped — end-of-song remote persistence. `createSessionHeader()` + `saveSlot()` added to `play-sessions.js`. `onSongComplete()` branches: local → existing `saveSession()`; remote host → `createSessionHeader()` → `updateLobby({ session_id })` → `saveSlot()`; remote non-host → `waitForLobbySessionId()` polls until host stamps `session_id`, then `saveSlot()` via `pss_insert_self_in_session`. Remote lead time bumped 3s→8s for drum warm-up. All four §27 phases (5, 6, 7, 8) now shipped. |
 | 2026-05-18 | §27 phase 6 shipped — remote score strip. Supabase Broadcast channel `game:<lobbyId>` carries score ticks (~1Hz throttle) from each player. Slim strip above game canvas shows all participants' live score / grade / accuracy. Lobby track picker added: instrument + track selects on your own participant row, wired to `setSlotConfig()` so launchRemoteGame reads the correct instrument/track. Lobby form-card styling added. Friend-invite-from-lobby flow: `play_invites.lobby_id` column (migration 0007) + 30-min expiry; home screen detects lobby invites and renders JOIN LOBBY link. Remote play lead time bumped 3 s → 8 s to give drum players time to find hand position before the count-off fires. |
 | 2026-05-18 | Lobby chat shipped — ephemeral Broadcast chat panel in the lobby waiting room. `subscribeLobby()` now returns `{ unsubscribe, sendChat }` and accepts an `onChat` callback. Own messages pushed to local state immediately (Supabase Broadcast does not echo to sender). Chat draft preserved across `paintLobby()` repaints (triggered by participant joins/ready-state changes). Enter key + SEND button; sender name from participant profile. Messages capped at 60; auto-scrolls to bottom. |
+| 2026-05-19 | Setup-screen Speed + Difficulty changed from dropdowns to range sliders. Inline label readout updates live during drag ("SPEED — Level 3 (3.0s fall)" / "DIFFICULTY — 4 · Easy (±80ms perfect)"); slow/fast and forgiving/strict captions below each slider. Cross-browser purple-thumb styling via WebKit + Moz pseudo-elements. |
+| 2026-05-19 | Solo-project workflow documented in CLAUDE.md — no PRs, no feature branches, no worktrees. Push directly to `main`; GitHub Pages redeploys in ~30s. The rule travels with the repo via CLAUDE.md so multi-machine sessions get the same behaviour. Worktree-based sessions are explicitly identified as friction to relaunch from instead of forcing PR ceremony. |
+| 2026-05-19 | **Studio phase 1 shipped** — `studio.html` replaces the marketing stub with a working app. New modules: `js/core/song.js` (in-memory `{bpm, notes:[{pitch,startMs,durationMs,velocity}]}`), `js/core/recorder.js` (`performance.now()`-timestamped capture, closes held notes on `stop()`), `js/render/piano-roll.js` (C2–C7 canvas, row bands, beat/bar gridlines, purple note rectangles with velocity-shaded top edge, teal playhead; ResizeObserver + DPR crisp-canvas mirroring `piano.js`). Transport bar: BPM number input + TAP button (last-4-taps average, 2s reset window) + RECORD / STOP / PLAY + live time display. 4-beat count-in via existing `audio.js` `playClick`. Playback uses per-note `setTimeout` — imprecise by ~5ms but inaudible for melodic playback (Web-Audio precise scheduling can come with the samples phase). Mobile-first CSS: stacked transport on phones, 44px+ touch targets, 16px+ form inputs to stop iOS auto-zoom, `dvh` viewport. |
+| 2026-05-19 | **Studio phase 1.5 shipped** — on-screen touch keyboard reusing `js/render/piano.js` with `keyboardOnly: true` (same as the lobby warmup pattern at `js/play.js:1681`). `onKeyDown` / `onKeyUp` callbacks route into the same `recorder.noteOn` / `noteOff` + `playPianoNote(80)` pipeline as MIDI. Velocity fixed at 80 since touch has no native velocity. `heldNotes` set shared between MIDI and touch so visual feedback lights up the keyboard regardless of input source. `touch-action: none` on the canvas so slide-across-keys glissando doesn't scroll the page. Record button no longer disabled when MIDI is missing — touch is a valid input. Phones without Web MIDI (iOS Safari) now have an end-to-end record loop. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -725,6 +738,14 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 ## 25. Song Creator / AI Studio
 
 Lives at `studio.html`. The tool for building songs that feed into the game library, with collaborative multi-user editing and a public song library.
+
+### Status (2026-05-19)
+
+**Shipped:** phase 1 (record live MIDI → song model → piano-roll view → playback through `audio.js`) and phase 1.5 (on-screen touch keyboard via `js/render/piano.js` in `keyboardOnly` mode, so phones without Web MIDI can record). New modules: `js/core/song.js`, `js/core/recorder.js`, `js/render/piano-roll.js`. BPM input + tap-tempo + 4-beat count-in are live.
+
+**Next phases (in order):** 2 quantize → 3 edit → 4 Supabase save/load → 5 multi-track + drum view → 6 publish + export + collaboration. Each phase is intended as one focused session.
+
+**MVP scope and longer-term vision unchanged from the spec below.**
 
 ### Vision
 
