@@ -150,10 +150,11 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     }
   }
 
-  // Note rectangles — purple accent, rounded inset. Selected note also
-  // gets a brighter purple2 outline ring so the user can confirm what
-  // they just tapped.
+  // Note pills — purple vertical gradient with subtly rounded corners.
+  // Selected note also gets a brighter purple2 outline ring so the user
+  // can confirm what they just tapped.
   function drawNotes(pxPerMs, rowH) {
+    const radius = Math.min(3, rowH / 3);
     for (const note of song.notes) {
       if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
       const x = KEY_STRIP_W + note.startMs * pxPerMs;
@@ -161,18 +162,37 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
       const yIdx = PITCH_MAX - note.pitch;
       const y = RULER_H + yIdx * rowH;
 
-      ctx.fillStyle = '#7F77DD';
-      ctx.fillRect(x, y + 1, w, rowH - 2);
+      // Vertical gradient: lighter top → darker bottom, gives the
+      // note pill a soft 3D edge without being skeuomorphic.
+      const grad = ctx.createLinearGradient(0, y + 1, 0, y + rowH - 1);
+      grad.addColorStop(0,    '#9F98E8');
+      grad.addColorStop(0.5,  '#7F77DD');
+      grad.addColorStop(1,    '#5E55B8');
+      ctx.fillStyle = grad;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y + 1, w, rowH - 2, radius);
+      } else {
+        ctx.rect(x, y + 1, w, rowH - 2);
+      }
+      ctx.fill();
 
       // Velocity hint: brighter top edge for louder notes.
       const v = Math.min(1, note.velocity / 127);
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.05 + 0.15 * v})`;
-      ctx.fillRect(x, y + 1, w, 1.5);
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.08 + 0.18 * v})`;
+      ctx.fillRect(x + radius, y + 1, Math.max(0, w - 2 * radius), 1);
 
       if (note === selectedNote) {
-        ctx.strokeStyle = '#AFA9EC';
+        ctx.strokeStyle = '#CFC9F4';
         ctx.lineWidth   = 1.5;
-        ctx.strokeRect(x - 0.5, y + 0.5, w + 1, rowH - 1);
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x - 0.5, y + 0.5, w + 1, rowH - 1, radius + 1);
+        } else {
+          ctx.rect(x - 0.5, y + 0.5, w + 1, rowH - 1);
+        }
+        ctx.stroke();
       }
     }
   }

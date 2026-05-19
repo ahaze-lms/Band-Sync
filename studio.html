@@ -34,74 +34,149 @@
       gap: 10px;
     }
 
-    /* ── HEADER ─────────────────────────────────────────────────── */
-    .header {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 12px;
-    }
-    .back-link {
-      font-size: 11px; letter-spacing: 2px; color: var(--dim);
-      text-decoration: none; transition: color 0.15s;
-      padding: 8px; min-height: 44px;
-      display: inline-flex; align-items: center;
-    }
-    .back-link:hover { color: var(--purple); }
-    .logo {
-      font-size: 18px; font-weight: 500; letter-spacing: 4px; color: #fff;
-    }
-    .logo span { color: var(--purple); }
-    .page-title {
-      font-size: 10px; letter-spacing: 3px; color: var(--dim);
-    }
-
-    /* ── TRANSPORT BAR ──────────────────────────────────────────── */
-    .transport {
+    /* ── TOP BAR ─────────────────────────────────────────────────
+       One unified row containing: back · title · BPM · SIG · round
+       transport buttons · TAP · SAVE · overflow. Wraps gracefully
+       on narrow screens. */
+    .top-bar {
       background: var(--bg2);
       border: 0.5px solid var(--bg3);
       border-radius: 12px;
-      padding: 14px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
+      padding: 8px 12px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
     }
-    .transport-row {
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    .back-link {
+      width: 40px; height: 40px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 22px; color: var(--dim);
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
     }
-    .transport-section {
-      display: flex; align-items: center; gap: 8px;
+    .back-link:hover { color: var(--purple); background: var(--bg3); }
+
+    /* Title block — editable song title + tiny BANDSYNC STUDIO subtitle */
+    .title-block {
+      flex: 1; min-width: 140px;
+      display: flex; flex-direction: column; gap: 1px;
     }
+    .song-title {
+      background: transparent; color: var(--text);
+      border: none;
+      padding: 2px 4px;
+      font-size: 17px; font-weight: 600;
+      font-family: inherit;
+      width: 100%;
+    }
+    .song-title::placeholder { color: var(--dim); font-style: italic; font-weight: 500; }
+    .song-title:focus {
+      outline: none;
+      background: var(--bg3); border-radius: 6px;
+    }
+    .title-sub {
+      font-size: 9px; letter-spacing: 3px; color: var(--dim);
+      padding-left: 4px;
+    }
+    .title-sub span { color: var(--purple); }
+
+    /* Compact stat tile — value above, tiny label below. Used for BPM + SIG. */
+    .stat-pill {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 2px;
+      padding: 2px 8px;
+      min-height: 48px;
+      justify-content: center;
+    }
+    .stat-value {
+      background: transparent; color: var(--text);
+      border: none;
+      font-size: 18px; font-weight: 700; text-align: center;
+      font-family: inherit;
+      padding: 0;
+      width: 56px;
+    }
+    .stat-value:focus { outline: none; }
+    /* Visual focus ring on the surrounding pill instead of the value */
+    .stat-pill:focus-within { background: var(--bg3); border-radius: 8px; }
+    .stat-value.bpm-input { /* number input arrows hidden */ }
+    .stat-value::-webkit-outer-spin-button,
+    .stat-value::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .stat-value[type=number] { -moz-appearance: textfield; }
+    .stat-value.timesig-input { cursor: pointer; }
+    .stat-label {
+      font-size: 9px; letter-spacing: 2px; color: var(--dim);
+      font-weight: 600;
+    }
+    /* Field label used by the still-existing QUANTIZE / NOTE LENGTH clusters */
     .field-label {
       font-size: 10px; letter-spacing: 2px; color: var(--dim);
       text-transform: uppercase;
     }
-    .bpm-input {
-      width: 76px;
-      min-height: 44px;
-      background: var(--bg3); color: var(--text);
-      border: 1px solid var(--bg3); border-radius: 8px;
-      font-size: 18px; font-weight: 600; text-align: center;
-      padding: 4px 8px;
+
+    /* Round transport buttons (REC / PLAY / STOP) — pro DAW look */
+    .transport-buttons {
+      display: flex; gap: 8px;
     }
-    .bpm-input:focus {
-      outline: none; border-color: var(--purple);
-    }
-    .timesig-input {
-      min-width: 74px;
-      min-height: 44px;
+    .t-btn-round {
+      width: 48px; height: 48px;
+      border-radius: 50%;
       background: var(--bg3); color: var(--text);
-      border: 1px solid var(--bg3); border-radius: 8px;
-      font-size: 16px; font-weight: 600; text-align: center;
-      padding: 4px 8px;
-      font-family: inherit;
+      border: 1.5px solid var(--bg3);
       cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+      padding: 0;
     }
-    .timesig-input:focus { outline: none; border-color: var(--purple); }
-    .timesig-input:hover { border-color: var(--purple); }
+    .t-btn-round:hover:not(:disabled) { border-color: var(--purple); }
+    .t-btn-round:active:not(:disabled) { transform: scale(0.94); }
+    .t-btn-round:disabled { opacity: 0.35; cursor: not-allowed; }
+    .t-btn-round .icon { display: block; }
+    /* Record — red circle */
+    .t-btn-round.record .icon {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--red);
+    }
+    .t-btn-round.record.active {
+      background: rgba(224, 83, 60, 0.18);
+      border-color: var(--red);
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+    /* Play — triangle, gets a purple ring at rest, teal when active */
+    .t-btn-round.play {
+      border-color: var(--purple);
+      background: rgba(127, 119, 221, 0.15);
+    }
+    .t-btn-round.play .icon {
+      width: 0; height: 0;
+      border-left: 14px solid var(--purple2);
+      border-top: 9px solid transparent;
+      border-bottom: 9px solid transparent;
+      margin-left: 3px;
+    }
+    .t-btn-round.play.active {
+      background: rgba(29, 158, 117, 0.18);
+      border-color: var(--teal);
+    }
+    .t-btn-round.play.active .icon { border-left-color: var(--teal); }
+    /* Stop — square */
+    .t-btn-round.stop .icon {
+      width: 12px; height: 12px; background: var(--text);
+      border-radius: 1px;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.55; }
+    }
+
+    /* TAP button — kept rectangular alongside the round transport row */
     .tap-btn {
       min-height: 44px; padding: 0 16px;
       background: var(--bg3); color: var(--text);
       border: 1px solid var(--bg3); border-radius: 8px;
-      font-size: 13px; letter-spacing: 2px;
+      font-size: 13px; letter-spacing: 2px; font-weight: 600;
+      font-family: inherit;
       cursor: pointer; transition: background 0.15s, border-color 0.15s;
     }
     .tap-btn:hover { border-color: var(--purple); }
@@ -111,53 +186,73 @@
       transition: background 0.4s;
     }
 
-    /* Transport action buttons — RECORD / STOP / PLAY */
-    .transport-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      width: 100%;
-    }
-    .t-btn {
-      min-height: 52px;
+    /* SAVE button + overflow menu (NEW / OPEN). */
+    .s-btn {
+      min-height: 44px;
+      padding: 0 16px;
       background: var(--bg3); color: var(--text);
-      border: 1px solid var(--bg3); border-radius: 10px;
-      font-size: 13px; font-weight: 600; letter-spacing: 2px;
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 12px; letter-spacing: 1px; font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, transform 0.05s;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .t-btn:hover:not(:disabled) { border-color: var(--purple); }
-    .t-btn:active:not(:disabled) { transform: scale(0.97); }
-    .t-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .t-btn .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: currentColor; opacity: 0.7;
+    .s-btn:hover:not(:disabled) { border-color: var(--purple); }
+    .s-btn:active:not(:disabled) { transform: scale(0.97); }
+    .s-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .s-btn.primary {
+      border-color: var(--purple); color: var(--purple2);
     }
-    .t-btn.record .dot { background: var(--red); opacity: 1; }
-    .t-btn.record.active {
-      background: rgba(224, 83, 60, 0.18);
-      border-color: var(--red);
-      color: var(--red);
-      animation: pulse 1.1s ease-in-out infinite;
+    .s-btn.primary:hover:not(:disabled) {
+      background: rgba(127, 119, 221, 0.18);
     }
-    .t-btn.play.active {
-      background: rgba(29, 158, 117, 0.15);
-      border-color: var(--teal);
-      color: var(--teal);
+    .overflow-wrap { position: relative; }
+    .overflow-btn {
+      width: 40px; height: 44px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 18px; line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      padding: 0;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%      { opacity: 0.6; }
+    .overflow-btn:hover { border-color: var(--purple); }
+    .overflow-menu {
+      position: absolute;
+      right: 0; top: calc(100% + 6px);
+      min-width: 160px;
+      background: var(--bg2);
+      border: 1px solid var(--bg3);
+      border-radius: 8px;
+      padding: 4px;
+      display: flex; flex-direction: column;
+      z-index: 50;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     }
+    .overflow-menu[hidden] { display: none; }
+    .overflow-menu button {
+      background: transparent; color: var(--text);
+      border: none;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 13px; letter-spacing: 1px; font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .overflow-menu button:hover:not(:disabled) { background: var(--bg3); color: var(--purple2); }
+    .overflow-menu button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* Live time / save-status text. time-display sits inline in the
+       top-bar; save-status is its own thin row that collapses when
+       empty. */
     .time-display {
-      flex: 1;
-      text-align: right;
       font-family: 'Consolas', monospace;
-      font-size: 13px; color: var(--dim);
-      min-height: 44px;
-      display: flex; align-items: center; justify-content: flex-end;
+      font-size: 12px; color: var(--dim);
+      padding-left: 6px;
+      min-height: 18px;
+      flex-basis: 100%;
+      text-align: right;
     }
 
     /* ── QUANTIZE BUTTONS (live inside the track row) ───────────── */
@@ -185,52 +280,13 @@
       color: var(--purple2);
     }
 
-    /* ── SONG BAR (title + library buttons) ─────────────────────── */
-    .song-bar {
-      background: var(--bg2);
-      border: 0.5px solid var(--bg3);
-      border-radius: 12px;
-      padding: 10px 12px;
-      display: flex; align-items: center; gap: 10px;
-      flex-wrap: wrap;
-    }
-    .song-title {
-      flex: 1; min-width: 140px;
-      min-height: 40px;
-      background: var(--bg3); color: var(--text);
-      border: 1px solid var(--bg3); border-radius: 8px;
-      padding: 4px 12px;
-      font-size: 15px; font-weight: 500;
-      font-family: inherit;
-    }
-    .song-title::placeholder { color: var(--dim); font-style: italic; }
-    .song-title:focus { outline: none; border-color: var(--purple); }
-    .song-actions {
-      display: flex; gap: 6px; flex-wrap: wrap;
-    }
-    .s-btn {
-      min-height: 40px;
-      padding: 0 14px;
-      background: var(--bg3); color: var(--text);
-      border: 1px solid var(--bg3); border-radius: 6px;
-      font-size: 12px; letter-spacing: 1px; font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, transform 0.05s;
-    }
-    .s-btn:hover:not(:disabled) { border-color: var(--purple); }
-    .s-btn:active:not(:disabled) { transform: scale(0.97); }
-    .s-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .s-btn.primary {
-      border-color: var(--purple); color: var(--purple2);
-    }
-    .s-btn.primary:hover:not(:disabled) {
-      background: rgba(127, 119, 221, 0.18);
-    }
+    /* save-status — thin row that collapses when empty. */
     .save-status {
       font-size: 10px; letter-spacing: 1px; color: var(--dim);
-      flex-basis: 100%;
+      padding: 0 4px;
+      min-height: 0;
     }
+    .save-status:empty { display: none; }
     .save-status.error { color: var(--red); }
     .save-status.success { color: var(--teal); }
 
@@ -410,20 +466,40 @@
     .empty-hint {
       text-align: center;
       font-size: 11px; letter-spacing: 1px; color: var(--dim);
-      padding: 12px 6px 6px;
+      padding: 8px 6px 4px;
+    }
+    /* Discoverability hint below the roll explaining the edit gestures. */
+    .gesture-hint {
+      text-align: center;
+      font-size: 9px; letter-spacing: 2px; color: var(--dim);
+      padding: 6px 6px 2px;
     }
 
-    /* ── TOUCH KEYBOARD (phase 1.5) ─────────────────────────────── */
+    /* ── TOUCH KEYBOARD ─────────────────────────────────────────── */
     .keyboard-wrap {
       background: var(--bg2);
       border: 0.5px solid var(--bg3);
       border-radius: 12px;
-      padding: 8px 6px 6px;
+      padding: 4px 6px 6px;
     }
+    .keyboard-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 2px 2px 4px;
+    }
+    .kb-toggle {
+      width: 32px; height: 28px;
+      background: transparent; color: var(--dim);
+      border: none; border-radius: 6px;
+      font-size: 14px; line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      padding: 0;
+    }
+    .kb-toggle:hover { color: var(--purple); background: var(--bg3); }
     .keyboard-hint {
+      flex: 1;
       text-align: center;
       font-size: 9px; letter-spacing: 3px; color: var(--dim);
-      padding-bottom: 6px;
     }
     canvas#touch-keyboard {
       display: block;
@@ -431,6 +507,10 @@
       border-radius: 6px;
       touch-action: none;   /* lets us slide across keys without page-scrolling */
     }
+    /* Collapsed state: hides the canvas, keyboard-bar stays so the user
+       can re-open it. */
+    .keyboard-wrap.collapsed canvas#touch-keyboard { display: none; }
+    .keyboard-wrap.collapsed .keyboard-hint { color: var(--dim); }
 
     /* ── DESKTOP TWEAKS ─────────────────────────────────────────── */
     @media (min-width: 768px) {
@@ -440,15 +520,7 @@
         margin: 0 auto;
         gap: 12px;
       }
-      .transport {
-        grid-template-columns: auto auto 1fr auto;
-        padding: 16px 18px;
-      }
-      .transport-actions {
-        grid-template-columns: auto auto auto;
-        width: auto;
-      }
-      .t-btn { padding: 0 28px; }
+      .top-bar { padding: 10px 14px; }
       .roll-wrap { min-height: 480px; }
       canvas#roll-canvas { min-height: 460px; }
     }
@@ -460,35 +532,26 @@
 </head>
 <body>
 
-  <div class="header">
-    <a class="back-link" href="index.html">← BACK</a>
-    <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-      <div class="logo">BAND<span>SYNC</span></div>
-      <div class="page-title">SONG CREATOR</div>
-    </div>
-    <div style="width:80px"></div>
-  </div>
+  <!-- ── TOP BAR ─────────────────────────────────────────────────
+       Consolidates the old header + song-bar + transport into one
+       wrap-aware row. On desktop: back · title · BPM · SIG · round
+       REC/PLAY/STOP · TAP · SAVE · overflow. On phones the same
+       elements wrap onto multiple lines naturally. -->
+  <div class="top-bar">
+    <a class="back-link" href="index.html" aria-label="Back">←</a>
 
-  <div class="song-bar">
-    <input id="song-title" class="song-title" type="text" placeholder="Untitled song" maxlength="80">
-    <div class="song-actions">
-      <button id="new-btn"  class="s-btn"          type="button">NEW</button>
-      <button id="open-btn" class="s-btn"          type="button" disabled>OPEN</button>
-      <button id="save-btn" class="s-btn primary"  type="button" disabled>SAVE</button>
-    </div>
-    <div id="save-status" class="save-status"></div>
-  </div>
-
-  <div class="transport">
-    <div class="transport-section">
-      <span class="field-label">BPM</span>
-      <input id="bpm-input" class="bpm-input" type="number" min="40" max="240" step="1" value="120" inputmode="numeric">
-      <button id="tap-btn" class="tap-btn" type="button">TAP</button>
+    <div class="title-block">
+      <input id="song-title" class="song-title" type="text" placeholder="Untitled song" maxlength="80">
+      <div class="title-sub">BAND<span>SYNC</span> STUDIO</div>
     </div>
 
-    <div class="transport-section">
-      <span class="field-label">SIG</span>
-      <select id="timesig-input" class="timesig-input" aria-label="Time signature">
+    <div class="stat-pill">
+      <input id="bpm-input" class="stat-value bpm-input" type="number" min="40" max="240" step="1" value="120" inputmode="numeric">
+      <div class="stat-label">BPM</div>
+    </div>
+
+    <div class="stat-pill">
+      <select id="timesig-input" class="stat-value timesig-input" aria-label="Time signature">
         <option value="4/4" selected>4/4</option>
         <option value="3/4">3/4</option>
         <option value="2/4">2/4</option>
@@ -497,22 +560,37 @@
         <option value="7/8">7/8</option>
         <option value="12/8">12/8</option>
       </select>
+      <div class="stat-label">SIG</div>
     </div>
 
-    <div class="transport-actions">
-      <button id="record-btn" class="t-btn record" type="button">
-        <span class="dot"></span>REC
+    <div class="transport-buttons">
+      <button id="record-btn" class="t-btn-round record" type="button" aria-label="Record">
+        <span class="icon"></span>
       </button>
-      <button id="stop-btn" class="t-btn stop" type="button" disabled>
-        STOP
+      <button id="play-btn" class="t-btn-round play" type="button" disabled aria-label="Play">
+        <span class="icon"></span>
       </button>
-      <button id="play-btn" class="t-btn play" type="button" disabled>
-        ▶ PLAY
+      <button id="stop-btn" class="t-btn-round stop" type="button" disabled aria-label="Stop">
+        <span class="icon"></span>
       </button>
     </div>
 
-    <div id="time-display" class="time-display">Ready</div>
+    <button id="tap-btn" class="tap-btn" type="button">TAP</button>
+
+    <button id="save-btn" class="s-btn primary" type="button" disabled>SAVE</button>
+
+    <div class="overflow-wrap">
+      <button id="overflow-btn" class="overflow-btn" type="button" aria-label="More">⋯</button>
+      <div id="overflow-menu" class="overflow-menu" hidden>
+        <button id="new-btn"  type="button">NEW SONG</button>
+        <button id="open-btn" type="button" disabled>OPEN…</button>
+      </div>
+    </div>
+
+    <div id="time-display" class="time-display"></div>
   </div>
+
+  <div id="save-status" class="save-status"></div>
 
   <div class="track-row">
     <div class="track-tag">TRACK 1 · PIANO</div>
@@ -546,13 +624,19 @@
 
   <div class="roll-wrap">
     <canvas id="roll-canvas"></canvas>
+    <div class="gesture-hint">
+      TAP EMPTY GRID TO ADD · TAP NOTE TO SELECT · DRAG TO MOVE · LONG-PRESS OR RIGHT-CLICK TO DELETE
+    </div>
     <div class="empty-hint" id="empty-hint">
       Connect a MIDI piano or use the on-screen keyboard below. Set BPM, hit REC — a 4-beat count-in plays before recording starts.
     </div>
   </div>
 
-  <div class="keyboard-wrap">
-    <div class="keyboard-hint">TOUCH OR CLICK TO PLAY</div>
+  <div class="keyboard-wrap" id="keyboard-wrap">
+    <div class="keyboard-bar">
+      <button id="kb-toggle" class="kb-toggle" type="button" aria-label="Toggle keyboard">▾</button>
+      <div class="keyboard-hint">TOUCH OR CLICK TO PLAY</div>
+    </div>
     <canvas id="touch-keyboard"></canvas>
   </div>
 
@@ -579,7 +663,7 @@
     import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=3';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=4';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=5';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
@@ -637,7 +721,25 @@
     // ── Touch / click keyboard (phase 1.5) ────────────────────────
     // Reuses js/render/piano.js in keyboardOnly mode — same code path
     // the lobby warmup uses. Touch slide across keys works for free.
+    // Collapsible: the keyboard can be hidden to save vertical space,
+    // state persists in localStorage so it remembers across reloads.
+    const KB_COLLAPSED_KEY = 'bandsync_studio_kb_collapsed';
+    const keyboardWrap = document.getElementById('keyboard-wrap');
+    const kbToggle     = document.getElementById('kb-toggle');
     const kbCanvas   = document.getElementById('touch-keyboard');
+
+    function setKbCollapsed(collapsed) {
+      keyboardWrap.classList.toggle('collapsed', collapsed);
+      kbToggle.textContent = collapsed ? '▴' : '▾';
+      kbToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      try { localStorage.setItem(KB_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) {}
+    }
+    kbToggle.addEventListener('click', () => {
+      setKbCollapsed(!keyboardWrap.classList.contains('collapsed'));
+    });
+    // Restore last state.
+    try { setKbCollapsed(localStorage.getItem(KB_COLLAPSED_KEY) === '1'); } catch (_) {}
+
     const kbRenderer = createPianoRenderer(kbCanvas, {
       color:        PLAYER_COLORS[0],
       noteMin:      PIANO_NOTE_MIN,
@@ -1009,11 +1111,13 @@
     // ════════════════════════════════════════════════════════════════
     // LIBRARY (Phase 4) — save / load / delete songs
     // ════════════════════════════════════════════════════════════════
-    const titleInput  = document.getElementById('song-title');
-    const newBtn      = document.getElementById('new-btn');
-    const openBtn     = document.getElementById('open-btn');
-    const saveBtn     = document.getElementById('save-btn');
-    const saveStatus  = document.getElementById('save-status');
+    const titleInput   = document.getElementById('song-title');
+    const newBtn       = document.getElementById('new-btn');
+    const openBtn      = document.getElementById('open-btn');
+    const saveBtn      = document.getElementById('save-btn');
+    const saveStatus   = document.getElementById('save-status');
+    const overflowBtn  = document.getElementById('overflow-btn');
+    const overflowMenu = document.getElementById('overflow-menu');
     const modal       = document.getElementById('songs-modal');
     const modalClose  = document.getElementById('songs-modal-close');
     const songsList   = document.getElementById('songs-list');
@@ -1111,6 +1215,29 @@
       }
       saveBtn.disabled = false;
       updateLibraryButtons();
+    });
+
+    // ── Overflow menu (⋯) hosting NEW + OPEN ──────────────────────
+    function setOverflowOpen(open) {
+      overflowMenu.hidden = !open;
+      overflowBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    overflowBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOverflowOpen(overflowMenu.hidden);
+    });
+    // Items inside the menu still keep their own click handlers below;
+    // we just close the menu after either fires.
+    overflowMenu.addEventListener('click', () => setOverflowOpen(false));
+    // Tap anywhere else dismisses the menu.
+    window.addEventListener('click', (e) => {
+      if (!overflowMenu.hidden && !overflowBtn.parentElement.contains(e.target)) {
+        setOverflowOpen(false);
+      }
+    });
+    // Escape closes too.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !overflowMenu.hidden) setOverflowOpen(false);
     });
 
     // ── OPEN — modal flow ─────────────────────────────────────────
