@@ -1511,9 +1511,10 @@ async function startLobby() {
 
     // Compute when the count-off should fire in server time.
     // serverNow = Date.now() - clockOffset (our best estimate of server's current epoch).
-    // Add 3 s of lead time so every client has time to load the song.
+    // 8 s of lead time: ~2 s to load the song + ~6 s to find hand position before
+    // the count-off fires. Drums especially need a few seconds to settle.
     const serverNow        = Date.now() - ctx.clockOffset;
-    const serverStartEpoch = serverNow + 3000;
+    const serverStartEpoch = serverNow + 8000;
 
     // Write start_at + transition to 'starting' in one update.
     await lobbies.updateLobby(lobbyId, {
@@ -1522,9 +1523,9 @@ async function startLobby() {
     });
 
     // Host launches immediately — clock offset cancels out, so
-    // localStartPerfMs = performance.now() + 3000 for the host.
+    // localStartPerfMs = performance.now() + 8000 for the host.
     ctx.lobby.gameLaunched = true;
-    launchRemoteGame(performance.now() + 3000);
+    launchRemoteGame(performance.now() + 8000);
   } catch (err) {
     console.error('startLobby failed', err);
     alert(`Could not start — ${err.message ?? err}\n\nHave you run migration 0006 in Supabase?`);

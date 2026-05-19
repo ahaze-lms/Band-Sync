@@ -62,7 +62,7 @@
 **Immediate (§27 finish line):**
 
 1. ✅ ~~**§27 phase 5 — clock sync**~~ — shipped. `get_server_time()` RPC + `measureClockOffset()` + synchronized `engine.start({ countoffStartsAt })`. Verified working.
-2. **§27 phase 6 — score sidebar** — small HUD overlay in gameplay showing each remote player's live score, updated via `score_tick` Realtime broadcasts (~1Hz).
+2. ✅ ~~**§27 phase 6 — score sidebar**~~ — shipped. Supabase Broadcast channel (`game:<lobbyId>`), ~1Hz throttle, slim strip above game canvas showing all remote players' live score / grade / accuracy.
 3. **§27 phase 7 — end-of-song** — host creates one shared `play_sessions` row (linked to the lobby via `session_id`), each player writes their own slot via `pss_insert_self_in_session`. Results screen aggregates all slots.
 4. ✅ ~~**§27 phase 8 — RLS extension**~~ — shipped. `pss_insert_self_in_session` + `pss_select_in_lobby_session` live.
 
@@ -77,6 +77,8 @@
 
 **Smaller polish items:**
 
+- **Lobby chat** — real-time text chat panel inside the lobby while waiting to ready up. Players need a way to coordinate ("wait I need to switch tracks", "is your audio working?") without leaving the app. Supabase Broadcast on the existing `lobby:<id>` channel is the natural transport.
+- **Remote warm-up countdown** — currently the game loads and the count-off fires after a silent 8s lead. A visible "STARTING IN 5…4…3…" countdown (updating the game-time display) would make the wait less ambiguous, especially for drum players finding hand position.
 - Twilio SMS invites (§26 → Future enhancements)
 - Connected-devices "revoke all" button
 - In-game banner when a friend is attached (currently a small chip in the game header)
@@ -666,6 +668,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-17 | RLS recursion fix migration 0002 — play_sessions ↔ play_session_slots policies cross-referenced each other, so any insert-with-select triggered "infinite recursion detected." Pulled the cross-table existence checks into SECURITY DEFINER helper functions (`user_in_session`, `user_hosts_session`) — same pattern as `claim_device_code`. Surfaced as "COULD NOT SAVE" on every results screen until the migration was applied. |
 | 2026-05-17 | Email confirmation redirect fix — friend's signup link 404'd because Supabase's Site URL fallback didn't match the GitHub Pages path. Added explicit `emailRedirectTo` to `signUp()` deriving from `location.href` so the URL is unambiguous regardless of Supabase config drift. Also documented the Site URL + Redirect URLs dashboard settings (`https://ahaze-lms.github.io/Band-Sync/` and `…/**` allowlist). |
 | 2026-05-18 | §27 Remote Multiplayer phases 5+8 shipped. Clock sync: `get_server_time()` RPC (migration 0006) + `measureClockOffset()` in `lobbies.js` (5 round-trip samples, trim outliers). Host clicks START → measures offset → writes `start_at = serverNow + 3s` + state='starting'. Non-host receives via Realtime, converts server epoch to local `performance.now()` using their own measured offset, calls `launchRemoteGame(countoffStartsAt)`. Each client runs a 1-player game started at the same wall-clock instant. Phase 8 RLS: `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session`. First successful 2-player remote session verified end-to-end: both players in separate browsers, both saved to HISTORY. |
+| 2026-05-18 | §27 phase 6 shipped — remote score strip. Supabase Broadcast channel `game:<lobbyId>` carries score ticks (~1Hz throttle) from each player. Slim strip above game canvas shows all participants' live score / grade / accuracy. Lobby track picker added: instrument + track selects on your own participant row, wired to `setSlotConfig()` so launchRemoteGame reads the correct instrument/track. Lobby form-card styling added. Friend-invite-from-lobby flow: `play_invites.lobby_id` column (migration 0007) + 30-min expiry; home screen detects lobby invites and renders JOIN LOBBY link. Remote play lead time bumped 3 s → 8 s to give drum players time to find hand position before the count-off fires. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
