@@ -1,8 +1,8 @@
-# BandSync — Design Document v17
+# BandSync — Design Document v18
 
-> Updated 2026-05-18. Supersedes v16.
+> Updated 2026-05-18. Supersedes v17.
 >
-> Major changes from v16: **Lobby chat shipped** — ephemeral Supabase Broadcast chat panel in the lobby waiting room (`subscribeLobby` now returns `sendChat`; own messages pushed locally because Broadcast doesn't echo to sender). **§27 Phases 6+7 shipped** (remote score strip, lobby track picker, end-of-song split write). Remote lead time 3s→8s for drum warm-up. All §27 phases complete.
+> Major changes from v17: **Remote warm-up countdown** ("STARTING IN X") during the 8s lead time. **Lobby warmup panel** — device picker (keyboard/MIDI) + playable piano or drum canvas below the lobby cards so players warm up before the song starts. **Mobile-friendly pass** — new 480px breakpoint, 44px touch targets, lifted dark-navy theme for daylight readability. **Personal replay** — records every noteOn during a run, lets you watch your own performance back from the results screen; `onRawInput` + `injectInput()` added to gameplay-engine.
 
 ---
 
@@ -20,8 +20,10 @@
 - **ResizeObserver-driven crisp canvas** — pixel buffer matches `displaySize × devicePixelRatio` so the keyboard renders sharp at any size (4K, mobile, anything between)
 - Live per-player score card, hit-feedback overlays, song timer, pause / restart
 - Results screen: per-slot scores + grade + identity, NEW PERSONAL BEST badge when host beats their own PB
+- **Personal replay** — every noteOn/noteOff during a run is recorded in memory; "⏪ REPLAY" button on results replays your exact performance back through the engine with all scoring live, using a rAF injector loop. `ctx.isReplay` guard prevents re-recording during playback. `injectInput(playerIdx, note, velocity)` on the engine public API feeds synthetic events through `dispatch()`.
 - End-of-song persistence writes one `play_sessions` row + N `play_session_slots` rows (records actual speed/difficulty used)
 - Personal best displayed under each song on setup ("YOUR BEST: 14,400 · S · 98% · 2d ago")
+- **Mobile-friendly pass** — 480px breakpoint: 44px touch targets, hidden non-essential meta (BPM, PGMW), stacked lobby actions, shrunk feedback overlays. Theme lifted from near-black to visible dark-navy (`--bg: #101022`, `--bg2: #18182e`, `--bg3: #1e1e34`) for daylight readability on phones.
 
 **Player identity** (`§26` + `§26 Evolution v2`):
 - Friend generates a 6-digit code in their profile's PAIRING card (snapshots their identity, 10-min TTL, single-use)
@@ -31,13 +33,14 @@
 - Friend's profile shows RECENT ACCOUNT ACTIVITY (used codes audit log) + CONNECTED DEVICES (active attachments with Revoke buttons)
 - Opportunistic cleanup runs inside `claim_device_code` — expired/revoked attachments >30d and used codes >90d get pruned automatically
 
-**Remote multiplayer** (`§27`) — phases 1-4+5+8 shipped:
+**Remote multiplayer** (`§27`) — all phases shipped:
 - `lobbies` + `lobby_participants` schema with full RLS (recursion-fix helpers, host vs participant visibility)
 - `create_lobby` + `join_lobby` RPCs (atomic, lowest-free-slot assignment, idempotent re-joins)
 - `js/services/lobbies.js` — create/join/leave/setReady/kick/setStartAt/setState/listParticipants + `subscribeLobby` Realtime helper + `measureClockOffset()`
 - `play.html` SPA gains a LOBBY state. Song-select MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). Remote-mode song click creates a lobby and routes there. `?lobby=<id>` URL param auto-joins on boot for shareable invite links.
 - Live roster + ready states via Supabase Realtime (per-lobby channel). Host gets KICK + START. Participants get READY UP + LEAVE. Host-abandon detection on guest side with auto-exit.
-- **Clock sync (phase 5):** `get_server_time()` RPC; `measureClockOffset()` runs in background on lobby entry. Host clicks START → measures offset → writes `start_at = serverNow + 3s` + state='starting'. Non-host: Realtime delivers `start_at`, converts to local `performance.now()` via offset, `launchRemoteGame()` launches immediately. Each client runs a single-player game (their own slot), started at the same wall-clock instant. Verified working end-to-end.
+- **Clock sync (phase 5):** `get_server_time()` RPC; `measureClockOffset()` runs in background on lobby entry. Host clicks START → measures offset → writes `start_at = serverNow + 8s` + state='starting'. Non-host: Realtime delivers `start_at`, converts to local `performance.now()` via offset, `launchRemoteGame()` launches immediately. Each client runs a single-player game (their own slot), started at the same wall-clock instant. **"STARTING IN X" countdown** in the game-time display ticks down the 8s lead before the count-off fires (`ctx.remoteCountoffStartsAt` checked each rAF tick in `startGameTimer()`). Verified working end-to-end.
+- **Lobby warmup panel** — device picker (Computer Keyboard or any connected MIDI device) in participant row + a live playable canvas below lobby cards. Piano: shows keyboard only (CSS crop — container `height: 140px; overflow: hidden`, canvas `position: absolute; bottom: 0; height: 520px`). Drums: shows full drum-pad view. Switching instrument or device calls `rebuildLobbyWarmup()` immediately (reads DOM before DB round-trip). `stopLobbyWarmup()` cleans up on state change.
 - **Phase 8 RLS:** `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session` — remote players write and read their own slot rows.
 
 **HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
@@ -66,19 +69,22 @@
 3. ✅ ~~**§27 phase 7 — end-of-song**~~ — shipped. Host creates `play_sessions` header + stamps `session_id` on lobby row + writes own slot. Non-hosts poll `getLobby()` (1.5s interval, 30s timeout) until `session_id` appears, then write their slot via `pss_insert_self_in_session`. All players' HISTORY shows the same shared session.
 4. ✅ ~~**§27 phase 8 — RLS extension**~~ — shipped. `pss_insert_self_in_session` + `pss_select_in_lobby_session` live.
 
-**Major candidates (after §27):**
+**Major candidates:**
 
 1. **`studio.html` — Song Creator** (§25). Biggest unbuilt thing. Spec ready: live MIDI record, quantize, instrument-specific piano roll, save to Supabase, async collaboration, publish to library.
-2. **Mobile pass** — flagged by user during friend testing. Phones are the dominant test client; current responsive work is "quick wins" not a full pass.
-3. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
-4. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
-5. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
-6. **Phase 3c — port `js/screens/gameplay.js`** to the new engine, eliminating the duplicate loop. Pure cleanup; deferred unless 2player.html starts getting active engine changes.
+2. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
+3. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
+4. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
+5. **Phase 3c — port `js/screens/gameplay.js`** to the new engine, eliminating the duplicate loop. Pure cleanup; deferred unless 2player.html starts getting active engine changes.
 
 **Smaller polish items:**
 
 - ~~**Lobby chat** — shipped. Ephemeral Broadcast chat on `lobby:<id>` channel.~~
-- **Remote warm-up countdown** — currently the game loads and the count-off fires after a silent 8s lead. A visible "STARTING IN 5…4…3…" countdown (updating the game-time display) would make the wait less ambiguous, especially for drum players finding hand position.
+- ~~**Remote warm-up countdown** — shipped. "STARTING IN X" counts down the 8s lead in the game-time display.~~
+- ~~**Lobby warmup instrument + device picker** — shipped. Device select in participant row + live piano/drum canvas below lobby cards.~~
+- ~~**Mobile pass + theme lift** — shipped. 480px breakpoint, 44px touch targets, dark-navy theme variables.~~
+- ~~**Personal replay** — shipped. Records actual performance during a run; "⏪ REPLAY" button on results re-runs it through the engine.~~
+- **History integration for replay** — `ctx.lastReplayLog` is in-memory only (lost on reload). Could serialise and store in `play_session_slots` as a JSONB column for persistent replay.
 - Twilio SMS invites (§26 → Future enhancements)
 - Connected-devices "revoke all" button
 - In-game banner when a friend is attached (currently a small chip in the game header)
