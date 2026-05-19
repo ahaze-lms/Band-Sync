@@ -1,8 +1,8 @@
-# BandSync — Design Document v15
+# BandSync — Design Document v16
 
-> Updated 2026-05-18. Supersedes v14.
+> Updated 2026-05-18. Supersedes v15.
 >
-> Major changes from v14: **§26 Evolution v2 is fully shipped** — durable session attachments, paired-friend dropdown for one-tap reattach, and Connected Devices view in profile-edit. **§27 Remote Multiplayer phases 1-4 are shipped** — lobby schema with realtime, create/join/leave/ready/kick flows, and live participant roster via Supabase Realtime. Phases 5-8 (clock sync handshake, gameplay handoff, score sidebar, end-of-song writes, RLS extension) remain.
+> Major changes from v15: **§27 Remote Multiplayer phases 5+8 are shipped** — clock-offset measurement via `get_server_time()` RPC, synchronized start handshake (host writes `start_at` + state='starting', all clients convert to local `performance.now()` and call `engine.start({ countoffStartsAt })`), `launchRemoteGame()` game handoff, Phase 8 RLS (`pss_insert_self_in_session`, `pss_select_in_lobby_session`). First successful two-player remote session verified end-to-end: both players started at the same wall-clock instant, played independently, and both saved to HISTORY. Phases 6+7 (score sidebar + shared session row) remain.
 
 ---
 
@@ -31,13 +31,14 @@
 - Friend's profile shows RECENT ACCOUNT ACTIVITY (used codes audit log) + CONNECTED DEVICES (active attachments with Revoke buttons)
 - Opportunistic cleanup runs inside `claim_device_code` — expired/revoked attachments >30d and used codes >90d get pruned automatically
 
-**Remote multiplayer** (`§27`) — phases 1-4 shipped:
+**Remote multiplayer** (`§27`) — phases 1-4+5+8 shipped:
 - `lobbies` + `lobby_participants` schema with full RLS (recursion-fix helpers, host vs participant visibility)
 - `create_lobby` + `join_lobby` RPCs (atomic, lowest-free-slot assignment, idempotent re-joins)
-- `js/services/lobbies.js` — create/join/leave/setReady/kick/setStartAt/setState/listParticipants + `subscribeLobby` Realtime helper
+- `js/services/lobbies.js` — create/join/leave/setReady/kick/setStartAt/setState/listParticipants + `subscribeLobby` Realtime helper + `measureClockOffset()`
 - `play.html` SPA gains a LOBBY state. Song-select MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). Remote-mode song click creates a lobby and routes there. `?lobby=<id>` URL param auto-joins on boot for shareable invite links.
 - Live roster + ready states via Supabase Realtime (per-lobby channel). Host gets KICK + START. Participants get READY UP + LEAVE. Host-abandon detection on guest side with auto-exit.
-- START button currently transitions state `waiting → ready` as a scope cap — phases 5-6 wire clock sync + gameplay handoff.
+- **Clock sync (phase 5):** `get_server_time()` RPC; `measureClockOffset()` runs in background on lobby entry. Host clicks START → measures offset → writes `start_at = serverNow + 3s` + state='starting'. Non-host: Realtime delivers `start_at`, converts to local `performance.now()` via offset, `launchRemoteGame()` launches immediately. Each client runs a single-player game (their own slot), started at the same wall-clock instant. Verified working end-to-end.
+- **Phase 8 RLS:** `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session` — remote players write and read their own slot rows.
 
 **HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
 
@@ -60,10 +61,10 @@
 
 **Immediate (§27 finish line):**
 
-1. **§27 phase 5 — clock sync** — ping/pong handshake to measure each client's `serverTime - localTime` offset, then host computes `start_at = serverTime + 3s` and writes to the lobby. Each client converts to its local clock and calls `engine.start({ countoffStartsAt: localStart })`. All count-offs fire at the same wall-clock instant.
-2. **§27 phase 6 — score sidebar** — small HUD overlay in gameplay showing each remote player's live score, updated via Realtime `score_tick` broadcasts (~1Hz).
-3. **§27 phase 7 — end-of-song** — each player writes their own `play_session_slots` row via the new RLS path; results screen aggregates from all participants.
-4. **§27 phase 8 — RLS extension** — `pss_insert_self_in_session` policy so each remote player can write their own slot row.
+1. ✅ ~~**§27 phase 5 — clock sync**~~ — shipped. `get_server_time()` RPC + `measureClockOffset()` + synchronized `engine.start({ countoffStartsAt })`. Verified working.
+2. **§27 phase 6 — score sidebar** — small HUD overlay in gameplay showing each remote player's live score, updated via `score_tick` Realtime broadcasts (~1Hz).
+3. **§27 phase 7 — end-of-song** — host creates one shared `play_sessions` row (linked to the lobby via `session_id`), each player writes their own slot via `pss_insert_self_in_session`. Results screen aggregates all slots.
+4. ✅ ~~**§27 phase 8 — RLS extension**~~ — shipped. `pss_insert_self_in_session` + `pss_select_in_lobby_session` live.
 
 **Major candidates (after §27):**
 
@@ -664,6 +665,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-17 | Mobile pass (quick wins, not full responsive redesign). Lifted `--dim` color contrast from `#55556a` to `#8585a0` (was nearly invisible on phones in bright light); bumped base font 14→15px. play.html: panels stack vertically on ≤768px; setup player rows wrap fields below the P# tag. Inbox single-pane with ← BACK button; `#app` uses 100dvh; inputs forced to 16px to stop iOS auto-zoom. Deliberately NOT in scope: full responsive redesign, landscape-specific layouts, pinch-zoom for touch-comfortable keys. |
 | 2026-05-17 | RLS recursion fix migration 0002 — play_sessions ↔ play_session_slots policies cross-referenced each other, so any insert-with-select triggered "infinite recursion detected." Pulled the cross-table existence checks into SECURITY DEFINER helper functions (`user_in_session`, `user_hosts_session`) — same pattern as `claim_device_code`. Surfaced as "COULD NOT SAVE" on every results screen until the migration was applied. |
 | 2026-05-17 | Email confirmation redirect fix — friend's signup link 404'd because Supabase's Site URL fallback didn't match the GitHub Pages path. Added explicit `emailRedirectTo` to `signUp()` deriving from `location.href` so the URL is unambiguous regardless of Supabase config drift. Also documented the Site URL + Redirect URLs dashboard settings (`https://ahaze-lms.github.io/Band-Sync/` and `…/**` allowlist). |
+| 2026-05-18 | §27 Remote Multiplayer phases 5+8 shipped. Clock sync: `get_server_time()` RPC (migration 0006) + `measureClockOffset()` in `lobbies.js` (5 round-trip samples, trim outliers). Host clicks START → measures offset → writes `start_at = serverNow + 3s` + state='starting'. Non-host receives via Realtime, converts server epoch to local `performance.now()` using their own measured offset, calls `launchRemoteGame(countoffStartsAt)`. Each client runs a 1-player game started at the same wall-clock instant. Phase 8 RLS: `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session`. First successful 2-player remote session verified end-to-end: both players in separate browsers, both saved to HISTORY. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
