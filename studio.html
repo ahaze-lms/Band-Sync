@@ -5,259 +5,514 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BandSync — Song Creator</title>
   <style>
+    :root {
+      --bg:     #101022;
+      --bg2:    #18182e;
+      --bg3:    #1e1e34;
+      --text:   #d8d8e8;
+      --dim:    #8585a0;
+      --purple:  #7F77DD;
+      --purple2: #AFA9EC;
+      --teal:    #1D9E75;
+      --red:     #E0533C;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    html, body { min-height: 100dvh; background: var(--bg); }
+
     body {
-      background: #0a0a0f;
-      color: #ccc;
+      color: var(--text);
       font-family: 'Segoe UI', sans-serif;
-      min-height: 100vh;
+      font-size: 15px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 40px 24px 60px;
-      gap: 28px;
+      gap: 16px;
     }
 
-    .back-link {
-      position: fixed;
-      top: 24px; left: 24px;
-      font-size: 10px; letter-spacing: 2px; color: #555;
-      text-decoration: none; transition: color 0.15s;
-    }
-    .back-link:hover { color: #7F77DD; }
-
-    .logo { font-size: 22px; font-weight: 500; letter-spacing: 4px; color: #fff; text-align: center; }
-    .logo span { color: #7F77DD; }
-    .page-title { font-size: 11px; letter-spacing: 4px; color: #555; text-align: center; margin-top: -20px; }
-
-    .status-badge {
-      display: inline-block;
-      padding: 4px 14px; border-radius: 20px;
-      background: #1a1a26; border: 0.5px solid #2a2a3a;
-      font-size: 9px; letter-spacing: 3px; color: #7F77DD;
-      align-self: center;
-    }
-
-    .section-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    /* ── HEADER ─────────────────────────────────────────────────── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
       gap: 12px;
-      width: 100%; max-width: 960px;
+    }
+    .back-link {
+      font-size: 11px; letter-spacing: 2px; color: var(--dim);
+      text-decoration: none; transition: color 0.15s;
+      padding: 8px; min-height: 44px;
+      display: inline-flex; align-items: center;
+    }
+    .back-link:hover { color: var(--purple); }
+    .logo {
+      font-size: 18px; font-weight: 500; letter-spacing: 4px; color: #fff;
+    }
+    .logo span { color: var(--purple); }
+    .page-title {
+      font-size: 10px; letter-spacing: 3px; color: var(--dim);
     }
 
-    .card {
-      background: #0d0d14; border: 0.5px solid #1e1e2a;
-      border-radius: 10px; padding: 22px 24px;
-      display: flex; flex-direction: column; gap: 14px;
+    /* ── TRANSPORT BAR ──────────────────────────────────────────── */
+    .transport {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .transport-row {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .transport-section {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .field-label {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+      text-transform: uppercase;
+    }
+    .bpm-input {
+      width: 76px;
+      min-height: 44px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 18px; font-weight: 600; text-align: center;
+      padding: 4px 8px;
+    }
+    .bpm-input:focus {
+      outline: none; border-color: var(--purple);
+    }
+    .tap-btn {
+      min-height: 44px; padding: 0 16px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 13px; letter-spacing: 2px;
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
+    }
+    .tap-btn:hover { border-color: var(--purple); }
+    .tap-btn:active { background: var(--purple); color: #fff; }
+    .tap-btn.flash {
+      background: var(--purple); color: #fff;
+      transition: background 0.4s;
     }
 
-    .card-label {
-      font-size: 9px; letter-spacing: 3px; color: #444;
+    /* Transport action buttons — RECORD / STOP / PLAY */
+    .transport-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+    .t-btn {
+      min-height: 52px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 10px;
+      font-size: 13px; font-weight: 600; letter-spacing: 2px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .t-btn:hover:not(:disabled) { border-color: var(--purple); }
+    .t-btn:active:not(:disabled) { transform: scale(0.97); }
+    .t-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .t-btn .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: currentColor; opacity: 0.7;
+    }
+    .t-btn.record .dot { background: var(--red); opacity: 1; }
+    .t-btn.record.active {
+      background: rgba(224, 83, 60, 0.18);
+      border-color: var(--red);
+      color: var(--red);
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+    .t-btn.play.active {
+      background: rgba(29, 158, 117, 0.15);
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.6; }
     }
 
-    .card h3 {
-      font-size: 12px; font-weight: 600; letter-spacing: 2px; color: #fff;
+    .time-display {
+      flex: 1;
+      text-align: right;
+      font-family: 'Consolas', monospace;
+      font-size: 13px; color: var(--dim);
+      min-height: 44px;
+      display: flex; align-items: center; justify-content: flex-end;
     }
 
-    .card p {
-      font-size: 11px; line-height: 1.7; color: #555;
+    /* ── TRACK ROW ──────────────────────────────────────────────── */
+    .track-row {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .track-tag {
+      background: var(--bg3);
+      border: 0.5px solid var(--bg3);
+      border-left: 3px solid var(--purple);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 11px; letter-spacing: 2px;
+      color: var(--text);
+    }
+    .track-info {
+      font-size: 12px; color: var(--dim);
+      flex: 1; min-width: 0;
+    }
+    .track-info b { color: var(--text); font-weight: 500; }
+    .midi-status {
+      font-size: 11px; letter-spacing: 1px;
+      padding: 4px 10px; border-radius: 12px;
+      background: var(--bg3); color: var(--dim);
+    }
+    .midi-status.connected { color: var(--teal); }
+    .midi-status.error     { color: var(--red); }
+
+    /* ── PIANO ROLL ─────────────────────────────────────────────── */
+    .roll-wrap {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 6px;
+      flex: 1;
+      min-height: 320px;
+      display: flex; flex-direction: column;
+    }
+    canvas#roll-canvas {
+      width: 100%;
+      height: 100%;
+      min-height: 300px;
+      flex: 1;
+      display: block;
+      border-radius: 8px;
+    }
+    .empty-hint {
+      text-align: center;
+      font-size: 11px; letter-spacing: 1px; color: var(--dim);
+      padding: 12px 6px 6px;
     }
 
-    .feature-list {
-      list-style: none;
-      display: flex; flex-direction: column; gap: 8px;
+    /* ── DESKTOP TWEAKS ─────────────────────────────────────────── */
+    @media (min-width: 768px) {
+      body {
+        padding: 24px;
+        max-width: 1400px;
+        margin: 0 auto;
+        gap: 18px;
+      }
+      .transport {
+        grid-template-columns: auto auto 1fr auto;
+        padding: 16px 18px;
+      }
+      .transport-actions {
+        grid-template-columns: auto auto auto;
+        width: auto;
+      }
+      .t-btn { padding: 0 28px; }
+      .roll-wrap { min-height: 480px; }
+      canvas#roll-canvas { min-height: 460px; }
     }
-    .feature-list li {
-      font-size: 11px; color: #666;
-      display: flex; align-items: flex-start; gap: 8px; line-height: 1.5;
-    }
-    .feature-list li .dot {
-      width: 4px; height: 4px; border-radius: 50%;
-      background: #7F77DD; flex-shrink: 0; margin-top: 6px;
-    }
-    .feature-list li .dot.teal { background: #1D9E75; }
-    .feature-list li .dot.dim { background: #333; }
 
-    .instrument-table {
-      width: 100%; border-collapse: collapse;
-      font-size: 11px;
-    }
-    .instrument-table th {
-      text-align: left; font-size: 9px; letter-spacing: 2px;
-      color: #444; font-weight: 400; padding-bottom: 10px;
-    }
-    .instrument-table td {
-      padding: 6px 0; color: #666;
-      border-top: 0.5px solid #161620;
-      vertical-align: top;
-    }
-    .instrument-table td:first-child { color: #aaa; padding-right: 16px; white-space: nowrap; }
-    .badge {
-      display: inline-block; padding: 2px 8px; border-radius: 10px;
-      font-size: 9px; letter-spacing: 1px;
-    }
-    .badge.live { background: #0f2a1e; color: #1D9E75; }
-    .badge.planned { background: #1a1a26; color: #555; }
-
-    .divider { height: 0.5px; background: #1e1e2a; width: 100%; max-width: 960px; }
-
-    .section-label {
-      width: 100%; max-width: 960px;
-      font-size: 9px; letter-spacing: 3px; color: #333;
-      padding-bottom: 6px; border-bottom: 0.5px solid #1a1a26;
+    @media (min-width: 1200px) {
+      body { padding: 28px 32px; }
     }
   </style>
 </head>
 <body>
 
-  <a class="back-link" href="index.html">← BACK TO MAIN</a>
-
-  <div class="logo">BAND<span>SYNC</span></div>
-  <div class="page-title">SONG CREATOR</div>
-
-  <span class="status-badge">IN DESIGN</span>
-
-  <div class="section-label">WHAT IT DOES</div>
-  <div class="section-grid">
-
-    <div class="card">
-      <div class="card-label">OVERVIEW</div>
-      <h3>BUILD YOUR OWN SONGS</h3>
-      <p>
-        Record each instrument part one track at a time, tighten up the timing with
-        quantization, edit notes in a piano roll, then combine everything into a
-        playable BandSync song — and share it with friends or the world.
-      </p>
+  <div class="header">
+    <a class="back-link" href="index.html">← BACK</a>
+    <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+      <div class="logo">BAND<span>SYNC</span></div>
+      <div class="page-title">SONG CREATOR</div>
     </div>
-
-    <div class="card">
-      <div class="card-label">WORKFLOW</div>
-      <h3>HOW IT WORKS</h3>
-      <ul class="feature-list">
-        <li><span class="dot"></span>Set BPM by typing or tap-tempo</li>
-        <li><span class="dot"></span>Arm a track, hit Record — 4-beat count-in plays</li>
-        <li><span class="dot"></span>Perform your part on any MIDI instrument</li>
-        <li><span class="dot"></span>Quantize: snap notes to the 16th-note grid</li>
-        <li><span class="dot"></span>Edit in the piano roll — move, add, delete notes</li>
-        <li><span class="dot"></span>Repeat for each of the 4 tracks</li>
-        <li><span class="dot"></span>Mix, then publish to the game library</li>
-      </ul>
-    </div>
-
+    <div style="width:80px"></div>
   </div>
 
-  <div class="section-label">INSTRUMENTS</div>
-  <div class="section-grid" style="grid-template-columns: 1fr;">
-    <div class="card">
-      <table class="instrument-table">
-        <thead>
-          <tr>
-            <th>INSTRUMENT</th>
-            <th>STATUS</th>
-            <th>PIANO ROLL VIEW</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Piano</td>
-            <td><span class="badge live">WORKING</span></td>
-            <td>MIDI pitch — 88 keys on left margin, notes as bars (width = duration)</td>
-          </tr>
-          <tr>
-            <td>Drums</td>
-            <td><span class="badge live">WORKING</span></td>
-            <td>Named drum lanes — KICK, SNARE, HH_CLOSED… Hit markers, no duration</td>
-          </tr>
-          <tr>
-            <td>Bass</td>
-            <td><span class="badge planned">v1.5</span></td>
-            <td>4 strings × frets — fretboard layout, notes as bars per string</td>
-          </tr>
-          <tr>
-            <td>Guitar</td>
-            <td><span class="badge planned">v2.0</span></td>
-            <td>6 strings × frets + chord diagram overlay</td>
-          </tr>
-          <tr>
-            <td>Vocals</td>
-            <td><span class="badge planned">v2.5</span></td>
-            <td>Pitch contour with lyric syllable labels inside each note bar</td>
-          </tr>
-        </tbody>
-      </table>
+  <div class="transport">
+    <div class="transport-section">
+      <span class="field-label">BPM</span>
+      <input id="bpm-input" class="bpm-input" type="number" min="40" max="240" step="1" value="120" inputmode="numeric">
+      <button id="tap-btn" class="tap-btn" type="button">TAP</button>
+    </div>
+
+    <div class="transport-actions">
+      <button id="record-btn" class="t-btn record" type="button">
+        <span class="dot"></span>REC
+      </button>
+      <button id="stop-btn" class="t-btn stop" type="button" disabled>
+        STOP
+      </button>
+      <button id="play-btn" class="t-btn play" type="button" disabled>
+        ▶ PLAY
+      </button>
+    </div>
+
+    <div id="time-display" class="time-display">Ready</div>
+  </div>
+
+  <div class="track-row">
+    <div class="track-tag">TRACK 1 · PIANO</div>
+    <div class="track-info"><b id="device-name">Initializing MIDI…</b></div>
+    <div id="midi-status" class="midi-status">…</div>
+  </div>
+
+  <div class="roll-wrap">
+    <canvas id="roll-canvas"></canvas>
+    <div class="empty-hint" id="empty-hint">
+      Connect a MIDI piano, set your BPM, then hit REC. 4-beat count-in plays before recording starts.
     </div>
   </div>
 
-  <div class="section-label">COLLABORATION &amp; SHARING</div>
-  <div class="section-grid">
+  <script type="module">
+    import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
+    import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
+    import { createSong, durationMs } from './js/core/song.js?v=1';
+    import { createRecorder } from './js/core/recorder.js?v=1';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=1';
 
-    <div class="card">
-      <div class="card-label">COLLABORATE</div>
-      <h3>INVITE FRIENDS TO CONTRIBUTE</h3>
-      <p>
-        Assign any of the 4 track slots to a specific friend. They open the song,
-        hear your tracks playing back, and record their part. You keep ownership;
-        they own their track.
-      </p>
-      <ul class="feature-list">
-        <li><span class="dot teal"></span>Async (v1) — friend records when they're ready</li>
-        <li><span class="dot dim"></span>Real-time (v2) — both editing live, one track each</li>
-      </ul>
-    </div>
+    // ── State ─────────────────────────────────────────────────────
+    const song     = createSong(120);
+    const recorder = createRecorder(song);
+    const canvas   = document.getElementById('roll-canvas');
+    const renderer = createPianoRollRenderer(canvas, song);
 
-    <div class="card">
-      <div class="card-label">SHARING</div>
-      <h3>TWO SEPARATE ACTIONS</h3>
-      <ul class="feature-list">
-        <li><span class="dot"></span><strong style="color:#aaa">Invite to Collaborate</strong> — specific friend, edit access to their assigned track</li>
-        <li><span class="dot teal"></span><strong style="color:#aaa">Publish to Library</strong> — friends-only or public, play-only access</li>
-      </ul>
-      <p style="margin-top:4px">
-        Public songs appear in Browse / Discover. Any public song can be
-        <strong style="color:#aaa">remixed</strong> — forked into your own project
-        with the original attribution preserved.
-      </p>
-    </div>
+    let activeInputId = null;
+    let countingIn    = false;
+    let countInBeat   = 0;
+    let countInTimer  = null;
+    let playing       = false;
+    let playStartedAt = 0;
+    let playRafId     = null;
+    let playTimeouts  = [];
 
-  </div>
+    // ── DOM refs ──────────────────────────────────────────────────
+    const bpmInput    = document.getElementById('bpm-input');
+    const tapBtn      = document.getElementById('tap-btn');
+    const recordBtn   = document.getElementById('record-btn');
+    const stopBtn     = document.getElementById('stop-btn');
+    const playBtn     = document.getElementById('play-btn');
+    const timeDisplay = document.getElementById('time-display');
+    const deviceName  = document.getElementById('device-name');
+    const midiStatus  = document.getElementById('midi-status');
+    const emptyHint   = document.getElementById('empty-hint');
 
-  <div class="section-label">MVP vs LATER</div>
-  <div class="section-grid">
+    // ── Continuous draw loop ──────────────────────────────────────
+    function tick() {
+      if (recorder.isRecording()) renderer.setPlayhead(recorder.elapsedMs());
+      renderer.draw();
+      requestAnimationFrame(tick);
+    }
+    tick();
 
-    <div class="card">
-      <div class="card-label">BUILDING FIRST</div>
-      <h3>MVP</h3>
-      <ul class="feature-list">
-        <li><span class="dot"></span>BPM input + tap tempo</li>
-        <li><span class="dot"></span>Piano + drum track recording</li>
-        <li><span class="dot"></span>One-click 16th-note quantize</li>
-        <li><span class="dot"></span>Piano roll — move, add, delete notes</li>
-        <li><span class="dot"></span>Instrument-specific view (keys vs drum lanes)</li>
-        <li><span class="dot"></span>4 tracks, mute / solo, playback</li>
-        <li><span class="dot"></span>Async collaboration + async track assignment</li>
-        <li><span class="dot"></span>Publish private / friends / public</li>
-        <li><span class="dot"></span>Export as .mid</li>
-      </ul>
-    </div>
+    // ── MIDI init + device auto-pick ──────────────────────────────
+    async function bootMidi() {
+      const result = await initMIDI();
+      if (!result.ok) {
+        if (result.reason === 'unsupported') {
+          deviceName.textContent = 'Web MIDI not supported';
+          midiStatus.textContent = 'Use Chrome / Edge on desktop';
+          midiStatus.classList.add('error');
+        } else {
+          deviceName.textContent = 'MIDI access denied';
+          midiStatus.textContent = 'Allow MIDI + reload';
+          midiStatus.classList.add('error');
+        }
+        recordBtn.disabled = true;
+        recordBtn.title = 'MIDI device required to record';
+        return;
+      }
+      pickFirstDevice();
+      onStateChange(pickFirstDevice);
+    }
 
-    <div class="card">
-      <div class="card-label">COMING LATER</div>
-      <h3>V2+</h3>
-      <ul class="feature-list">
-        <li><span class="dot dim"></span>Quantize strength slider + multiple grid sizes</li>
-        <li><span class="dot dim"></span>Note resize, rubber-band select, copy / paste</li>
-        <li><span class="dot dim"></span>Piano roll zoom (X and Y)</li>
-        <li><span class="dot dim"></span>Real-time collaboration</li>
-        <li><span class="dot dim"></span>Browse / Discover public library + remix</li>
-        <li><span class="dot dim"></span>AI Generate — describe a song, get a full 4-track starting point</li>
-        <li><span class="dot dim"></span>AI Assist — select a region, ask Claude to improve it</li>
-        <li><span class="dot dim"></span>Bass, guitar, vocal instrument views</li>
-        <li><span class="dot dim"></span>Undo / redo, punch-in recording</li>
-      </ul>
-    </div>
+    function pickFirstDevice() {
+      const inputs = getInputs();
+      detachAll();
+      if (inputs.length === 0) {
+        activeInputId = null;
+        deviceName.textContent = 'No MIDI device connected';
+        midiStatus.textContent = 'WAITING';
+        midiStatus.classList.remove('connected', 'error');
+        return;
+      }
+      activeInputId = inputs[0].id;
+      deviceName.textContent = inputs[0].name;
+      midiStatus.textContent = 'CONNECTED';
+      midiStatus.classList.add('connected');
+      midiStatus.classList.remove('error');
 
-  </div>
+      attachListener(activeInputId, (evt) => {
+        if (evt.type === 'noteOn') {
+          playPianoNote(evt.note, evt.velocity);
+          recorder.noteOn(evt.note, evt.velocity);
+        } else if (evt.type === 'noteOff') {
+          recorder.noteOff(evt.note);
+        }
+      });
+    }
 
+    bootMidi();
+
+    // ── BPM number input ──────────────────────────────────────────
+    bpmInput.addEventListener('input', () => {
+      const v = parseInt(bpmInput.value, 10);
+      if (Number.isFinite(v) && v >= 40 && v <= 240) {
+        song.bpm = v;
+      }
+    });
+
+    // ── Tap tempo (average last 4 intervals) ──────────────────────
+    let tapTimes = [];
+    tapBtn.addEventListener('click', () => {
+      const now = performance.now();
+      // Reset chain if last tap was >2s ago — user is starting fresh.
+      if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > 2000) {
+        tapTimes = [];
+      }
+      tapTimes.push(now);
+      if (tapTimes.length > 5) tapTimes.shift();   // keep last 4 intervals
+
+      // Visual flash for tactile feedback.
+      tapBtn.classList.add('flash');
+      setTimeout(() => tapBtn.classList.remove('flash'), 120);
+
+      if (tapTimes.length >= 2) {
+        let sum = 0;
+        for (let i = 1; i < tapTimes.length; i++) {
+          sum += tapTimes[i] - tapTimes[i - 1];
+        }
+        const avgMs = sum / (tapTimes.length - 1);
+        const bpm = Math.round(60_000 / avgMs);
+        if (bpm >= 40 && bpm <= 240) {
+          song.bpm = bpm;
+          bpmInput.value = bpm;
+        }
+      }
+    });
+
+    // ── Transport: RECORD ─────────────────────────────────────────
+    recordBtn.addEventListener('click', async () => {
+      if (activeInputId == null) return;
+      if (countingIn || recorder.isRecording() || playing) return;
+
+      await resumeIfSuspended();
+      countingIn = true;
+      countInBeat = 0;
+      updateButtons();
+      emptyHint.style.display = 'none';
+
+      const beatMs = 60_000 / song.bpm;
+      // Fire first click immediately, then schedule the next three.
+      const fireBeat = () => {
+        if (!countingIn) return;
+        playClick();
+        countInBeat++;
+        timeDisplay.textContent = `Count-in ${countInBeat}/4`;
+        if (countInBeat >= 4) {
+          countingIn = false;
+          recorder.start();
+          updateButtons();
+          timeDisplay.textContent = 'Rec 0.0s';
+          return;
+        }
+        countInTimer = setTimeout(fireBeat, beatMs);
+      };
+      fireBeat();
+    });
+
+    // ── Transport: STOP ───────────────────────────────────────────
+    stopBtn.addEventListener('click', () => {
+      if (recorder.isRecording()) {
+        recorder.stop();
+        const secs = (durationMs(song) / 1000).toFixed(1);
+        timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
+      } else if (countingIn) {
+        countingIn = false;
+        if (countInTimer) clearTimeout(countInTimer);
+        countInTimer = null;
+        timeDisplay.textContent = 'Ready';
+      } else if (playing) {
+        stopPlayback();
+      }
+      renderer.setPlayhead(-1);
+      updateButtons();
+    });
+
+    // ── Transport: PLAY ───────────────────────────────────────────
+    playBtn.addEventListener('click', async () => {
+      if (song.notes.length === 0) return;
+      if (recorder.isRecording() || countingIn) return;
+      await resumeIfSuspended();
+
+      playStartedAt = performance.now();
+      playing = true;
+      updateButtons();
+
+      // Schedule each note. setTimeout is good enough for phase 1 —
+      // sub-10ms scheduling drift won't be noticed for melodic playback.
+      // Real Web-Audio precise scheduling can come with samples.
+      for (const note of song.notes) {
+        const id = setTimeout(() => {
+          if (playing) playPianoNote(note.pitch, note.velocity);
+        }, note.startMs);
+        playTimeouts.push(id);
+      }
+
+      const total = durationMs(song);
+      const updatePlayhead = () => {
+        if (!playing) return;
+        const elapsed = performance.now() - playStartedAt;
+        renderer.setPlayhead(elapsed);
+        timeDisplay.textContent = `Play ${(elapsed / 1000).toFixed(1)}s / ${(total / 1000).toFixed(1)}s`;
+        if (elapsed >= total + 100) {
+          stopPlayback();
+          return;
+        }
+        playRafId = requestAnimationFrame(updatePlayhead);
+      };
+      updatePlayhead();
+    });
+
+    function stopPlayback() {
+      playing = false;
+      if (playRafId) cancelAnimationFrame(playRafId);
+      playRafId = null;
+      for (const id of playTimeouts) clearTimeout(id);
+      playTimeouts = [];
+      renderer.setPlayhead(-1);
+      const secs = (durationMs(song) / 1000).toFixed(1);
+      timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
+      updateButtons();
+    }
+
+    // ── Button state machine ──────────────────────────────────────
+    function updateButtons() {
+      const rec = recorder.isRecording();
+      recordBtn.classList.toggle('active', rec || countingIn);
+      playBtn.classList.toggle('active', playing);
+      recordBtn.disabled = rec || countingIn || playing || activeInputId == null;
+      stopBtn.disabled   = !rec && !countingIn && !playing;
+      playBtn.disabled   = rec || countingIn || song.notes.length === 0;
+    }
+
+    // Periodic refresh for live timer + enabling PLAY after a take.
+    setInterval(() => {
+      if (recorder.isRecording()) {
+        timeDisplay.textContent = `Rec ${(recorder.elapsedMs() / 1000).toFixed(1)}s · ${song.notes.length} notes`;
+      }
+      updateButtons();
+    }, 100);
+
+    updateButtons();
+  </script>
 </body>
 </html>
