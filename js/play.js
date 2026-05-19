@@ -25,10 +25,16 @@ import * as lobbies            from './services/lobbies.js';
 import { getFriends, sendPlayInvite } from './services/social.js';
 import { saveSession, createSessionHeader, saveSlot } from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
-import { initMIDI, getInputs, onStateChange } from './core/midi.js';
+import { initMIDI, getInputs, onStateChange,
+         attachListener, detachListener }     from './core/midi.js';
 import { parseMIDIFile }      from './core/midi-parser.js';
 import { loadOffset }         from './core/calibration.js';
 import { createGameplay }     from './core/gameplay-engine.js';
+import { createPianoRenderer }from './render/piano.js';
+import { createDrumRenderer } from './render/drums.js';
+import { createKeyboardInput }from './core/keyboard-input.js';
+import { playPianoNote, playDrumSound, resumeIfSuspended } from './core/audio.js';
+import { loadMapping, lookupAbstractName }   from './core/drum-mapping.js';
 import { PLAYER_COLORS,
          PIANO_NOTE_MIN, PIANO_NOTE_MAX,
          DEFAULT_SPEED_LEVEL, DEFAULT_HIT_WINDOW_LEVEL,
@@ -1336,6 +1342,8 @@ async function renderLobby() {
   ctx.lobby.chatMessages = [];
   ctx.lobby.gameLaunched = false;
   ctx.lobby.friends      = [];
+  ctx.lobby.myDeviceId   = DEVICE_ID_KEYBOARD;
+  ctx.lobby.warmup       = null;
   ctx.lobby.invited      = new Set();   // user_ids already invited this session
 
   // Load friends + measure clock offset in parallel — neither blocks the UI.
@@ -1474,6 +1482,13 @@ function paintLobby() {
         </div>
       </div>
 
+      <div class="lobby-warmup-section">
+        <div class="lobby-warmup-label">WARM UP</div>
+        <div class="lobby-warmup-canvas-wrap">
+          <canvas id="lobby-warmup-canvas"></canvas>
+        </div>
+      </div>
+
       <div class="lobby-actions">
         <button class="btn-ghost-lobby" data-action="leave">${isHost ? 'CLOSE LOBBY' : '← LEAVE'}</button>
         ${me ? `
@@ -1506,8 +1521,16 @@ function paintLobby() {
     sel.addEventListener('change', () => {
       const field = sel.dataset.field;
       const val   = field === 'track' ? Number(sel.value) : sel.value;
+      if (field === 'instrument') rebuildLobbyWarmup();
       lobbies.setSlotConfig(ctx.lobby.id, field === 'track' ? { track_index: val } : { instrument: val })
         .catch(err => console.error('setSlotConfig failed', err));
+    });
+  });
+
+  stateEl.querySelectorAll('[data-action="set-device"]').forEach(sel => {
+    sel.addEventListener('change', e => {
+      ctx.lobby.myDeviceId = e.target.value;
+      rebuildLobbyWarmup();
     });
   });
 
@@ -1535,6 +1558,114 @@ function paintLobby() {
     const list = document.getElementById('lobby-chat-list');
     if (list) list.scrollTop = list.scrollHeight;
   });
+
+  rebuildLobbyWarmup();
+}
+
+// ── LOBBY WARM-UP INSTRUMENT ───────────────────────────────────────
+// A live, playable instrument below the lobby cards so players can
+// warm up fingers and verify their device works before the song starts.
+// Rebuilt on every paintLobby() call and on device/instrument changes.
+
+function stopLobbyWarmup() {
+  const w = ctx.lobby?.warmup;
+  if (!w) return;
+  cancelAnimationFrame(w.rafId);
+  if (w.keyboardInput) w.keyboardInput.detach();
+  else if (w.deviceId && w.deviceId !== DEVICE_ID_KEYBOARD) detachListener(w.deviceId);
+  if (ctx.lobby) ctx.lobby.warmup = null;
+}
+
+function startPianoWarmup(canvasEl, deviceId) {
+  const heldNotes = new Set();
+  const renderer  = createPianoRenderer(canvasEl, { color: PLAYER_COLORS[0],
+                                                     noteMin: PIANO_NOTE_MIN,
+                                                     noteMax: PIANO_NOTE_MAX });
+  function onNoteEvent(evt) {
+    resumeIfSuspended();
+    if (evt.type === 'noteOn' && evt.velocity > 0) {
+      heldNotes.add(evt.note);
+      playPianoNote(evt.note, evt.velocity ?? 80);
+    } else {
+      heldNotes.delete(evt.note);
+    }
+  }
+  let keyboardInput = null;
+  if (deviceId === DEVICE_ID_KEYBOARD) {
+    keyboardInput = createKeyboardInput({ onEvent: onNoteEvent });
+    keyboardInput.attach();
+  } else {
+    attachListener(deviceId, onNoteEvent);
+  }
+  let rafId;
+  const tick = () => {
+    renderer.draw({ fallingBlocks: [], heldNotes, countoff: null });
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+  return { renderer, rafId, heldNotes, keyboardInput, deviceId, instrument: 'piano' };
+}
+
+function startDrumsWarmup(canvasEl, deviceId) {
+  const laneFlash = {};
+  const renderer  = createDrumRenderer(canvasEl, {
+    color: PLAYER_COLORS[0],
+    onLaneClick: (abstractName) => {
+      resumeIfSuspended();
+      laneFlash[abstractName] = Date.now();
+      playDrumSound(abstractName);
+    },
+  });
+  // Load stored mapping for MIDI devices; keyboard gets a basic fallback.
+  let deviceMapping = null;
+  if (deviceId !== DEVICE_ID_KEYBOARD) {
+    const devName = getInputs().find(d => d.id === deviceId)?.name;
+    if (devName) deviceMapping = loadMapping(devName);
+  }
+  const kbDrumFallback = { 60:'KICK', 62:'SNARE', 64:'HH_CLOSED', 65:'HH_OPEN',
+                            67:'CRASH', 69:'RIDE', 72:'TOM_1', 74:'TOM_2' };
+  function onNoteEvent(evt) {
+    if (evt.type !== 'noteOn' || evt.velocity === 0) return;
+    const abstractName = deviceMapping
+      ? lookupAbstractName(deviceMapping, evt.note)
+      : kbDrumFallback[evt.note];
+    if (!abstractName) return;
+    resumeIfSuspended();
+    laneFlash[abstractName] = Date.now();
+    playDrumSound(abstractName);
+  }
+  let keyboardInput = null;
+  if (deviceId === DEVICE_ID_KEYBOARD) {
+    keyboardInput = createKeyboardInput({ onEvent: onNoteEvent });
+    keyboardInput.attach();
+  } else {
+    attachListener(deviceId, onNoteEvent);
+  }
+  let rafId;
+  const tick = () => {
+    renderer.draw({ fallingBlocks: [], laneFlash, countoff: null });
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+  return { renderer, rafId, laneFlash, keyboardInput, deviceId, instrument: 'drums' };
+}
+
+function rebuildLobbyWarmup() {
+  stopLobbyWarmup();
+  if (!ctx.lobby) return;
+  const canvas = document.getElementById('lobby-warmup-canvas');
+  if (!canvas) return;
+  // Read instrument from DOM (may be ahead of DB) then fall back to participant row.
+  const instrSel   = stateEl.querySelector('[data-action="set-slot-config"][data-field="instrument"]');
+  const instrument = instrSel?.value
+    ?? ctx.lobby.participants?.find(p => p.user_id === ctx.user.id)?.instrument
+    ?? 'piano';
+  // CSS class controls canvas height so the crop shows the right region.
+  canvas.className = instrument === 'drums' ? 'warmup-canvas-drums' : 'warmup-canvas-piano';
+  const deviceId   = ctx.lobby.myDeviceId ?? DEVICE_ID_KEYBOARD;
+  ctx.lobby.warmup = instrument === 'drums'
+    ? startDrumsWarmup(canvas, deviceId)
+    : startPianoWarmup(canvas, deviceId);
 }
 
 function renderFriendPicker() {
@@ -1588,9 +1719,15 @@ function renderParticipantRow(p, viewerIsHost) {
     isLobbyHost ? 'HOST'  : '',
   ].filter(Boolean).join(' · ');
 
-  const tracks = ctx.lobby?.tracks ?? [];
+  const tracks     = ctx.lobby?.tracks ?? [];
+  const inputs     = getInputs();
+  const myDeviceId = ctx.lobby?.myDeviceId ?? DEVICE_ID_KEYBOARD;
   const myConfig = isMe ? `
     <div class="lobby-my-config">
+      <select class="lobby-slot-sel" data-action="set-device">
+        <option value="${esc(DEVICE_ID_KEYBOARD)}" ${myDeviceId === DEVICE_ID_KEYBOARD ? 'selected' : ''}>${esc(DEVICE_LABEL_KEYBOARD)}</option>
+        ${inputs.map(d => `<option value="${esc(d.id)}" ${myDeviceId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+      </select>
       <select class="lobby-slot-sel" data-action="set-slot-config" data-field="instrument">
         <option value="piano" ${(p.instrument ?? 'piano') === 'piano' ? 'selected' : ''}>🎹 Piano</option>
         <option value="drums" ${p.instrument === 'drums' ? 'selected' : ''}>🥁 Drums</option>
@@ -1735,7 +1872,7 @@ async function launchRemoteGame(countoffStartsAt) {
     players: [{
       identity:   makeHostIdentity(),
       trackIndex: mySlot?.track_index ?? 0,
-      deviceId:   DEVICE_ID_KEYBOARD,
+      deviceId:   ctx.lobby.myDeviceId ?? DEVICE_ID_KEYBOARD,
       instrument: mySlot?.instrument  ?? 'piano',
     }],
   };
@@ -1797,6 +1934,7 @@ function leaveCurrentState() {
   if (ctx.gameChannel) { ctx.gameChannel.unsubscribe(); ctx.gameChannel = null; }
   ctx.remoteScores           = null;
   ctx.remoteCountoffStartsAt = null;
+  stopLobbyWarmup();
   stopGameTimer();
   // Tear down any open modals so they don't leak across state transitions.
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
