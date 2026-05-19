@@ -472,12 +472,36 @@
       font-size: 11px; letter-spacing: 1px; color: var(--dim);
       padding: 8px 6px 4px;
     }
-    /* Discoverability hint below the roll explaining the edit gestures. */
+    /* Bottom strip under the roll: gesture hint on the left, undo /
+       redo cluster on the right. Wraps on narrow screens so the
+       buttons stay reachable on phones. */
+    .roll-bottom {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 6px 2px;
+      flex-wrap: wrap;
+    }
     .gesture-hint {
+      flex: 1; min-width: 0;
       text-align: center;
       font-size: 9px; letter-spacing: 2px; color: var(--dim);
-      padding: 6px 6px 2px;
     }
+    .history-buttons {
+      display: flex; gap: 4px;
+      flex-shrink: 0;
+    }
+    .r-btn {
+      width: 32px; height: 32px;
+      background: var(--bg3); color: var(--dim);
+      border: 1px solid var(--bg3); border-radius: 6px;
+      font-size: 16px; line-height: 1;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+      padding: 0;
+    }
+    .r-btn:hover:not(:disabled) { border-color: var(--purple); color: var(--text); }
+    .r-btn:active:not(:disabled) { transform: scale(0.94); }
+    .r-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
     /* ── TOUCH KEYBOARD ─────────────────────────────────────────── */
     .keyboard-wrap {
@@ -627,8 +651,14 @@
 
   <div class="roll-wrap">
     <canvas id="roll-canvas"></canvas>
-    <div class="gesture-hint">
-      TAP EMPTY GRID TO ADD · TAP NOTE TO SELECT · DRAG TO MOVE · LONG-PRESS OR RIGHT-CLICK TO DELETE
+    <div class="roll-bottom">
+      <div class="gesture-hint">
+        TAP EMPTY GRID TO ADD · TAP NOTE TO SELECT · DRAG TO MOVE · LONG-PRESS OR RIGHT-CLICK TO DELETE
+      </div>
+      <div class="history-buttons">
+        <button id="undo-btn" class="r-btn" type="button" disabled aria-label="Undo">↶</button>
+        <button id="redo-btn" class="r-btn" type="button" disabled aria-label="Redo">↷</button>
+      </div>
     </div>
     <div class="empty-hint" id="empty-hint">
       Connect a MIDI piano or use the on-screen keyboard below. Set BPM, hit REC — a 4-beat count-in plays before recording starts.
@@ -670,6 +700,7 @@
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
+    import { createHistory, snapshotSong, restoreSong } from './js/core/history.js?v=1';
     import { getUser, onAuthChange } from './js/services/auth.js?v=1';
     import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=2';
 
@@ -692,21 +723,25 @@
           velocity:   80,
         });
         playPianoNote(pitch, 80);
+        pushHistory();
       },
       // Selection is owned by the renderer; we still preview the
       // selected note's pitch so you can hear what you grabbed.
+      // Selection is UI state — deliberately not snapshotted.
       onSelect: (note) => {
         if (note) {
           resumeIfSuspended();
           playPianoNote(note.pitch, note.velocity);
         }
       },
-      // Drag finishes — node data was already updated in place by the
-      // renderer. Nothing extra to do for now beyond a no-op hook.
-      onMove: () => {},
+      // Drag finishes — the renderer already mutated note position
+      // in place every pointermove tick. Snapshot the final state
+      // (not every intermediate frame, which would flood history).
+      onMove: () => { pushHistory(); },
       // Right-click / long-press a note → delete it from the song.
       onDelete: (note) => {
         removeNote(song, note);
+        pushHistory();
       },
       // User dragged the top ruler. Ignored while playing / recording
       // so the playhead doesn't fight the animation. Otherwise commit
@@ -775,6 +810,46 @@
     // ── Library state (Phase 4) ───────────────────────────────────
     let currentUser   = null;    // null = signed out, library buttons disabled
     let currentSongId = null;    // null = unsaved sketch; otherwise the songs.id we're editing
+
+    // ── Undo / redo history ───────────────────────────────────────
+    const history = createHistory(80);
+
+    // Push the current song state. Call AFTER each mutating edit
+    // (add / delete / move / quantize / duration change / arrow
+    // nudge / BPM / time-sig / recording stop). The snapshot is a
+    // deep clone so subsequent mutations don't affect prior entries.
+    function pushHistory() {
+      history.push(snapshotSong(song));
+    }
+
+    // Wipe the undo stack and seed it with the current state as the
+    // new baseline. Used on song load / NEW / first boot so undo
+    // can't take you back to an earlier session's content.
+    function resetHistory() {
+      history.clear();
+      pushHistory();
+    }
+
+    function applySnapshot(snap) {
+      restoreSong(song, snap);
+      bpmInput.value = song.bpm;
+      timeSigSel.value = `${song.timeSig.num}/${song.timeSig.denom}`;
+      renderer.setSelected(null);
+    }
+
+    function doUndo() {
+      const snap = history.undo();
+      if (!snap) return;
+      applySnapshot(snap);
+      updateButtons();
+    }
+
+    function doRedo() {
+      const snap = history.redo();
+      if (!snap) return;
+      applySnapshot(snap);
+      updateButtons();
+    }
 
     // ── DOM refs ──────────────────────────────────────────────────
     const bpmInput    = document.getElementById('bpm-input');
@@ -905,12 +980,16 @@
     bootMidi();
 
     // ── BPM number input ──────────────────────────────────────────
+    // Live update on input (so the ruler bar-math redraws while you
+    // type) but only snapshot history on commit (change event) —
+    // otherwise every keystroke flooded the undo stack.
     bpmInput.addEventListener('input', () => {
       const v = parseInt(bpmInput.value, 10);
       if (Number.isFinite(v) && v >= 40 && v <= 240) {
         song.bpm = v;
       }
     });
+    bpmInput.addEventListener('change', () => pushHistory());
 
     // ── Time signature select ─────────────────────────────────────
     // "num/denom" → { num, denom }. Affects bar grouping in the roll
@@ -920,6 +999,7 @@
       const [num, denom] = timeSigSel.value.split('/').map(Number);
       if (Number.isFinite(num) && Number.isFinite(denom)) {
         song.timeSig = { num, denom };
+        pushHistory();
       }
     });
 
@@ -993,6 +1073,7 @@
         // Fresh take — playhead returns to start so the obvious PLAY
         // hears the whole thing.
         playPositionMs = 0;
+        pushHistory();   // a take is a single undoable event
       } else if (countingIn) {
         countingIn = false;
         if (countInTimer) clearTimeout(countInTimer);
@@ -1069,6 +1150,7 @@
         const grid = btn.dataset.grid;
         quantize(song, grid);
         activeGrid = grid;
+        pushHistory();
         updateButtons();
       });
     });
@@ -1088,6 +1170,7 @@
         const beats  = parseFloat(btn.dataset.beats);
         const beatMs = 60_000 / song.bpm;
         selected.durationMs = beats * beatMs;
+        pushHistory();
         refreshDurationPanel();
       });
     });
@@ -1121,6 +1204,10 @@
     const saveStatus   = document.getElementById('save-status');
     const overflowBtn  = document.getElementById('overflow-btn');
     const overflowMenu = document.getElementById('overflow-menu');
+    const undoBtn      = document.getElementById('undo-btn');
+    const redoBtn      = document.getElementById('redo-btn');
+    undoBtn.addEventListener('click', () => doUndo());
+    redoBtn.addEventListener('click', () => doRedo());
     const modal       = document.getElementById('songs-modal');
     const modalClose  = document.getElementById('songs-modal-close');
     const songsList   = document.getElementById('songs-list');
@@ -1187,6 +1274,7 @@
       playPositionMs = 0;
       song.timeSig = { num: 4, denom: 4 };
       timeSigSel.value = '4/4';
+      resetHistory();   // empty song becomes the new undo baseline
       setStatus('New song');
       updateButtons();
     });
@@ -1317,6 +1405,7 @@
         activeGrid = 'raw';
         playPositionMs = 0;
         renderer.setSelected(null);
+        resetHistory();   // loaded song is the new undo baseline
         closeSongsModal();
         setStatus(`Opened "${row.name}"`, 'success');
         updateButtons();
@@ -1395,6 +1484,20 @@
         e.preventDefault();
         removeNote(song, sel);
         renderer.setSelected(null);
+        pushHistory();
+        return;
+      }
+
+      // Undo / Redo — Ctrl+Z (Cmd+Z on mac), Ctrl+Shift+Z / Ctrl+Y for redo.
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+        e.preventDefault();
+        if (e.shiftKey) doRedo();
+        else            doUndo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
+        e.preventDefault();
+        doRedo();
         return;
       }
 
@@ -1422,6 +1525,7 @@
           return;
         }
         e.preventDefault();
+        pushHistory();
       }
     });
 
@@ -1456,6 +1560,10 @@
 
       // Duration panel mirrors selection state.
       refreshDurationPanel();
+
+      // Undo / redo enable mirrors history cursor.
+      undoBtn.disabled = !history.canUndo();
+      redoBtn.disabled = !history.canRedo();
     }
 
     // Periodic refresh for live timer + enabling PLAY after a take.
@@ -1468,6 +1576,9 @@
     }, 100);
 
     updateButtons();
+    // Seed the undo history with the empty-song baseline. Without this
+    // the first edit has nothing to roll back to.
+    resetHistory();
   </script>
 </body>
 </html>
