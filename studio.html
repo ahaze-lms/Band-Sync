@@ -361,7 +361,20 @@
       background: var(--bg3); color: var(--dim);
     }
     .midi-status.connected { color: var(--teal); }
+    .midi-status.keyboard  { color: var(--purple2); }
     .midi-status.error     { color: var(--red); }
+    .track-input-select {
+      flex: 1; min-width: 140px;
+      min-height: 40px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .track-input-select:focus { outline: none; border-color: var(--purple); }
+    .track-input-select:hover { border-color: var(--purple); }
 
     /* ── PIANO ROLL ─────────────────────────────────────────────── */
     .roll-wrap {
@@ -502,7 +515,9 @@
 
   <div class="track-row">
     <div class="track-tag">TRACK 1 · PIANO</div>
-    <div class="track-info"><b id="device-name">Initializing MIDI…</b></div>
+    <select id="track-input" class="track-input-select" aria-label="Input device">
+      <option value="">Initializing…</option>
+    </select>
     <div id="midi-status" class="midi-status">…</div>
   </div>
 
@@ -543,7 +558,8 @@
     import { quantize } from './js/core/quantizer.js?v=1';
     import { createPianoRollRenderer } from './js/render/piano-roll.js?v=2';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
-    import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS } from './js/config.js?v=1';
+    import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
+    import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
     import { getUser, onAuthChange } from './js/services/auth.js?v=1';
     import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=1';
 
@@ -608,8 +624,9 @@
       },
     });
 
-    let activeInputId = null;
-    let countingIn    = false;
+    let activeInputId  = null;
+    let keyboardInput  = null;  // createKeyboardInput instance when Computer Keyboard is selected
+    let countingIn     = false;
     let countInBeat   = 0;
     let countInTimer  = null;
     let playing       = false;
@@ -629,7 +646,7 @@
     const stopBtn     = document.getElementById('stop-btn');
     const playBtn     = document.getElementById('play-btn');
     const timeDisplay = document.getElementById('time-display');
-    const deviceName  = document.getElementById('device-name');
+    const trackInput  = document.getElementById('track-input');
     const midiStatus  = document.getElementById('midi-status');
     const emptyHint   = document.getElementById('empty-hint');
 
@@ -642,50 +659,102 @@
     }
     tick();
 
-    // ── MIDI init + device auto-pick ──────────────────────────────
-    async function bootMidi() {
-      const result = await initMIDI();
-      if (!result.ok) {
-        if (result.reason === 'unsupported') {
-          deviceName.textContent = 'Web MIDI not supported — use the keyboard below';
-          midiStatus.textContent = 'TOUCH ONLY';
-        } else {
-          deviceName.textContent = 'MIDI access denied — use the keyboard below';
-          midiStatus.textContent = 'TOUCH ONLY';
-        }
-        // Don't disable record — the on-screen keyboard is a valid input.
-        return;
+    // ── Input picker (MIDI devices + Computer Keyboard) ──────────
+    // Single dispatch path for any input source. Recorder + audio +
+    // heldNotes treat MIDI and QWERTY identically.
+    function handleInputEvent(evt) {
+      if (evt.type === 'noteOn') {
+        resumeIfSuspended();
+        playPianoNote(evt.note, evt.velocity);
+        heldNotes.add(evt.note);
+        recorder.noteOn(evt.note, evt.velocity);
+      } else if (evt.type === 'noteOff') {
+        heldNotes.delete(evt.note);
+        recorder.noteOff(evt.note);
       }
-      pickFirstDevice();
-      onStateChange(pickFirstDevice);
     }
 
-    function pickFirstDevice() {
-      const inputs = getInputs();
+    // Detach whatever's currently bound and attach the requested input.
+    // Switching mid-hold could leave stale visual state, so clear the
+    // shared heldNotes set on every switch.
+    function applyInput(inputId) {
       detachAll();
-      if (inputs.length === 0) {
-        activeInputId = null;
-        deviceName.textContent = 'No MIDI device connected';
-        midiStatus.textContent = 'WAITING';
+      if (keyboardInput) {
+        keyboardInput.detach();
+        keyboardInput = null;
+      }
+      heldNotes.clear();
+      activeInputId = inputId;
+
+      if (!inputId) {
+        midiStatus.textContent = 'NO INPUT';
+        midiStatus.classList.remove('connected', 'keyboard', 'error');
+        return;
+      }
+      if (inputId === DEVICE_ID_KEYBOARD) {
+        keyboardInput = createKeyboardInput({ onEvent: handleInputEvent });
+        keyboardInput.attach();
+        midiStatus.textContent = 'KEYBOARD';
+        midiStatus.classList.add('keyboard');
         midiStatus.classList.remove('connected', 'error');
         return;
       }
-      activeInputId = inputs[0].id;
-      deviceName.textContent = inputs[0].name;
+      attachListener(inputId, handleInputEvent);
       midiStatus.textContent = 'CONNECTED';
       midiStatus.classList.add('connected');
-      midiStatus.classList.remove('error');
+      midiStatus.classList.remove('keyboard', 'error');
+    }
 
-      attachListener(activeInputId, (evt) => {
-        if (evt.type === 'noteOn') {
-          playPianoNote(evt.note, evt.velocity);
-          heldNotes.add(evt.note);
-          recorder.noteOn(evt.note, evt.velocity);
-        } else if (evt.type === 'noteOff') {
-          heldNotes.delete(evt.note);
-          recorder.noteOff(evt.note);
-        }
-      });
+    // Build the dropdown options. Computer Keyboard is always first
+    // and always available; MIDI inputs follow (in connection order).
+    // Preserves the user's current pick if their device is still
+    // connected; if not, falls back to the first available input.
+    function populateInputPicker() {
+      const inputs = getInputs();
+      const prev   = activeInputId;
+
+      trackInput.innerHTML = '';
+
+      const kbOpt = document.createElement('option');
+      kbOpt.value = DEVICE_ID_KEYBOARD;
+      kbOpt.textContent = 'Computer Keyboard';
+      trackInput.appendChild(kbOpt);
+
+      for (const input of inputs) {
+        const opt = document.createElement('option');
+        opt.value = input.id;
+        opt.textContent = input.name;
+        trackInput.appendChild(opt);
+      }
+
+      let pick = prev;
+      const stillAvailable = pick === DEVICE_ID_KEYBOARD || inputs.some(i => i.id === pick);
+      if (!stillAvailable) {
+        // First boot or device unplugged — prefer first MIDI device,
+        // fall back to keyboard.
+        pick = inputs[0]?.id ?? DEVICE_ID_KEYBOARD;
+      }
+      trackInput.value = pick;
+      if (pick !== prev) applyInput(pick);
+    }
+
+    trackInput.addEventListener('change', () => applyInput(trackInput.value));
+
+    async function bootMidi() {
+      const result = await initMIDI();
+      if (!result.ok) {
+        // Web MIDI unsupported (iOS Safari) or denied — keyboard is
+        // still a valid input, so populate the picker with just that.
+        const reasonText = result.reason === 'unsupported'
+          ? 'Web MIDI unavailable — using keyboard'
+          : 'MIDI access denied — using keyboard';
+        midiStatus.textContent = reasonText;
+        midiStatus.classList.add('error');
+        populateInputPicker();
+        return;
+      }
+      populateInputPicker();
+      onStateChange(populateInputPicker);
     }
 
     bootMidi();
