@@ -1039,6 +1039,17 @@
     }
     .btn-chat-send:hover { filter: brightness(1.1); }
 
+    /* ── REPLAY BANNER ───────────────────────────────────────────── */
+    .replay-banner {
+      font-size: 9px; letter-spacing: 3px; font-weight: 700;
+      color: var(--amber2);
+      background: rgba(186,117,23,0.12);
+      border: 0.5px solid var(--amber);
+      border-radius: 4px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+
     /* ── REMOTE SCORE STRIP (game screen, Phase 6) ───────────────── */
     .remote-score-strip {
       display: flex;
@@ -1083,6 +1094,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=19"></script>
+  <script type="module" src="js/play.js?v=20"></script>
 </body>
 </html>

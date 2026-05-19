@@ -154,6 +154,11 @@ export function createGameplay(config) {
 
   // ── INPUT DISPATCH ─────────────────────────────────────────────
   function dispatch(player, evt) {
+    // Notify caller of every raw noteOn so play.js can record for replay.
+    if (evt.type === 'noteOn' && (evt.velocity ?? 0) > 0) {
+      callbacks.onRawInput?.(player.idx, evt.note, evt.velocity ?? DEFAULT_VEL, Clock.getSongTime());
+    }
+
     if (player.config.instrument === 'piano') {
       if (evt.type === 'noteOff') { player.heldNotes.delete(evt.note); return; }
       if (evt.type !== 'noteOn')   return;
@@ -423,6 +428,12 @@ export function createGameplay(config) {
     setAlwaysSound:  v => { alwaysSound = !!v; },
     setSpeedLevel:   l => Clock.setSpeedLevel(l),
     setHitWindowLevel: l => Clock.setHitWindowLevel(l),
+    // Inject a synthetic noteOn event — used by the personal-replay playback
+    // to drive the engine with recorded input instead of live MIDI/keyboard.
+    injectInput(playerIdx, note, velocity = DEFAULT_VEL) {
+      const p = players[playerIdx];
+      if (p) dispatch(p, { type: 'noteOn', note, velocity });
+    },
   };
 }
 

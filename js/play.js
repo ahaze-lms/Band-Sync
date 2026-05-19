@@ -78,6 +78,10 @@ const ctx = {
   gameChannel:            null,     // { broadcast, unsubscribe } during a remote game (Phase 6)
   remoteScores:           null,     // Map<userId, scorePayload> during a remote game (Phase 6)
   remoteCountoffStartsAt: null,     // performance.now() target for remote warm-up countdown
+  replayLog:              null,     // [{note, velocity, songTimeMs}] accumulates during a run
+  lastReplayLog:          null,     // snapshot of completed run — used by replay playback
+  replayInjectorRaf:      null,     // rAF id for replay injector loop
+  isReplay:               false,    // true while replay is running — suppresses re-recording
 };
 
 let setupTeardown = null;
@@ -942,6 +946,10 @@ async function renderGame() {
       onScoreUpdate:  (idx, stats) => { updateScoreCard(idx, stats); broadcastScore(stats); },
       onFeedback:     (idx, text, cls) => showFeedback(idx, text, cls),
       onSongComplete: () => onSongComplete(),
+      onRawInput:     (_idx, note, velocity, songTimeMs) => {
+        if (ctx.isReplay || !ctx.replayLog || songTimeMs < 0) return;
+        ctx.replayLog.push({ note, velocity, songTimeMs });
+      },
     },
   });
 
@@ -982,6 +990,7 @@ function startSongRun(engineOpts = {}) {
   ctx.saveStatus    = null;
   ctx.gameStartedAt = new Date().toISOString();
   ctx.gameStarted   = true;
+  if (!ctx.isReplay) ctx.replayLog = [];   // fresh recording; not reset during replay
 
   // Swap controls — hide START + warm-up hint, show PAUSE + RESTART.
   const startBtn = document.getElementById('btn-start-song');
@@ -1133,6 +1142,17 @@ function stopGameTimer() {
 }
 
 function onSongComplete() {
+  // Replay path: skip DB save, clear replay state, return to results.
+  if (ctx.isReplay) {
+    ctx.isReplay = false;
+    if (ctx.replayInjectorRaf !== null) { cancelAnimationFrame(ctx.replayInjectorRaf); ctx.replayInjectorRaf = null; }
+    setTimeout(() => renderResults(), 800);
+    return;
+  }
+
+  // Snapshot the replay log for this completed run so the REPLAY button works.
+  ctx.lastReplayLog = ctx.replayLog?.length ? [...ctx.replayLog] : null;
+
   // Snapshot stats from the engine's final emission. ctx.lastResults
   // was kept in lockstep by updateScoreCard, so it's the source of truth here.
   const isRemote    = !!ctx.lobby?.id;
@@ -1252,6 +1272,7 @@ function renderResults() {
       </div>
       <div class="actions">
         <button class="btn-ghost" data-action="menu">← SONG LIBRARY</button>
+        ${ctx.lastReplayLog?.length ? `<button class="btn-ghost" data-action="replay">⏪ REPLAY</button>` : ''}
         <button class="btn-primary" data-action="again">▶ PLAY AGAIN</button>
       </div>
     </div>
@@ -1259,6 +1280,61 @@ function renderResults() {
   refreshSaveStatusUI();   // reflect the in-flight or completed save state
   stateEl.querySelector('[data-action="menu"]').addEventListener('click', renderSongSelect);
   stateEl.querySelector('[data-action="again"]').addEventListener('click', renderGame);
+  stateEl.querySelector('[data-action="replay"]')?.addEventListener('click', renderReplay);
+}
+
+// ── PERSONAL REPLAY ────────────────────────────────────────────────
+// Replays the player's actual performance: runs the game engine with
+// the same song/setup but injects the recorded note events instead of
+// waiting for live MIDI/keyboard input.
+
+async function renderReplay() {
+  const events = ctx.lastReplayLog;
+  if (!events?.length) return;
+
+  // Preserve the original result so the post-replay results screen
+  // shows the real run's stats, not the replay's re-scored stats.
+  const origLastResults = ctx.lastResults;
+
+  ctx.isReplay = true;
+
+  // Null out device IDs — no live input during replay; only injected events drive the engine.
+  const origPlayers    = ctx.setup.players;
+  ctx.setup.players    = origPlayers.map(p => ({ ...p, deviceId: null }));
+
+  await renderGame();
+
+  ctx.setup.players = origPlayers;     // restore for next Play Again
+  ctx.lastResults   = origLastResults; // restore so post-replay results are accurate
+
+  // Show a replay banner in the game header
+  const header = stateEl.querySelector('.game-header');
+  if (header) {
+    const banner = document.createElement('div');
+    banner.className = 'replay-banner';
+    banner.textContent = '⏪ REPLAY';
+    header.prepend(banner);
+  }
+
+  startSongRun();
+  startReplayInjector(events);
+}
+
+function startReplayInjector(events) {
+  // Sort ascending by songTimeMs just in case (should already be ordered).
+  const sorted = [...events].sort((a, b) => a.songTimeMs - b.songTimeMs);
+  let nextEvt = 0;
+
+  const tick = () => {
+    if (!ctx.activeGame || !ctx.isReplay) return;
+    const st = ctx.activeGame.getSongTime();
+    while (nextEvt < sorted.length && sorted[nextEvt].songTimeMs <= st) {
+      const e = sorted[nextEvt++];
+      ctx.activeGame.injectInput(0, e.note, e.velocity);
+    }
+    ctx.replayInjectorRaf = requestAnimationFrame(tick);
+  };
+  ctx.replayInjectorRaf = requestAnimationFrame(tick);
 }
 
 function resultsRow(i, r) {
@@ -1934,6 +2010,8 @@ function leaveCurrentState() {
   if (ctx.gameChannel) { ctx.gameChannel.unsubscribe(); ctx.gameChannel = null; }
   ctx.remoteScores           = null;
   ctx.remoteCountoffStartsAt = null;
+  if (ctx.replayInjectorRaf !== null) { cancelAnimationFrame(ctx.replayInjectorRaf); ctx.replayInjectorRaf = null; }
+  ctx.isReplay = false;
   stopLobbyWarmup();
   stopGameTimer();
   // Tear down any open modals so they don't leak across state transitions.
