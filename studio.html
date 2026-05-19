@@ -200,6 +200,25 @@
       padding: 12px 6px 6px;
     }
 
+    /* ── TOUCH KEYBOARD (phase 1.5) ─────────────────────────────── */
+    .keyboard-wrap {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 8px 6px 6px;
+    }
+    .keyboard-hint {
+      text-align: center;
+      font-size: 9px; letter-spacing: 3px; color: var(--dim);
+      padding-bottom: 6px;
+    }
+    canvas#touch-keyboard {
+      display: block;
+      width: 100%;
+      border-radius: 6px;
+      touch-action: none;   /* lets us slide across keys without page-scrolling */
+    }
+
     /* ── DESKTOP TWEAKS ─────────────────────────────────────────── */
     @media (min-width: 768px) {
       body {
@@ -268,8 +287,13 @@
   <div class="roll-wrap">
     <canvas id="roll-canvas"></canvas>
     <div class="empty-hint" id="empty-hint">
-      Connect a MIDI piano, set your BPM, then hit REC. 4-beat count-in plays before recording starts.
+      Connect a MIDI piano or use the on-screen keyboard below. Set BPM, hit REC — a 4-beat count-in plays before recording starts.
     </div>
+  </div>
+
+  <div class="keyboard-wrap">
+    <div class="keyboard-hint">TOUCH OR CLICK TO PLAY</div>
+    <canvas id="touch-keyboard"></canvas>
   </div>
 
   <script type="module">
@@ -278,12 +302,38 @@
     import { createSong, durationMs } from './js/core/song.js?v=1';
     import { createRecorder } from './js/core/recorder.js?v=1';
     import { createPianoRollRenderer } from './js/render/piano-roll.js?v=1';
+    import { createPianoRenderer } from './js/render/piano.js?v=1';
+    import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS } from './js/config.js?v=1';
 
     // ── State ─────────────────────────────────────────────────────
-    const song     = createSong(120);
-    const recorder = createRecorder(song);
-    const canvas   = document.getElementById('roll-canvas');
-    const renderer = createPianoRollRenderer(canvas, song);
+    const song      = createSong(120);
+    const recorder  = createRecorder(song);
+    const canvas    = document.getElementById('roll-canvas');
+    const renderer  = createPianoRollRenderer(canvas, song);
+    // Shared between MIDI and on-screen keyboard — lights up the
+    // touch keyboard whenever any source is holding a note.
+    const heldNotes = new Set();
+
+    // ── Touch / click keyboard (phase 1.5) ────────────────────────
+    // Reuses js/render/piano.js in keyboardOnly mode — same code path
+    // the lobby warmup uses. Touch slide across keys works for free.
+    const kbCanvas   = document.getElementById('touch-keyboard');
+    const kbRenderer = createPianoRenderer(kbCanvas, {
+      color:        PLAYER_COLORS[0],
+      noteMin:      PIANO_NOTE_MIN,
+      noteMax:      PIANO_NOTE_MAX,
+      keyboardOnly: true,
+      onKeyDown: note => {
+        resumeIfSuspended();
+        heldNotes.add(note);
+        playPianoNote(note, 80);
+        recorder.noteOn(note, 80);
+      },
+      onKeyUp: note => {
+        heldNotes.delete(note);
+        recorder.noteOff(note);
+      },
+    });
 
     let activeInputId = null;
     let countingIn    = false;
@@ -309,6 +359,7 @@
     function tick() {
       if (recorder.isRecording()) renderer.setPlayhead(recorder.elapsedMs());
       renderer.draw();
+      kbRenderer.draw({ fallingBlocks: [], heldNotes, countoff: null });
       requestAnimationFrame(tick);
     }
     tick();
@@ -318,16 +369,13 @@
       const result = await initMIDI();
       if (!result.ok) {
         if (result.reason === 'unsupported') {
-          deviceName.textContent = 'Web MIDI not supported';
-          midiStatus.textContent = 'Use Chrome / Edge on desktop';
-          midiStatus.classList.add('error');
+          deviceName.textContent = 'Web MIDI not supported — use the keyboard below';
+          midiStatus.textContent = 'TOUCH ONLY';
         } else {
-          deviceName.textContent = 'MIDI access denied';
-          midiStatus.textContent = 'Allow MIDI + reload';
-          midiStatus.classList.add('error');
+          deviceName.textContent = 'MIDI access denied — use the keyboard below';
+          midiStatus.textContent = 'TOUCH ONLY';
         }
-        recordBtn.disabled = true;
-        recordBtn.title = 'MIDI device required to record';
+        // Don't disable record — the on-screen keyboard is a valid input.
         return;
       }
       pickFirstDevice();
@@ -353,8 +401,10 @@
       attachListener(activeInputId, (evt) => {
         if (evt.type === 'noteOn') {
           playPianoNote(evt.note, evt.velocity);
+          heldNotes.add(evt.note);
           recorder.noteOn(evt.note, evt.velocity);
         } else if (evt.type === 'noteOff') {
+          heldNotes.delete(evt.note);
           recorder.noteOff(evt.note);
         }
       });
@@ -401,7 +451,6 @@
 
     // ── Transport: RECORD ─────────────────────────────────────────
     recordBtn.addEventListener('click', async () => {
-      if (activeInputId == null) return;
       if (countingIn || recorder.isRecording() || playing) return;
 
       await resumeIfSuspended();
@@ -499,7 +548,7 @@
       const rec = recorder.isRecording();
       recordBtn.classList.toggle('active', rec || countingIn);
       playBtn.classList.toggle('active', playing);
-      recordBtn.disabled = rec || countingIn || playing || activeInputId == null;
+      recordBtn.disabled = rec || countingIn || playing;
       stopBtn.disabled   = !rec && !countingIn && !playing;
       playBtn.disabled   = rec || countingIn || song.notes.length === 0;
     }
