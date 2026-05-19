@@ -40,7 +40,7 @@ Never suggest running a local server unless the user explicitly asks. The live s
 | File | What it is |
 |---|---|
 | `index.html` | Auth-gated SPA shell — login, home, friends, inbox, profile |
-| `play.html` | Real game — live; song-select → setup → game → results, plus remote-multiplayer lobby state (§27 phases 1-4) |
+| `play.html` | Real game — live; song-select → setup → game → results, plus full remote-multiplayer lobby (§27 all phases shipped) |
 | `studio.html` | Song Creator — reserved, not yet built (stub page exists) |
 | `2player.html` | 2-player prototype — access via Dev Lab |
 | `lab.html` | Dev Lab hub — links to prototype + all debug tools |
@@ -164,10 +164,10 @@ Full spec in `DESIGN.md §25`. Key decisions:
 
 Project: `pmccwxovzhfdkuqzhkez.supabase.co`
 
-Current tables: `profiles`, `friend_requests`, `messages`, `play_invites`
-Planned tables: `songs`, `song_collaborators`, `device_codes`, `play_sessions`, `play_session_slots`
+Current tables: `profiles`, `friend_requests`, `messages`, `play_invites`, `device_codes`, `session_attachments`, `play_sessions`, `play_session_slots`, `lobbies`, `lobby_participants`
+Planned tables: `songs`, `song_collaborators`
 
-All tables have Row Level Security. A Postgres trigger auto-creates a `profiles` row on every new `auth.users` insert. All four current tables are in the `supabase_realtime` publication.
+All tables have Row Level Security. A Postgres trigger auto-creates a `profiles` row on every new `auth.users` insert. Tables in the `supabase_realtime` publication: `profiles`, `friend_requests`, `messages`, `play_invites`, `lobbies`, `lobby_participants`. Realtime Broadcast (not DB-driven) is used for in-lobby chat and `score_tick` traffic.
 
 ## Player identity (3 modes per slot)
 
@@ -180,23 +180,19 @@ Score persistence writes one `play_sessions` row + N `play_session_slots` rows (
 
 **Evolution v2 (shipped)** — `§26` Evolution v2 is built end-to-end. Schema: `session_attachments` table + updated `claim_device_code` (now returns `session_token`) + `attach_session` / `revoke_session_attachment` RPCs. Service: `js/services/session-attachments.js` with localStorage layer + RPC wrappers + `reattachAll` boot rehydrate + `listPaired` for the one-tap dropdown. UI: paired friends in `play.html` identity dropdown, CONNECTED DEVICES card in profile-edit with Revoke buttons.
 
-## Remote multiplayer (§27 — phases 1-4 shipped, 5-8 remaining)
+## Remote multiplayer (§27 — all 8 phases shipped)
 
-`DESIGN.md §27` specs the lobby model: each player runs their own engine on their own machine (local-first), synchronised start via `Clock.startSong({ countoffStartsAt })` + Supabase Realtime, score broadcast at ~1Hz. New tables: `lobbies`, `lobby_participants`. Both local and remote write the same `play_sessions` / `play_session_slots` schema so HISTORY is mode-agnostic.
+`DESIGN.md §27` specs the lobby model: each player runs their own engine on their own machine (local-first), synchronised start via `Clock.startSong({ countoffStartsAt })` + Supabase Realtime, score broadcast at ~1Hz. Tables: `lobbies`, `lobby_participants`. Both local and remote write the same `play_sessions` / `play_session_slots` schema so HISTORY is mode-agnostic.
 
-**Shipped (phases 1-4):**
-- Migration 0005: `lobbies` + `lobby_participants` tables, RLS with `user_in_lobby` / `user_hosts_lobby` recursion-fix helpers, both tables in `supabase_realtime` publication, `create_lobby` + `join_lobby` RPCs.
-- `js/services/lobbies.js`: create/join/leave/setReady/setSlotConfig/kick/setStartAt/setState/updateLobby/getLobby/listParticipants/subscribeLobby.
-- `play.html` SPA gains a LOBBY state. Song-select has a MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). `?lobby=<id>` URL param auto-joins; successful host creates also write the URL via replaceState.
-- Live roster + ready states via per-lobby Realtime channel. Host gets KICK + START. Guests get READY UP + LEAVE. Host-abandon detection auto-exits guests with a 2s "HOST LEFT" message.
-
-**Remaining (phases 5-8):**
-- Phase 5: clock-sync ping/pong handshake, then host sets `start_at`; each client converts to local clock and calls `engine.start({ countoffStartsAt })`.
-- Phase 6: live score sidebar in gameplay via `score_tick` Realtime broadcasts (~1Hz).
-- Phase 7: end-of-song per-player slot writes (each client writes its own row).
-- Phase 8: `pss_insert_self_in_session` RLS policy enabling phase 7.
-
-**Today's START button is a scope cap** — it transitions state `waiting → ready` and shows "LOCKED IN — START HANDSHAKE COMING (PHASE 5)". No actual game start yet.
+- **Schema + lobby service**: `lobbies` + `lobby_participants` with full RLS (`user_in_lobby` / `user_hosts_lobby` recursion-fix helpers, host vs participant visibility), both in `supabase_realtime` publication, `create_lobby` + `join_lobby` RPCs (atomic, lowest-free-slot assignment, idempotent re-joins). `js/services/lobbies.js`: create/join/leave/setReady/setSlotConfig/kick/setStartAt/setState/updateLobby/getLobby/listParticipants/subscribeLobby + `measureClockOffset()`.
+- **Lobby UI**: `play.html` SPA gains a LOBBY state. Song-select MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). `?lobby=<id>` URL param auto-joins on boot for shareable invites. Live roster + ready states via per-lobby Realtime channel. Host gets KICK + START. Guests get READY UP + LEAVE. Host-abandon detection auto-exits guests with a 2s "HOST LEFT" message.
+- **Lobby warmup panel**: device picker (Computer Keyboard or any connected MIDI device) on each participant row + a live playable piano/drum canvas below the lobby cards so players can warm up before the song starts.
+- **Lobby chat**: ephemeral Broadcast chat panel on the `lobby:<id>` channel — own messages echoed locally; drafts preserved across repaints (triggered by participant joins / ready-state changes).
+- **Phase 5 — clock sync**: `get_server_time()` RPC (migration 0006) + `measureClockOffset()` (5 round-trip samples, trim outliers). Host clicks START → measures offset → writes `start_at = serverNow + 8s` + state='starting'. Non-host: Realtime delivers `start_at`, converts to local `performance.now()` via offset, calls `engine.start({ countoffStartsAt })`. "STARTING IN X" countdown shown in the game-time display during the 8s lead.
+- **Phase 6 — score sidebar**: Supabase Broadcast channel `game:<lobbyId>` carries score ticks (~1Hz). Slim strip above the game canvas shows all participants' live score / grade / accuracy.
+- **Phase 7 — end-of-song persistence**: host creates `play_sessions` header → stamps `session_id` on the lobby row → writes own slot. Non-hosts poll `getLobby()` (1.5s interval, 30s timeout) until `session_id` appears, then write their slot via `pss_insert_self_in_session`. All players' HISTORY shows the same shared session.
+- **Phase 8 — RLS**: `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session` policies.
+- **Friend-invite-from-lobby**: `play_invites.lobby_id` column (migration 0007) + 30-min expiry. Home screen detects lobby invites and renders a JOIN LOBBY link.
 
 ---
 
