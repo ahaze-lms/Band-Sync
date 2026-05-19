@@ -179,6 +179,38 @@
       color: var(--purple2);
     }
 
+    /* ── DURATION PANEL (selected-note resize) ──────────────────── */
+    .duration-panel {
+      background: var(--bg2);
+      border: 0.5px solid var(--purple);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
+    .duration-panel[hidden] { display: none; }
+    .duration-buttons {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      flex: 1;
+    }
+    .d-btn {
+      min-height: 40px;
+      padding: 0 14px;
+      background: var(--bg3); color: var(--dim);
+      border: 1px solid var(--bg3); border-radius: 6px;
+      font-size: 12px; letter-spacing: 1px; font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+    }
+    .d-btn:hover { border-color: var(--purple); color: var(--text); }
+    .d-btn:active { transform: scale(0.97); }
+    .d-btn.active {
+      background: rgba(127, 119, 221, 0.18);
+      border-color: var(--purple);
+      color: var(--purple2);
+    }
+
     /* ── TRACK ROW ──────────────────────────────────────────────── */
     .track-row {
       background: var(--bg2);
@@ -322,6 +354,17 @@
       <button class="q-btn"        data-grid="1/8"  type="button">1/8</button>
       <button class="q-btn"        data-grid="1/16" type="button">1/16</button>
       <button class="q-btn"        data-grid="1/32" type="button">1/32</button>
+    </div>
+  </div>
+
+  <div class="duration-panel" id="duration-panel" hidden>
+    <span class="field-label">NOTE LENGTH</span>
+    <div class="duration-buttons">
+      <button class="d-btn" data-beats="0.25" type="button">1/16</button>
+      <button class="d-btn" data-beats="0.5"  type="button">1/8</button>
+      <button class="d-btn" data-beats="1"    type="button">1/4</button>
+      <button class="d-btn" data-beats="2"    type="button">1/2</button>
+      <button class="d-btn" data-beats="4"    type="button">1</button>
     </div>
   </div>
 
@@ -637,6 +680,44 @@
       });
     });
 
+    // ── Duration buttons (selected-note resize) ───────────────────
+    // Beats values map to musical lengths: 0.25=1/16, 0.5=1/8, 1=1/4,
+    // 2=1/2, 4=whole. Multiplied by beatMs at click time so the result
+    // tracks the song's current BPM.
+    const durationPanel   = document.getElementById('duration-panel');
+    const dButtons        = document.querySelectorAll('.d-btn');
+    const DURATION_MATCH_TOLERANCE_MS = 1;  // anything within 1ms of an exact length counts as that length
+
+    dButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const selected = renderer.getSelected();
+        if (!selected) return;
+        const beats  = parseFloat(btn.dataset.beats);
+        const beatMs = 60_000 / song.bpm;
+        selected.durationMs = beats * beatMs;
+        refreshDurationPanel();
+      });
+    });
+
+    function refreshDurationPanel() {
+      const selected = renderer.getSelected();
+      if (!selected) {
+        durationPanel.hidden = true;
+        return;
+      }
+      durationPanel.hidden = false;
+      const beatMs = 60_000 / song.bpm;
+      const currentBeats = selected.durationMs / beatMs;
+      dButtons.forEach(b => {
+        const beats = parseFloat(b.dataset.beats);
+        // "Active" when the note's length matches this button within
+        // 1ms — exact-only, so partial / dragged durations highlight
+        // nothing rather than guessing.
+        const matches = Math.abs(beats * beatMs - selected.durationMs) < DURATION_MATCH_TOLERANCE_MS;
+        b.classList.toggle('active', matches);
+      });
+    }
+
     // ── Button state machine ──────────────────────────────────────
     function updateButtons() {
       const rec = recorder.isRecording();
@@ -652,6 +733,9 @@
         b.classList.toggle('active', b.dataset.grid === activeGrid);
         b.disabled = lockQuantize;
       });
+
+      // Duration panel mirrors selection state.
+      refreshDurationPanel();
     }
 
     // Periodic refresh for live timer + enabling PLAY after a take.
