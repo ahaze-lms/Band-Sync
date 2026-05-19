@@ -946,9 +946,9 @@ async function renderGame() {
       onScoreUpdate:  (idx, stats) => { updateScoreCard(idx, stats); broadcastScore(stats); },
       onFeedback:     (idx, text, cls) => showFeedback(idx, text, cls),
       onSongComplete: () => onSongComplete(),
-      onRawInput:     (_idx, note, velocity, songTimeMs) => {
+      onRawInput:     (playerIdx, note, velocity, songTimeMs) => {
         if (ctx.isReplay || !ctx.replayLog || songTimeMs < 0) return;
-        ctx.replayLog.push({ note, velocity, songTimeMs });
+        ctx.replayLog.push({ playerIdx, note, velocity, songTimeMs });
       },
     },
   });
@@ -1330,7 +1330,7 @@ function startReplayInjector(events) {
     const st = ctx.activeGame.getSongTime();
     while (nextEvt < sorted.length && sorted[nextEvt].songTimeMs <= st) {
       const e = sorted[nextEvt++];
-      ctx.activeGame.injectInput(0, e.note, e.velocity);
+      ctx.activeGame.injectInput(e.playerIdx, e.note, e.velocity);
     }
     ctx.replayInjectorRaf = requestAnimationFrame(tick);
   };
