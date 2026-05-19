@@ -67,8 +67,10 @@ const ctx = {
   attachments:   null,  // { 'p2': { token, userId, displayName, avatar, accentColor }, ... }
   pairedFriends: null,  // [{ token, user_id, display_name, ... }] — friends ever paired with this device, for dropdown
   mode:          'local',  // 'local' (default) | 'remote' — controls what song-select click does
-  lobby:         null,     // { id, lobby, participants, unsubscribe, gameLaunched } when in lobby
+  lobby:         null,     // { id, lobby, participants, tracks, unsubscribe, gameLaunched } when in lobby
   clockOffset:   null,     // ms: Date.now() - serverTime, measured on lobby entry for Phase 5
+  gameChannel:   null,     // { broadcast, unsubscribe } during a remote game (Phase 6)
+  remoteScores:  null,     // Map<userId, scorePayload> during a remote game (Phase 6)
 };
 
 let setupTeardown = null;
@@ -881,6 +883,30 @@ async function renderGame() {
 
   paintGame(setup.playerCount);
 
+  // Phase 6 — Remote score broadcast. Subscribe before the engine so
+  // broadcastScore is in scope when the onScoreUpdate callback fires.
+  let broadcastScore = () => {};
+  if (ctx.lobby?.id) {
+    ctx.remoteScores = new Map();
+    const mySlotNum  = ctx.lobby.participants?.find(p => p.user_id === ctx.user.id)?.slot ?? 1;
+    ctx.gameChannel  = lobbies.subscribeGameScores(ctx.lobby.id, onRemoteScoreTick);
+    let lastBroadcast = 0;
+    broadcastScore = (stats) => {
+      const now = Date.now();
+      if (now - lastBroadcast < 900) return;
+      lastBroadcast = now;
+      ctx.gameChannel?.broadcast({
+        userId:   ctx.user.id,
+        slot:     mySlotNum,
+        score:    stats.score,
+        grade:    stats.grade,
+        accuracy: stats.accuracy,
+        combo:    stats.multiplier,
+      });
+    };
+    updateRemoteScoreStrip();   // pre-populate with all participants at 0
+  }
+
   const enginePlayers = setup.players.slice(0, setup.playerCount).map((p, i) => {
     const track  = playableTracks[p.trackIndex] ?? playableTracks[0];
     const device = inputs.find(d => d.id === p.deviceId) ?? null;
@@ -906,7 +932,7 @@ async function renderGame() {
     hitWindowLevel: setup.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
     alwaysSound:    true,
     callbacks: {
-      onScoreUpdate:  (idx, stats) => updateScoreCard(idx, stats),
+      onScoreUpdate:  (idx, stats) => { updateScoreCard(idx, stats); broadcastScore(stats); },
       onFeedback:     (idx, text, cls) => showFeedback(idx, text, cls),
       onSongComplete: () => onSongComplete(),
     },
@@ -1014,6 +1040,7 @@ function paintGame(playerCount) {
         <div class="game-meta" style="margin-left:18px">${identityChips}</div>
         <div class="game-time" id="game-time">READY · ${mm}:${ss}</div>
       </div>
+      <div id="remote-score-strip" class="remote-score-strip"${ctx.lobby?.id ? '' : ' style="display:none"'}></div>
       <div class="game-panels players-${playerCount}">
         ${panels}
       </div>
@@ -1260,6 +1287,12 @@ async function refreshLobbyData() {
     ctx.lobby.lobby = lobby;
     ctx.lobby.participants = participants;
 
+    // Load song track list from the manifest (for the track picker in the lobby UI).
+    if (!ctx.lobby.tracks && lobby.song_file) {
+      const entry = ctx.manifest?.songs?.find(s => s.file === lobby.song_file);
+      ctx.lobby.tracks = entry?.tracks ?? [];
+    }
+
     // Non-host: when state flips to 'starting', launch the game locally.
     // Guard gameLaunched so repeated Realtime ticks don't double-launch.
     if (lobby.state === 'starting' && lobby.start_at
@@ -1373,6 +1406,14 @@ function paintLobby() {
   stateEl.querySelectorAll('[data-action="invite-friend"]').forEach(btn => {
     btn.addEventListener('click', () => inviteFriend(btn.dataset.userId, btn));
   });
+  stateEl.querySelectorAll('[data-action="set-slot-config"]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const field = sel.dataset.field;
+      const val   = field === 'track' ? Number(sel.value) : sel.value;
+      lobbies.setSlotConfig(ctx.lobby.id, field === 'track' ? { track_index: val } : { instrument: val })
+        .catch(err => console.error('setSlotConfig failed', err));
+    });
+  });
 }
 
 function renderFriendPicker() {
@@ -1426,12 +1467,24 @@ function renderParticipantRow(p, viewerIsHost) {
     isLobbyHost ? 'HOST'  : '',
   ].filter(Boolean).join(' · ');
 
+  const tracks = ctx.lobby?.tracks ?? [];
+  const myConfig = isMe ? `
+    <div class="lobby-my-config">
+      <select class="lobby-slot-sel" data-action="set-slot-config" data-field="instrument">
+        <option value="piano" ${(p.instrument ?? 'piano') === 'piano' ? 'selected' : ''}>🎹 Piano</option>
+        <option value="drums" ${p.instrument === 'drums' ? 'selected' : ''}>🥁 Drums</option>
+      </select>
+      ${tracks.length > 1 ? `<select class="lobby-slot-sel" data-action="set-slot-config" data-field="track">
+        ${tracks.map((t, i) => `<option value="${i}" ${(p.track_index ?? 0) === i ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+      </select>` : ''}
+    </div>` : `<span class="participant-ready">${p.is_ready ? '✓ READY' : 'WAITING…'}</span>`;
+
   return `
     <div class="participant-row ${p.is_ready ? 'is-ready' : ''}">
       <span class="participant-slot">P${p.slot ?? '?'}</span>
       <span class="participant-avatar">${av}</span>
       <span class="participant-name">${esc(name)}${suffix ? ` <span class="dim">· ${esc(suffix)}</span>` : ''}</span>
-      <span class="participant-ready">${p.is_ready ? '✓ READY' : 'WAITING…'}</span>
+      ${myConfig}
       ${canKick ? `<button class="btn-kick" data-action="kick" data-user-id="${esc(p.user_id)}">KICK</button>` : ''}
     </div>
   `;
@@ -1571,11 +1624,39 @@ async function launchRemoteGame(countoffStartsAt) {
   startSongRun({ countoffStartsAt });
 }
 
+// ── REMOTE SCORE STRIP (Phase 6) ───────────────────────────────────
+
+function onRemoteScoreTick(payload) {
+  if (!ctx.remoteScores || !payload?.userId) return;
+  ctx.remoteScores.set(payload.userId, payload);
+  updateRemoteScoreStrip();
+}
+
+function updateRemoteScoreStrip() {
+  const strip = document.getElementById('remote-score-strip');
+  if (!strip) return;
+  const participants = ctx.lobby?.participants ?? [];
+  strip.innerHTML = participants.map(p => {
+    const rs   = ctx.remoteScores?.get(p.user_id);
+    const name = p.profile?.display_name || p.profile?.username || `P${p.slot ?? '?'}`;
+    const isMe = p.user_id === ctx.user.id;
+    return `
+      <div class="rss-entry ${isMe ? 'rss-me' : ''}">
+        <span class="rss-name">${esc(name)}${isMe ? ' · you' : ''}</span>
+        <span class="rss-score">${rs ? rs.score.toLocaleString() : '0'}</span>
+        <span class="rss-grade">${rs?.grade ?? '—'}</span>
+        <span class="rss-acc">${rs?.accuracy != null ? rs.accuracy + '%' : '—'}</span>
+      </div>`;
+  }).join('');
+}
+
 // ── HELPERS ────────────────────────────────────────────────────────
 
 function leaveCurrentState() {
   if (setupTeardown) { setupTeardown(); setupTeardown = null; }
   if (ctx.activeGame) { ctx.activeGame.destroy(); ctx.activeGame = null; }
+  if (ctx.gameChannel) { ctx.gameChannel.unsubscribe(); ctx.gameChannel = null; }
+  ctx.remoteScores = null;
   stopGameTimer();
   // Tear down any open modals so they don't leak across state transitions.
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());

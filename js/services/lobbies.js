@@ -230,3 +230,17 @@ export function subscribeLobby(lobbyId, { onLobbyChange, onParticipantChange } =
 
   return () => { supabase.removeChannel(channel); };
 }
+
+// Subscribe to in-game score broadcasts for a remote session (Phase 6).
+// Each player subscribes on game start and receives the other players'
+// score payloads: { userId, slot, score, grade, accuracy, combo }.
+// Returns { broadcast(payload), unsubscribe() }.
+export function subscribeGameScores(lobbyId, onScoreTick) {
+  const channel = supabase.channel(`game:${lobbyId}`);
+  channel.on('broadcast', { event: 'score' }, ({ payload }) => onScoreTick(payload));
+  channel.subscribe();
+  return {
+    broadcast:   (payload) => channel.send({ type: 'broadcast', event: 'score', payload }),
+    unsubscribe: ()        => supabase.removeChannel(channel),
+  };
+}

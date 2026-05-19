@@ -451,7 +451,7 @@
        top, panels stack vertically. */
     .game-shell {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto auto 1fr auto;   /* header, remote-strip, panels, controls */
       gap: 10px;
       height: calc(100vh - 80px);
     }
@@ -876,6 +876,69 @@
       cursor: not-allowed;
     }
     .btn-start-lobby:not(:disabled):hover { filter: brightness(1.1); }
+
+    /* ── LOBBY FORM CARDS ─────────────────────────────────────────── */
+    .form-card {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .form-card-title {
+      font-size: 10px; letter-spacing: 3px; color: var(--dim);
+      margin-bottom: 12px;
+    }
+    .pairing-explainer {
+      font-size: 12px; color: var(--dim); line-height: 1.5;
+      margin-bottom: 6px;
+    }
+
+    /* ── LOBBY PARTICIPANT TRACK SELECTS ─────────────────────────── */
+    .lobby-my-config {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .lobby-slot-sel {
+      padding: 4px 6px;
+      font-size: 11px;
+      background: var(--bg3);
+      border: 0.5px solid var(--border2);
+      border-radius: 4px;
+      color: var(--text);
+      cursor: pointer;
+      width: auto;
+    }
+    .lobby-slot-sel:hover { border-color: var(--purple); }
+
+    /* ── REMOTE SCORE STRIP (game screen, Phase 6) ───────────────── */
+    .remote-score-strip {
+      display: flex;
+      gap: 6px;
+      padding: 4px 14px;
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .rss-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      background: var(--bg);
+      border: 0.5px solid var(--border2);
+      border-radius: 6px;
+      font-size: 11px;
+      flex: 1;
+      min-width: 120px;
+    }
+    .rss-me { border-color: rgba(127,119,221,0.4); }
+    .rss-name { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    .rss-score { font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .rss-grade { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--purple2); }
+    .rss-acc { font-size: 10px; color: var(--dim); white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -892,6 +955,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=15"></script>
+  <script type="module" src="js/play.js?v=16"></script>
 </body>
 </html>
