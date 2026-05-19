@@ -1,18 +1,18 @@
-# BandSync — Design Document v14
+# BandSync — Design Document v15
 
-> Updated 2026-05-17. Supersedes v13.
+> Updated 2026-05-18. Supersedes v14.
 >
-> Major changes from v13: §26 evolved with **durable session attachments** — a token-based persistence layer on top of the existing 6-digit pairing so friend identities survive page reloads and tab closes (no more re-generating codes for every song). New §27 **Remote Multiplayer** spec — lobby model, clock sync via Realtime, score broadcast, and an honest 3-4 session scope estimate. Both designs share the same `play_sessions` / `play_session_slots` schema so HISTORY and PB queries don't care whether a song was played locally or remotely.
+> Major changes from v14: **§26 Evolution v2 is fully shipped** — durable session attachments, paired-friend dropdown for one-tap reattach, and Connected Devices view in profile-edit. **§27 Remote Multiplayer phases 1-4 are shipped** — lobby schema with realtime, create/join/leave/ready/kick flows, and live participant roster via Supabase Realtime. Phases 5-8 (clock sync handshake, gameplay handoff, score sidebar, end-of-song writes, RLS extension) remain.
 
 ---
 
-## 🚦 Current state (2026-05-17)
+## 🚦 Current state (2026-05-18)
 
 **`play.html` — the real game** (production gameplay surface, live):
 - Song select pulling from a generated `songs/manifest.json`
 - Setup screen: Speed (1–10) + Difficulty (1–7) selectors at top; per-player identity (Me / Friend / Guest) × instrument × MIDI device × track below
 - **Computer Keyboard** is a first-class device option with mutex (only one slot per machine) — QWERTY → MIDI mapping covering 2 octaves
-- Identity persists across song-select ↔ setup ↔ game ↔ results loops within a page session (in-memory only — see §26 Evolution v2 for the durable-attachment evolution that's specced but not yet built)
+- Identity persists across song-select ↔ setup ↔ game ↔ results loops AND across page reloads via §26 Evolution v2 durable session attachments (24h token TTL, revocable from Connected Devices). Paired-friend dropdown for one-tap reattach without a fresh code.
 - Gameplay using the extracted, parameterised `js/core/gameplay-engine.js` (1–N players)
 - 1 / 2 / 3 / 4-player grid layouts; score strip on top of each panel, canvas fills via `object-fit: contain`
 - **Warm-up state** before count-off: engine alive (audio + input responsive) so players can find their hand position before clicking ▶ START SONG
@@ -23,11 +23,21 @@
 - End-of-song persistence writes one `play_sessions` row + N `play_session_slots` rows (records actual speed/difficulty used)
 - Personal best displayed under each song on setup ("YOUR BEST: 14,400 · S · 98% · 2d ago")
 
-**Player identity** (`§26`):
+**Player identity** (`§26` + `§26 Evolution v2`):
 - Friend generates a 6-digit code in their profile's PAIRING card (snapshots their identity, 10-min TTL, single-use)
 - Host claims it at `play.html → setup → IDENTITY: Join with code…` (6-digit modal, paste-friendly)
-- Friend's identity attaches to the slot; scores save to their account
-- Friend's profile shows recent uses under RECENT ACCOUNT ACTIVITY (who used my code, when)
+- On claim, Supabase issues a durable **session token** stored in localStorage — reloads call `attach_session(token)` to rehydrate the friend identity without a fresh code. 24h TTL.
+- Previously-paired friends show up as one-tap options in the identity dropdown (no code needed for re-pairing within the token window)
+- Friend's profile shows RECENT ACCOUNT ACTIVITY (used codes audit log) + CONNECTED DEVICES (active attachments with Revoke buttons)
+- Opportunistic cleanup runs inside `claim_device_code` — expired/revoked attachments >30d and used codes >90d get pruned automatically
+
+**Remote multiplayer** (`§27`) — phases 1-4 shipped:
+- `lobbies` + `lobby_participants` schema with full RLS (recursion-fix helpers, host vs participant visibility)
+- `create_lobby` + `join_lobby` RPCs (atomic, lowest-free-slot assignment, idempotent re-joins)
+- `js/services/lobbies.js` — create/join/leave/setReady/kick/setStartAt/setState/listParticipants + `subscribeLobby` Realtime helper
+- `play.html` SPA gains a LOBBY state. Song-select MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). Remote-mode song click creates a lobby and routes there. `?lobby=<id>` URL param auto-joins on boot for shareable invite links.
+- Live roster + ready states via Supabase Realtime (per-lobby channel). Host gets KICK + START. Participants get READY UP + LEAVE. Host-abandon detection on guest side with auto-exit.
+- START button currently transitions state `waiting → ready` as a scope cap — phases 5-6 wire clock sync + gameplay handoff.
 
 **HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
 
@@ -48,13 +58,21 @@
 
 ### What's next
 
-**Major candidates:**
+**Immediate (§27 finish line):**
+
+1. **§27 phase 5 — clock sync** — ping/pong handshake to measure each client's `serverTime - localTime` offset, then host computes `start_at = serverTime + 3s` and writes to the lobby. Each client converts to its local clock and calls `engine.start({ countoffStartsAt: localStart })`. All count-offs fire at the same wall-clock instant.
+2. **§27 phase 6 — score sidebar** — small HUD overlay in gameplay showing each remote player's live score, updated via Realtime `score_tick` broadcasts (~1Hz).
+3. **§27 phase 7 — end-of-song** — each player writes their own `play_session_slots` row via the new RLS path; results screen aggregates from all participants.
+4. **§27 phase 8 — RLS extension** — `pss_insert_self_in_session` policy so each remote player can write their own slot row.
+
+**Major candidates (after §27):**
 
 1. **`studio.html` — Song Creator** (§25). Biggest unbuilt thing. Spec ready: live MIDI record, quantize, instrument-specific piano roll, save to Supabase, async collaboration, publish to library.
-2. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
-3. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
-4. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
-5. **Phase 3c — port `js/screens/gameplay.js`** to the new engine, eliminating the duplicate loop. Pure cleanup; deferred unless 2player.html starts getting active engine changes.
+2. **Mobile pass** — flagged by user during friend testing. Phones are the dominant test client; current responsive work is "quick wins" not a full pass.
+3. **Drum-track playback in bundled songs** — needs a GM drum-map translation pass in the MIDI parser pipeline so drum tracks reach the engine as abstract names. Today's library is all piano.
+4. **Calibration in `play.html`** — extract the 2player calibration overlay into a shared `js/ui/calibration-overlay.js` module, then wire it into the play.html setup screen.
+5. **Real piano + drum samples** — replace synth with samples. Biggest perceptual upgrade per §18.
+6. **Phase 3c — port `js/screens/gameplay.js`** to the new engine, eliminating the duplicate loop. Pure cleanup; deferred unless 2player.html starts getting active engine changes.
 
 **Smaller polish items:**
 

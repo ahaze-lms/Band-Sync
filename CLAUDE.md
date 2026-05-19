@@ -40,7 +40,7 @@ Never suggest running a local server unless the user explicitly asks. The live s
 | File | What it is |
 |---|---|
 | `index.html` | Auth-gated SPA shell — login, home, friends, inbox, profile |
-| `play.html` | Real game — reserved, not yet built |
+| `play.html` | Real game — live; song-select → setup → game → results, plus remote-multiplayer lobby state (§27 phases 1-4) |
 | `studio.html` | Song Creator — reserved, not yet built (stub page exists) |
 | `2player.html` | 2-player prototype — access via Dev Lab |
 | `lab.html` | Dev Lab hub — links to prototype + all debug tools |
@@ -49,7 +49,7 @@ Never suggest running a local server unless the user explicitly asks. The live s
 | `js/core/` | Engine modules: timing, audio, scoring, midi, calibration, midi-parser, drum-mapping |
 | `js/render/` | Canvas renderers: `piano.js`, `drums.js` (factory functions) |
 | `js/screens/` | SPA screens: auth, home, profile-edit, friends, inbox; future: gameplay, results, library, studio |
-| `js/services/` | Supabase clients: auth.js, profile.js, social.js, supabase.js |
+| `js/services/` | Supabase clients: auth, profile, social, supabase, device-codes, session-attachments, history, play-sessions, lobbies |
 | `songs/` | Bundled `.mid` files |
 | `debug/` | Standalone debug tools (piano_debug, drum_debug, drum_monitor, midi_test, bandsync_mockup) |
 | `supabase/schema.sql` | Full DB schema — run once in Supabase SQL editor to set up a fresh project |
@@ -115,7 +115,7 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
   - End-of-song persistence to `play_sessions` + `play_session_slots`
   - PB display under each song on setup (`YOUR BEST: 14,400 · S · 98% · 2d ago`)
 - **`2player.html`** — original prototype, still alive as a dev/test harness (reached via Dev Lab). Has unique features: role toggle, test patterns, file picker, calibration overlay. NOT yet ported to the new engine — `js/screens/gameplay.js` duplicates the loop logic (deferred phase 3c).
-- **Player identity (`DESIGN.md §26`)** — 6-digit device codes for friend-attach, generated on friend's phone (PAIRING in profile), claimed at play.html setup (6-digit modal), scores save to the correct user, friend's audit log under RECENT ACCOUNT ACTIVITY. **Identity is in-memory only** today — reload nukes it. The §26 Evolution v2 spec (session attachments + localStorage) fixes this; not yet built.
+- **Player identity (`DESIGN.md §26` + §26 Evolution v2)** — 6-digit device codes for first-time pairing (PAIRING in profile, 10-min TTL, single-use), claimed at play.html setup (6-digit modal). On claim, Supabase also issues a **durable session token** stored in localStorage; reloads call `attach_session(token)` to rehydrate the friend identity without a fresh code (24h TTL, revocable). Previously-paired friends appear in the identity dropdown for one-tap reattach. CONNECTED DEVICES card in profile-edit lists active attachments with Revoke. Opportunistic cleanup runs on every new claim (>30d expired/revoked attachments, >90d used codes).
 - **HISTORY screen** — chronological list of every session you appear in, grouped by date, with PB badges
 - **Social layer** (`index.html`) — Supabase auth, profiles, friend requests, real-time inbox, play invites
 - **Mobile pass** (quick wins, not a full redesign): bumped color contrast + base font, inbox flips to single-pane with back button + `dvh` viewport + 16px inputs to avoid iOS auto-zoom, play.html stacks panels vertically and uses default `object-fit:contain` so the keyboard stays visible
@@ -178,11 +178,25 @@ All tables have Row Level Security. A Postgres trigger auto-creates a `profiles`
 
 Score persistence writes one `play_sessions` row + N `play_session_slots` rows (one per slot, even guests) on song complete.
 
-**Evolution v2 (specced, not yet built)** — `§26` Evolution v2 adds **session attachments**: on claim, Supabase also issues a session token that the host stores in localStorage so reloads rehydrate the friend's identity (24h TTL, revocable). Fixes the "regen a code every song after refresh" friction. Builds on the same `session_attachments` primitive that remote multiplayer (§27) uses for participant tracking.
+**Evolution v2 (shipped)** — `§26` Evolution v2 is built end-to-end. Schema: `session_attachments` table + updated `claim_device_code` (now returns `session_token`) + `attach_session` / `revoke_session_attachment` RPCs. Service: `js/services/session-attachments.js` with localStorage layer + RPC wrappers + `reattachAll` boot rehydrate + `listPaired` for the one-tap dropdown. UI: paired friends in `play.html` identity dropdown, CONNECTED DEVICES card in profile-edit with Revoke buttons.
 
-## Remote multiplayer (specced, not yet built)
+## Remote multiplayer (§27 — phases 1-4 shipped, 5-8 remaining)
 
-`DESIGN.md §27` specs the lobby model: each player runs their own engine on their own machine (local-first), synchronised start via `Clock.startSong({ countoffStartsAt })` + Supabase Realtime, score broadcast at ~1Hz. New tables: `lobbies`, `lobby_participants`. Both local and remote write the same `play_sessions` / `play_session_slots` schema so HISTORY is mode-agnostic. Honest scope: ~3-4 focused sessions for a functional first version.
+`DESIGN.md §27` specs the lobby model: each player runs their own engine on their own machine (local-first), synchronised start via `Clock.startSong({ countoffStartsAt })` + Supabase Realtime, score broadcast at ~1Hz. New tables: `lobbies`, `lobby_participants`. Both local and remote write the same `play_sessions` / `play_session_slots` schema so HISTORY is mode-agnostic.
+
+**Shipped (phases 1-4):**
+- Migration 0005: `lobbies` + `lobby_participants` tables, RLS with `user_in_lobby` / `user_hosts_lobby` recursion-fix helpers, both tables in `supabase_realtime` publication, `create_lobby` + `join_lobby` RPCs.
+- `js/services/lobbies.js`: create/join/leave/setReady/setSlotConfig/kick/setStartAt/setState/updateLobby/getLobby/listParticipants/subscribeLobby.
+- `play.html` SPA gains a LOBBY state. Song-select has a MODE toggle (SOLO/COUCH ↔ REMOTE LOBBY). `?lobby=<id>` URL param auto-joins; successful host creates also write the URL via replaceState.
+- Live roster + ready states via per-lobby Realtime channel. Host gets KICK + START. Guests get READY UP + LEAVE. Host-abandon detection auto-exits guests with a 2s "HOST LEFT" message.
+
+**Remaining (phases 5-8):**
+- Phase 5: clock-sync ping/pong handshake, then host sets `start_at`; each client converts to local clock and calls `engine.start({ countoffStartsAt })`.
+- Phase 6: live score sidebar in gameplay via `score_tick` Realtime broadcasts (~1Hz).
+- Phase 7: end-of-song per-player slot writes (each client writes its own row).
+- Phase 8: `pss_insert_self_in_session` RLS policy enabling phase 7.
+
+**Today's START button is a scope cap** — it transitions state `waiting → ready` and shows "LOCKED IN — START HANDSHAKE COMING (PHASE 5)". No actual game start yet.
 
 ---
 
