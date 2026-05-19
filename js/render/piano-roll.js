@@ -116,13 +116,13 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = GRID_H / PITCH_COUNT;
+    const yView   = computeYView();
 
-    drawRowBands(rowH);
+    drawRowBands(yView);
     drawGridlines(totalMs, pxPerMs);
-    drawNotes(pxPerMs, rowH);
+    drawNotes(pxPerMs, yView);
     drawPlayhead(pxPerMs);
-    drawKeyStrip(rowH);
+    drawKeyStrip(yView);
     drawRuler(totalMs, pxPerMs);   // last — sits on top of everything in the top strip
   }
 
@@ -148,6 +148,42 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const maxOffset = Math.max(0, computeFitMs() - viewMs);
     return Math.max(0, Math.min(offset, maxOffset));
   }
+  // Y-axis viewport. Y zoom is dampened (sqrt of X zoom) so notes
+  // get *somewhat* bigger when you zoom in, and capped so that the
+  // song's actual pitch range stays visible with a small headroom.
+  // If your song uses the full piano, Y zoom stays at 1 even when
+  // X zoom is 16; if it's all in one octave, Y zooms in freely and
+  // the rows get nice and fat.
+  function computeYView() {
+    let minP, maxP;
+    if (song.notes.length === 0) {
+      // Default centred on the playable warmup keyboard range (G3-G5).
+      minP = 55; maxP = 79;
+    } else {
+      minP = PITCH_MAX; maxP = PITCH_MIN;
+      for (const n of song.notes) {
+        if (n.pitch < minP) minP = n.pitch;
+        if (n.pitch > maxP) maxP = n.pitch;
+      }
+    }
+    const songSpan = (maxP - minP) + 1;
+    // Keep all song pitches visible plus a buffer (so adding nearby
+    // notes doesn't immediately scroll them off).
+    const desiredRowsVisible = Math.max(songSpan + 8, 12);
+    const maxYZoom = PITCH_COUNT / desiredRowsVisible;
+    const desiredYZoom = Math.sqrt(Math.max(1, zoomFactor));
+    const yZoom = Math.max(1, Math.min(desiredYZoom, maxYZoom));
+    const visibleRows = Math.min(PITCH_COUNT, Math.max(1, Math.ceil(PITCH_COUNT / yZoom)));
+    const rowH = GRID_H / visibleRows;
+    // Center the visible window on the song's median pitch, clamped
+    // so we never show "above C7" or "below C2".
+    const center = Math.round((minP + maxP) / 2);
+    let viewPitchTop = center + Math.floor(visibleRows / 2);
+    viewPitchTop = Math.min(PITCH_MAX, viewPitchTop);
+    viewPitchTop = Math.max(PITCH_MIN + visibleRows - 1, viewPitchTop);
+    return { yZoom, visibleRows, viewPitchTop, rowH };
+  }
+
   // Whenever the playhead moves (drag, playback, programmatic) make
   // sure it stays inside the visible window when zoomed. Pans the
   // view as a side-effect.
@@ -164,9 +200,11 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   // Subtle row stripes — black-key rows slightly darker.
-  function drawRowBands(rowH) {
-    for (let i = 0; i < PITCH_COUNT; i++) {
-      const pitch = PITCH_MAX - i;
+  function drawRowBands(yView) {
+    const { visibleRows, viewPitchTop, rowH } = yView;
+    for (let i = 0; i < visibleRows; i++) {
+      const pitch = viewPitchTop - i;
+      if (pitch < PITCH_MIN || pitch > PITCH_MAX) continue;
       const isBlack = BLACK_KEY_SET.has(pitch % 12);
       ctx.fillStyle = isBlack ? '#0c0c18' : '#11111e';
       ctx.fillRect(KEY_STRIP_W, RULER_H + i * rowH, ROLL_W - KEY_STRIP_W, rowH);
@@ -174,8 +212,9 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     // Octave separator at every C — slightly brighter horizontal line.
     ctx.strokeStyle = '#1a1a28';
     ctx.lineWidth = 0.5;
-    for (let i = 0; i < PITCH_COUNT; i++) {
-      const pitch = PITCH_MAX - i;
+    for (let i = 0; i < visibleRows; i++) {
+      const pitch = viewPitchTop - i;
+      if (pitch < PITCH_MIN || pitch > PITCH_MAX) continue;
       if (pitch % 12 === 0) {
         const y = RULER_H + (i + 1) * rowH;
         ctx.beginPath();
@@ -211,15 +250,17 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   // Note pills — purple vertical gradient with subtly rounded corners.
   // Selected note also gets a brighter purple2 outline ring so the user
   // can confirm what they just tapped.
-  function drawNotes(pxPerMs, rowH) {
+  function drawNotes(pxPerMs, yView) {
+    const { visibleRows, viewPitchTop, rowH } = yView;
+    const visiblePitchMin = viewPitchTop - visibleRows + 1;
     const radius = Math.min(3, rowH / 3);
     for (const note of song.notes) {
-      if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
+      if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
       const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
       // Skip notes entirely off-screen for perf (canvas would clip anyway).
       if (x + w < KEY_STRIP_W || x > ROLL_W) continue;
-      const yIdx = PITCH_MAX - note.pitch;
+      const yIdx = viewPitchTop - note.pitch;
       const y = RULER_H + yIdx * rowH;
 
       // Vertical gradient: lighter top → darker bottom, gives the
@@ -270,13 +311,15 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
   // Left-margin mini keyboard — alternating black/white blocks per
   // semitone, octave labels on each C. Starts below the ruler.
-  function drawKeyStrip(rowH) {
+  function drawKeyStrip(yView) {
+    const { visibleRows, viewPitchTop, rowH } = yView;
     // Top-left corner above the keys (covered by ruler styling later, but fill so it's clean)
     ctx.fillStyle = '#0d0d18';
     ctx.fillRect(0, 0, KEY_STRIP_W, RULER_H);
 
-    for (let i = 0; i < PITCH_COUNT; i++) {
-      const pitch = PITCH_MAX - i;
+    for (let i = 0; i < visibleRows; i++) {
+      const pitch = viewPitchTop - i;
+      if (pitch < PITCH_MIN || pitch > PITCH_MAX) continue;
       const isBlack = BLACK_KEY_SET.has(pitch % 12);
       ctx.fillStyle = isBlack ? '#0a0a14' : '#1c1c2a';
       ctx.fillRect(0, RULER_H + i * rowH, KEY_STRIP_W, rowH);
@@ -367,14 +410,16 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     if (ly < RULER_H)     return null;
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = GRID_H / PITCH_COUNT;
+    const yView   = computeYView();
+    const { visibleRows, viewPitchTop, rowH } = yView;
+    const visiblePitchMin = viewPitchTop - visibleRows + 1;
     // Iterate in reverse so the top-most rendered note wins ties.
     for (let i = song.notes.length - 1; i >= 0; i--) {
       const note = song.notes[i];
-      if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
+      if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
       const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
-      const yIdx = PITCH_MAX - note.pitch;
+      const yIdx = viewPitchTop - note.pitch;
       const y = RULER_H + yIdx * rowH;
       if (lx >= x && lx <= x + w && ly >= y && ly <= y + rowH) return note;
     }
@@ -386,10 +431,10 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     if (ly < RULER_H)     return null;
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = GRID_H / PITCH_COUNT;
+    const yView   = computeYView();
     const startMs = Math.max(0, viewOffsetMs + (lx - KEY_STRIP_W) / pxPerMs);
-    const yIdx    = Math.floor((ly - RULER_H) / rowH);
-    const pitch   = PITCH_MAX - yIdx;
+    const yIdx    = Math.floor((ly - RULER_H) / yView.rowH);
+    const pitch   = yView.viewPitchTop - yIdx;
     if (pitch < PITCH_MIN || pitch > PITCH_MAX) return null;
     return { pitch, startMs };
   }
@@ -469,10 +514,10 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const pt = clientToLogical(e.clientX, e.clientY);
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    const rowH    = GRID_H / PITCH_COUNT;
+    const yView   = computeYView();
     const newStart = Math.max(0, viewOffsetMs + (pt.x - KEY_STRIP_W) / pxPerMs);
-    const yIdx     = Math.floor((pt.y - RULER_H) / rowH);
-    const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, PITCH_MAX - yIdx));
+    const yIdx     = Math.floor((pt.y - RULER_H) / yView.rowH);
+    const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, yView.viewPitchTop - yIdx));
     // Move updates BOTH startMs and startMsRaw — otherwise a later
     // quantize toggle would snap the moved note back to its original
     // recorded location, which is not what the user expects.
