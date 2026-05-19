@@ -51,9 +51,13 @@ export function createRecorder(song) {
     const open = pending.get(pitch);
     const endMs = performance.now() - startedAt;
     const duration = Math.max(MIN_DURATION_MS, endMs - open.startMs);
+    // startMsRaw mirrors startMs at record time. The quantizer modifies
+    // startMs but never touches startMsRaw, so we can re-quantize at any
+    // grid (or revert to raw) without losing the original take.
     song.notes.push({
       pitch,
       startMs:    open.startMs,
+      startMsRaw: open.startMs,
       durationMs: duration,
       velocity:   open.velocity,
     });

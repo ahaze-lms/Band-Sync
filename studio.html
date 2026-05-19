@@ -145,6 +145,40 @@
       display: flex; align-items: center; justify-content: flex-end;
     }
 
+    /* ── QUANTIZE PANEL ─────────────────────────────────────────── */
+    .quantize-panel {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quantize-buttons {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      flex: 1;
+    }
+    .q-btn {
+      min-height: 40px;
+      padding: 0 14px;
+      background: var(--bg3); color: var(--dim);
+      border: 1px solid var(--bg3); border-radius: 6px;
+      font-size: 12px; letter-spacing: 1px; font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+    }
+    .q-btn:hover:not(:disabled) {
+      border-color: var(--purple); color: var(--text);
+    }
+    .q-btn:active:not(:disabled) { transform: scale(0.97); }
+    .q-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .q-btn.active {
+      background: rgba(127, 119, 221, 0.18);
+      border-color: var(--purple);
+      color: var(--purple2);
+    }
+
     /* ── TRACK ROW ──────────────────────────────────────────────── */
     .track-row {
       background: var(--bg2);
@@ -278,6 +312,17 @@
     <div id="time-display" class="time-display">Ready</div>
   </div>
 
+  <div class="quantize-panel">
+    <span class="field-label">QUANTIZE</span>
+    <div class="quantize-buttons">
+      <button class="q-btn active" data-grid="raw"  type="button">RAW</button>
+      <button class="q-btn"        data-grid="1/4"  type="button">1/4</button>
+      <button class="q-btn"        data-grid="1/8"  type="button">1/8</button>
+      <button class="q-btn"        data-grid="1/16" type="button">1/16</button>
+      <button class="q-btn"        data-grid="1/32" type="button">1/32</button>
+    </div>
+  </div>
+
   <div class="track-row">
     <div class="track-tag">TRACK 1 · PIANO</div>
     <div class="track-info"><b id="device-name">Initializing MIDI…</b></div>
@@ -300,7 +345,8 @@
     import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
     import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
     import { createSong, durationMs } from './js/core/song.js?v=1';
-    import { createRecorder } from './js/core/recorder.js?v=1';
+    import { createRecorder } from './js/core/recorder.js?v=2';
+    import { quantize } from './js/core/quantizer.js?v=1';
     import { createPianoRollRenderer } from './js/render/piano-roll.js?v=1';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS } from './js/config.js?v=1';
@@ -343,6 +389,7 @@
     let playStartedAt = 0;
     let playRafId     = null;
     let playTimeouts  = [];
+    let activeGrid    = 'raw';   // active quantize grid; resets to 'raw' on each new take
 
     // ── DOM refs ──────────────────────────────────────────────────
     const bpmInput    = document.getElementById('bpm-input');
@@ -469,6 +516,7 @@
         if (countInBeat >= 4) {
           countingIn = false;
           recorder.start();
+          activeGrid = 'raw';   // fresh take is unquantized by default
           updateButtons();
           timeDisplay.textContent = 'Rec 0.0s';
           return;
@@ -543,6 +591,18 @@
       updateButtons();
     }
 
+    // ── Quantize buttons ──────────────────────────────────────────
+    const qButtons = document.querySelectorAll('.q-btn');
+    qButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const grid = btn.dataset.grid;
+        quantize(song, grid);
+        activeGrid = grid;
+        updateButtons();
+      });
+    });
+
     // ── Button state machine ──────────────────────────────────────
     function updateButtons() {
       const rec = recorder.isRecording();
@@ -551,6 +611,13 @@
       recordBtn.disabled = rec || countingIn || playing;
       stopBtn.disabled   = !rec && !countingIn && !playing;
       playBtn.disabled   = rec || countingIn || song.notes.length === 0;
+
+      // Quantize buttons: highlight active grid, disable while busy or empty.
+      const lockQuantize = rec || countingIn || playing || song.notes.length === 0;
+      qButtons.forEach(b => {
+        b.classList.toggle('active', b.dataset.grid === activeGrid);
+        b.disabled = lockQuantize;
+      });
     }
 
     // Periodic refresh for live timer + enabling PLAY after a take.
