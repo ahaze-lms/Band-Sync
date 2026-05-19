@@ -444,20 +444,24 @@
     .track-input-select:hover { border-color: var(--purple); }
 
     /* ── PIANO ROLL ─────────────────────────────────────────────── */
+    /* min-height is the floor at which roll-wrap will stop shrinking
+       when other content (e.g. an expanded keyboard) demands more
+       space. Keep it small enough that toggling the keyboard never
+       forces a page scroll — flex:1 will grow the roll into any
+       freed space on its own. */
     .roll-wrap {
       background: var(--bg2);
       border: 0.5px solid var(--bg3);
       border-radius: 12px;
       padding: 6px;
-      flex: 1;
-      min-height: 320px;
+      flex: 1 1 auto;
+      min-height: 220px;
       display: flex; flex-direction: column;
     }
     canvas#roll-canvas {
       width: 100%;
-      height: 100%;
-      min-height: 300px;
-      flex: 1;
+      flex: 1 1 0;
+      min-height: 0;        /* flex children won't shrink below content size unless we say so */
       display: block;
       border-radius: 8px;
       touch-action: none;   /* don't fight page-scroll while tap/drag-editing notes */
@@ -521,8 +525,7 @@
         gap: 12px;
       }
       .top-bar { padding: 10px 14px; }
-      .roll-wrap { min-height: 480px; }
-      canvas#roll-canvas { min-height: 460px; }
+      .roll-wrap { min-height: 320px; }
     }
 
     @media (min-width: 1200px) {
