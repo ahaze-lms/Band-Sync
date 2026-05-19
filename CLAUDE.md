@@ -19,6 +19,8 @@ git push
 
 Never suggest running a local server unless the user explicitly asks. The live site is always the target.
 
+**No PRs, no feature branches, no worktrees.** This is a solo project — Anthony is the only contributor and reviews changes by looking at the live site. Commit directly to `main` and push. If a Claude Code session somehow lands in a worktree on a side branch, flag that to the user at the start so they can relaunch in the main repo folder instead of doing PR ceremony for every change. If you must work from a worktree, push directly to main with `git push origin HEAD:main` rather than opening a PR.
+
 **Cache busting:** when `gameplay.js` or other canvas/module-scope files change significantly, bump the `?v=` query string on the `<script>` tag in the relevant HTML file so browsers don't serve stale modules.
 
 ---
