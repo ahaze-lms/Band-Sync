@@ -25,17 +25,18 @@ export const DEFAULT_KEYBOARD_MAP = {
   // Lower octave
   KeyZ: 60, KeyS: 61, KeyX: 62, KeyD: 63, KeyC: 64,
   KeyV: 65, KeyG: 66, KeyB: 67, KeyH: 68, KeyN: 69,
-  KeyJ: 70, KeyM: 71,
+  KeyJ: 70, KeyM: 71, Comma: 72,  // , = C5 (mirrors Q — easier reach from z-row)
   // Upper octave
   KeyQ: 72, Digit2: 73, KeyW: 74, Digit3: 75, KeyE: 76,
   KeyR: 77, Digit5: 78, KeyT: 79, Digit6: 80, KeyY: 81,
   Digit7: 82, KeyU: 83,
 };
 
-// 'KeyZ' → 'Z', 'Digit2' → '2'
+// 'KeyZ' → 'Z', 'Digit2' → '2', 'Comma' → ','
 function codeToLabel(code) {
   if (code.startsWith('Key'))   return code.slice(3).toUpperCase();
   if (code.startsWith('Digit')) return code.slice(5);
+  if (code === 'Comma') return ',';
   return code;
 }
 
