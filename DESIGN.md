@@ -1,8 +1,8 @@
-# BandSync — Design Document v16
+# BandSync — Design Document v17
 
-> Updated 2026-05-18. Supersedes v15.
+> Updated 2026-05-18. Supersedes v16.
 >
-> Major changes from v15: **§27 Remote Multiplayer phases 5+8 are shipped** — clock-offset measurement via `get_server_time()` RPC, synchronized start handshake (host writes `start_at` + state='starting', all clients convert to local `performance.now()` and call `engine.start({ countoffStartsAt })`), `launchRemoteGame()` game handoff, Phase 8 RLS (`pss_insert_self_in_session`, `pss_select_in_lobby_session`). First successful two-player remote session verified end-to-end: both players started at the same wall-clock instant, played independently, and both saved to HISTORY. Phases 6+7 (score sidebar + shared session row) remain.
+> Major changes from v16: **Lobby chat shipped** — ephemeral Supabase Broadcast chat panel in the lobby waiting room (`subscribeLobby` now returns `sendChat`; own messages pushed locally because Broadcast doesn't echo to sender). **§27 Phases 6+7 shipped** (remote score strip, lobby track picker, end-of-song split write). Remote lead time 3s→8s for drum warm-up. All §27 phases complete.
 
 ---
 
@@ -77,7 +77,7 @@
 
 **Smaller polish items:**
 
-- **Lobby chat** — real-time text chat panel inside the lobby while waiting to ready up. Players need a way to coordinate ("wait I need to switch tracks", "is your audio working?") without leaving the app. Supabase Broadcast on the existing `lobby:<id>` channel is the natural transport.
+- ~~**Lobby chat** — shipped. Ephemeral Broadcast chat on `lobby:<id>` channel.~~
 - **Remote warm-up countdown** — currently the game loads and the count-off fires after a silent 8s lead. A visible "STARTING IN 5…4…3…" countdown (updating the game-time display) would make the wait less ambiguous, especially for drum players finding hand position.
 - Twilio SMS invites (§26 → Future enhancements)
 - Connected-devices "revoke all" button
@@ -670,6 +670,7 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-18 | §27 Remote Multiplayer phases 5+8 shipped. Clock sync: `get_server_time()` RPC (migration 0006) + `measureClockOffset()` in `lobbies.js` (5 round-trip samples, trim outliers). Host clicks START → measures offset → writes `start_at = serverNow + 3s` + state='starting'. Non-host receives via Realtime, converts server epoch to local `performance.now()` using their own measured offset, calls `launchRemoteGame(countoffStartsAt)`. Each client runs a 1-player game started at the same wall-clock instant. Phase 8 RLS: `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session`. First successful 2-player remote session verified end-to-end: both players in separate browsers, both saved to HISTORY. |
 | 2026-05-18 | §27 phase 7 shipped — end-of-song remote persistence. `createSessionHeader()` + `saveSlot()` added to `play-sessions.js`. `onSongComplete()` branches: local → existing `saveSession()`; remote host → `createSessionHeader()` → `updateLobby({ session_id })` → `saveSlot()`; remote non-host → `waitForLobbySessionId()` polls until host stamps `session_id`, then `saveSlot()` via `pss_insert_self_in_session`. Remote lead time bumped 3s→8s for drum warm-up. All four §27 phases (5, 6, 7, 8) now shipped. |
 | 2026-05-18 | §27 phase 6 shipped — remote score strip. Supabase Broadcast channel `game:<lobbyId>` carries score ticks (~1Hz throttle) from each player. Slim strip above game canvas shows all participants' live score / grade / accuracy. Lobby track picker added: instrument + track selects on your own participant row, wired to `setSlotConfig()` so launchRemoteGame reads the correct instrument/track. Lobby form-card styling added. Friend-invite-from-lobby flow: `play_invites.lobby_id` column (migration 0007) + 30-min expiry; home screen detects lobby invites and renders JOIN LOBBY link. Remote play lead time bumped 3 s → 8 s to give drum players time to find hand position before the count-off fires. |
+| 2026-05-18 | Lobby chat shipped — ephemeral Broadcast chat panel in the lobby waiting room. `subscribeLobby()` now returns `{ unsubscribe, sendChat }` and accepts an `onChat` callback. Own messages pushed to local state immediately (Supabase Broadcast does not echo to sender). Chat draft preserved across `paintLobby()` repaints (triggered by participant joins/ready-state changes). Enter key + SEND button; sender name from participant profile. Messages capped at 60; auto-scrolls to bottom. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
