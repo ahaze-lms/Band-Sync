@@ -23,7 +23,7 @@ import { claimCode }          from './services/device-codes.js';
 import * as sessionAttachments from './services/session-attachments.js';
 import * as lobbies            from './services/lobbies.js';
 import { getFriends, sendPlayInvite } from './services/social.js';
-import { saveSession }        from './services/play-sessions.js';
+import { saveSession, createSessionHeader, saveSlot } from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
 import { parseMIDIFile }      from './core/midi-parser.js';
@@ -1115,9 +1115,17 @@ function stopGameTimer() {
 function onSongComplete() {
   // Snapshot stats from the engine's final emission. ctx.lastResults
   // was kept in lockstep by updateScoreCard, so it's the source of truth here.
+  const isRemote    = !!ctx.lobby?.id;
+  const isLobbyHost = isRemote && ctx.lobby.lobby?.host_user_id === ctx.user.id;
+  const myLobbySlot = isRemote
+    ? ctx.lobby.participants?.find(p => p.user_id === ctx.user.id)
+    : null;
+
   const slots = (ctx.lastResults ?? []).map((r, i) => ({
-    slot:        i + 1,
-    identity:    r.identity.kind,
+    // Remote: use the DB-assigned slot number + correct identity kind.
+    // Local:  slot is 1-based index, identity mirrors the setup picker.
+    slot:        isRemote ? (myLobbySlot?.slot ?? 1) : i + 1,
+    identity:    isRemote ? (isLobbyHost ? 'host' : 'friend') : r.identity.kind,
     userId:      r.identity.userId,
     displayName: r.identity.displayName,
     instrument:  r.instrument,
@@ -1136,15 +1144,44 @@ function onSongComplete() {
   // Fire the save in the background — don't block the results screen.
   // saveStatus drives the small badge in renderResults().
   ctx.saveStatus = { state: 'saving' };
-  saveSession({
-    hostUserId:     ctx.user.id,
-    song:           { file: ctx.song.file, title: ctx.song.title },
-    speedLevel:     ctx.setup?.speedLevel     ?? DEFAULT_SPEED_LEVEL,
-    hitWindowLevel: ctx.setup?.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
-    startedAt:      ctx.gameStartedAt,
-    endedAt:        new Date().toISOString(),
-    slots,
-  }).then(sessionId => {
+
+  let saveProm;
+  if (!isRemote) {
+    // Local / couch coop — host writes all slots in one transaction.
+    saveProm = saveSession({
+      hostUserId:     ctx.user.id,
+      song:           { file: ctx.song.file, title: ctx.song.title },
+      speedLevel:     ctx.setup?.speedLevel     ?? DEFAULT_SPEED_LEVEL,
+      hitWindowLevel: ctx.setup?.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
+      startedAt:      ctx.gameStartedAt,
+      endedAt:        new Date().toISOString(),
+      slots,
+    });
+  } else if (isLobbyHost) {
+    // Remote host: create the session header, stamp session_id on the
+    // lobby (so non-hosts can find it), then write own slot.
+    const lobbyId = ctx.lobby.id;
+    saveProm = createSessionHeader({
+      hostUserId:     ctx.user.id,
+      song:           { file: ctx.song.file, title: ctx.song.title },
+      speedLevel:     ctx.setup?.speedLevel     ?? DEFAULT_SPEED_LEVEL,
+      hitWindowLevel: ctx.setup?.hitWindowLevel ?? DEFAULT_HIT_WINDOW_LEVEL,
+      startedAt:      ctx.gameStartedAt,
+      endedAt:        new Date().toISOString(),
+      playerCount:    ctx.lobby.participants?.length ?? 1,
+    }).then(sessionId =>
+      lobbies.updateLobby(lobbyId, { session_id: sessionId })
+        .then(() => saveSlot(sessionId, slots[0]))
+        .then(() => sessionId)
+    );
+  } else {
+    // Remote non-host: poll until the host has stamped session_id on
+    // the lobby, then write own slot via pss_insert_self_in_session.
+    saveProm = waitForLobbySessionId(ctx.lobby.id)
+      .then(sessionId => saveSlot(sessionId, slots[0]).then(() => sessionId));
+  }
+
+  saveProm.then(sessionId => {
     ctx.saveStatus = { state: 'saved', sessionId };
     refreshSaveStatusUI();
     // Refresh PBs so the next setup screen reads current data.
@@ -1623,6 +1660,20 @@ async function launchRemoteGame(countoffStartsAt) {
   // with the synchronized countoff timestamp — no "▶ START SONG" warmup.
   await renderGame();
   startSongRun({ countoffStartsAt });
+}
+
+// ── REMOTE SESSION SAVE (Phase 7) ──────────────────────────────────
+
+// Poll getLobby() until the host has written session_id to the lobby
+// row. Returns the session_id string. Throws after timeoutMs.
+async function waitForLobbySessionId(lobbyId, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const lobby = await lobbies.getLobby(lobbyId);
+    if (lobby?.session_id) return lobby.session_id;
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  throw new Error('Timed out waiting for the host to create the session (30s)');
 }
 
 // ── REMOTE SCORE STRIP (Phase 6) ───────────────────────────────────

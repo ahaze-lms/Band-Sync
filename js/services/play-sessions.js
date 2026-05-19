@@ -89,3 +89,58 @@ export async function saveSession(session) {
 
   return sess.id;
 }
+
+// ── Remote multiplayer helpers (Phase 7) ─────────────────────────
+//
+// Remote games use a split write: the lobby host creates the parent
+// session row and stamps session_id on the lobby. Each non-host
+// participant polls for that stamp, then inserts their own slot via
+// the pss_insert_self_in_session RLS policy.
+
+// Create just the play_sessions header row (no slots). Returns the
+// new session's id. Called by the lobby host at end-of-song.
+export async function createSessionHeader({ hostUserId, song, speedLevel, hitWindowLevel, startedAt, endedAt, playerCount }) {
+  const { data: sess, error } = await supabase
+    .from('play_sessions')
+    .insert({
+      host_user_id:     hostUserId,
+      song_file:        song.file,
+      song_title:       song.title,
+      started_at:       startedAt,
+      ended_at:         endedAt,
+      speed_level:      speedLevel,
+      hit_window_level: hitWindowLevel,
+      player_count:     playerCount,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return sess.id;
+}
+
+// Insert one slot row. Works for the host (pss_insert_host) and for
+// remote participants (pss_insert_self_in_session — requires
+// user_in_lobby_session() to return true for this session_id).
+export async function saveSlot(sessionId, slot) {
+  const { error } = await supabase
+    .from('play_session_slots')
+    .insert({
+      session_id:   sessionId,
+      slot:         slot.slot,
+      identity:     slot.identity,
+      user_id:      slot.userId,
+      display_name: slot.displayName,
+      instrument:   slot.instrument,
+      track_index:  slot.trackIndex,
+      track_name:   slot.trackName,
+      score:        slot.score     ?? 0,
+      accuracy:     slot.accuracy  ?? null,
+      grade:        slot.grade     ?? null,
+      perfect:      slot.perfect   ?? 0,
+      good:         slot.good      ?? 0,
+      miss:         slot.miss      ?? 0,
+      wrong:        slot.wrong     ?? 0,
+      max_combo:    slot.maxCombo  ?? 0,
+    });
+  if (error) throw error;
+}
