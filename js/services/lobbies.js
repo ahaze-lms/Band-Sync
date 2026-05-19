@@ -180,6 +180,33 @@ export async function listParticipants(lobbyId) {
   return (data ?? []).map(r => ({ ...r, profile: profiles[r.user_id] ?? null }));
 }
 
+// ── Clock offset measurement (Phase 5) ───────────────────────────
+//
+// Calls get_server_time() `samples` times, trims the outlier on each
+// end, and averages the remaining offsets.
+//
+// Returns offset (ms) such that: serverMs ≈ Date.now() - offset.
+// A positive offset means the local clock is ahead of the server.
+//
+// The caller converts a server-epoch timestamp to local performance.now():
+//   localPerfMs = serverEpochMs + offset - (Date.now() - performance.now())
+//
+export async function measureClockOffset(samples = 5) {
+  const offsets = [];
+  for (let i = 0; i < samples; i++) {
+    const t0 = Date.now();
+    const { data, error } = await supabase.rpc('get_server_time');
+    if (error) throw error;
+    const t1     = Date.now();
+    const server = new Date(data).getTime();
+    // Approximate server time at local midpoint.
+    offsets.push(Math.round((t0 + t1) / 2 - server));
+  }
+  offsets.sort((a, b) => a - b);
+  const trimmed = offsets.slice(1, -1);   // drop one outlier each side
+  return Math.round(trimmed.reduce((s, v) => s + v, 0) / trimmed.length);
+}
+
 // ── Realtime ─────────────────────────────────────────────────────
 
 // Subscribe to a single lobby's live changes. Returns an unsubscribe

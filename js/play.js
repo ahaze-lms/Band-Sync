@@ -66,7 +66,8 @@ const ctx = {
   attachments:   null,  // { 'p2': { token, userId, displayName, avatar, accentColor }, ... }
   pairedFriends: null,  // [{ token, user_id, display_name, ... }] — friends ever paired with this device, for dropdown
   mode:          'local',  // 'local' (default) | 'remote' — controls what song-select click does
-  lobby:         null,     // { id, lobby, participants, unsubscribe } when in lobby state
+  lobby:         null,     // { id, lobby, participants, unsubscribe, gameLaunched } when in lobby
+  clockOffset:   null,     // ms: Date.now() - serverTime, measured on lobby entry for Phase 5
 };
 
 let setupTeardown = null;
@@ -941,7 +942,7 @@ async function renderGame() {
 // Flip from warm-up state into the actual run. Snapshot PBs first so
 // onSongComplete can detect a fresh best, capture startedAt for the
 // session record, swap the controls, kick off the timer.
-function startSongRun() {
+function startSongRun(engineOpts = {}) {
   if (!ctx.activeGame) return;
   ctx.oldBests      = { ...(ctx.bests || {}) };
   ctx.saveStatus    = null;
@@ -958,7 +959,7 @@ function startSongRun() {
   if (pauseBtn)   { pauseBtn.style.display   = ''; pauseBtn.textContent = '⏸ PAUSE'; }
   if (restartBtn) { restartBtn.style.display = ''; }
 
-  ctx.activeGame.start();
+  ctx.activeGame.start(engineOpts);
   startGameTimer();
 }
 
@@ -1224,7 +1225,13 @@ async function renderLobby() {
     unsubscribe();
     if (ctx.lobby) ctx.lobby.unsubscribe = null;
   };
-  ctx.lobby.unsubscribe = unsubscribe;
+  ctx.lobby.unsubscribe  = unsubscribe;
+  ctx.lobby.gameLaunched = false;
+
+  // Measure clock offset proactively so it's ready when START is pressed.
+  lobbies.measureClockOffset()
+    .then(offset => { ctx.clockOffset = offset; })
+    .catch(err  => console.warn('clock offset measurement failed', err));
 
   await refreshLobbyData();
 }
@@ -1242,6 +1249,22 @@ async function refreshLobbyData() {
     }
     ctx.lobby.lobby = lobby;
     ctx.lobby.participants = participants;
+
+    // Non-host: when state flips to 'starting', launch the game locally.
+    // Guard gameLaunched so repeated Realtime ticks don't double-launch.
+    if (lobby.state === 'starting' && lobby.start_at
+        && lobby.host_user_id !== ctx.user.id
+        && !ctx.lobby.gameLaunched) {
+      ctx.lobby.gameLaunched = true;
+      const serverStartMs  = new Date(lobby.start_at).getTime();
+      const clockOffset    = ctx.clockOffset ?? 0;
+      // Convert server epoch → local performance.now():
+      //   localEpoch = serverEpoch + offset (where offset = localClock - serverClock)
+      //   perfMs     = localEpoch - (Date.now() - performance.now())
+      const localStartPerfMs = (serverStartMs + clockOffset) - (Date.now() - performance.now());
+      launchRemoteGame(localStartPerfMs);
+      return;
+    }
 
     // If the host abandoned while we were watching, bail out gracefully.
     if (lobby.state === 'abandoned' && lobby.host_user_id !== ctx.user.id) {
@@ -1272,7 +1295,7 @@ function paintLobby() {
 
   const stateLabels = {
     waiting:   'WAITING FOR PLAYERS',
-    ready:     'LOCKED IN — START HANDSHAKE COMING (PHASE 5)',
+    ready:     'ALL READY',
     starting:  'SYNCING CLOCKS…',
     playing:   'IN GAME',
     done:      'GAME FINISHED',
@@ -1369,10 +1392,29 @@ async function toggleReady() {
 }
 
 async function startLobby() {
-  // Phase 3+4 just transitions state. Phase 5 wires the clock-sync
-  // handshake and phase 6 hands off to the gameplay engine.
+  const lobbyId = ctx.lobby.id;
   try {
-    await lobbies.setState(ctx.lobby.id, 'ready');
+    // Ensure clock offset is ready (should already be from lobby entry).
+    if (ctx.clockOffset === null) {
+      ctx.clockOffset = await lobbies.measureClockOffset();
+    }
+
+    // Compute when the count-off should fire in server time.
+    // serverNow = Date.now() - clockOffset (our best estimate of server's current epoch).
+    // Add 3 s of lead time so every client has time to load the song.
+    const serverNow        = Date.now() - ctx.clockOffset;
+    const serverStartEpoch = serverNow + 3000;
+
+    // Write start_at + transition to 'starting' in one update.
+    await lobbies.updateLobby(lobbyId, {
+      state:    'starting',
+      start_at: new Date(serverStartEpoch).toISOString(),
+    });
+
+    // Host launches immediately — clock offset cancels out, so
+    // localStartPerfMs = performance.now() + 3000 for the host.
+    ctx.lobby.gameLaunched = true;
+    launchRemoteGame(performance.now() + 3000);
   } catch (err) {
     console.error('startLobby failed', err);
   }
@@ -1428,6 +1470,47 @@ async function exitLobby({ skipServer = false } = {}) {
   history.replaceState({}, '', url.toString());
 
   renderSongSelect();
+}
+
+// Transition from the lobby state to a live game for remote multiplayer.
+// Each player runs a single-player game (their own slot only) started at
+// the same wall-clock instant. countoffStartsAt is a performance.now()
+// value computed from the shared server start_at + each client's offset.
+async function launchRemoteGame(countoffStartsAt) {
+  const lobby   = ctx.lobby?.lobby;
+  const mySlot  = ctx.lobby?.participants?.find(p => p.user_id === ctx.user.id);
+  if (!lobby) return;
+
+  // Tear down lobby Realtime subscription before navigating away.
+  if (ctx.lobby?.unsubscribe) {
+    ctx.lobby.unsubscribe();
+    ctx.lobby.unsubscribe = null;
+    setupTeardown = null;
+  }
+
+  const url = new URL(location.href);
+  url.searchParams.delete('lobby');
+  history.replaceState({}, '', url.toString());
+
+  // Populate ctx.song + ctx.setup from lobby config.
+  ctx.song = { file: lobby.song_file, title: lobby.song_title };
+  ctx.setup = {
+    playerCount:     1,
+    speedLevel:      lobby.speed_level      ?? DEFAULT_SPEED_LEVEL,
+    hitWindowLevel:  lobby.hit_window_level ?? DEFAULT_HIT_WINDOW_LEVEL,
+    songFile:        lobby.song_file,
+    players: [{
+      identity:   makeHostIdentity(),
+      trackIndex: mySlot?.track_index ?? 0,
+      deviceId:   DEVICE_ID_KEYBOARD,
+      instrument: mySlot?.instrument  ?? 'piano',
+    }],
+  };
+
+  // Render game screen (loads MIDI, creates engine), then start immediately
+  // with the synchronized countoff timestamp — no "▶ START SONG" warmup.
+  await renderGame();
+  startSongRun({ countoffStartsAt });
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────
