@@ -773,8 +773,9 @@
       gap: 16px;
       margin-bottom: 24px;
     }
-    .lobby-cards .form-card:last-child {
-      grid-column: 1 / -1;   /* share-link card spans full width */
+    /* Cards 3+ (share-link, chat) span both columns */
+    .lobby-cards .form-card:nth-child(n+3) {
+      grid-column: 1 / -1;
     }
 
     .lobby-roster { display: flex; flex-direction: column; gap: 2px; }
@@ -913,6 +914,54 @@
       width: auto;
     }
     .lobby-slot-sel:hover { border-color: var(--purple); }
+
+    /* ── LOBBY CHAT ──────────────────────────────────────────────── */
+    .lobby-chat-card { display: flex; flex-direction: column; gap: 8px; }
+    .lobby-chat-list {
+      height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 6px 8px;
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: 6px;
+    }
+    .chat-empty {
+      font-size: 11px; color: var(--dim); text-align: center;
+      padding: 20px 0; font-style: italic; margin: auto;
+    }
+    .chat-msg {
+      display: flex; gap: 8px; align-items: baseline;
+      font-size: 12px; padding: 3px 6px; border-radius: 4px;
+    }
+    .chat-msg-me { background: rgba(127,119,221,0.08); }
+    .chat-sender {
+      color: var(--purple2); font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .chat-msg-me .chat-sender { color: var(--teal2); }
+    .chat-text { color: var(--text); word-break: break-word; flex: 1; }
+    .lobby-chat-input-row { display: flex; gap: 8px; }
+    .lobby-chat-input {
+      flex: 1; min-width: 0;
+      background: var(--bg3);
+      border: 0.5px solid var(--border2);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px; font-family: inherit;
+    }
+    .lobby-chat-input:focus { outline: none; border-color: var(--purple); }
+    .lobby-chat-input::placeholder { color: var(--dim); font-style: italic; }
+    .btn-chat-send {
+      background: var(--purple); border: 0; color: #fff;
+      padding: 0 16px; border-radius: 6px;
+      font-size: 10px; letter-spacing: 2px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-chat-send:hover { filter: brightness(1.1); }
 
     /* ── REMOTE SCORE STRIP (game screen, Phase 6) ───────────────── */
     .remote-score-strip {

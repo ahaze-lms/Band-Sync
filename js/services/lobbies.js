@@ -218,17 +218,28 @@ export async function measureClockOffset(samples = 5) {
 // Callbacks get the raw postgres_changes payload — usually you'll
 // just call your existing "re-fetch state" function and ignore the
 // payload contents.
-export function subscribeLobby(lobbyId, { onLobbyChange, onParticipantChange } = {}) {
+// onChat receives { userId, displayName, text, ts }.
+// Note: Supabase Broadcast does NOT echo back to the sender — callers
+// must push their own messages to local state immediately after sending.
+// Returns { unsubscribe, sendChat } instead of just the unsubscribe fn.
+export function subscribeLobby(lobbyId, { onLobbyChange, onParticipantChange, onChat } = {}) {
   const channel = supabase.channel(`lobby:${lobbyId}`)
     .on('postgres_changes',
         { event: '*', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
         payload => onLobbyChange?.(payload))
     .on('postgres_changes',
         { event: '*', schema: 'public', table: 'lobby_participants', filter: `lobby_id=eq.${lobbyId}` },
-        payload => onParticipantChange?.(payload))
-    .subscribe();
+        payload => onParticipantChange?.(payload));
 
-  return () => { supabase.removeChannel(channel); };
+  if (onChat)
+    channel.on('broadcast', { event: 'chat' }, ({ payload }) => onChat(payload));
+
+  channel.subscribe();
+
+  return {
+    unsubscribe: () => supabase.removeChannel(channel),
+    sendChat:    (payload) => channel.send({ type: 'broadcast', event: 'chat', payload }),
+  };
 }
 
 // Subscribe to in-game score broadcasts for a remote session (Phase 6).

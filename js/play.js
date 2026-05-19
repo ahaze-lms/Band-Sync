@@ -1269,6 +1269,32 @@ function resultsRow(i, r) {
   `;
 }
 
+// ── LOBBY CHAT ─────────────────────────────────────────────────────
+
+function onLobbyChat(payload) {
+  if (!ctx.lobby || !payload?.text) return;
+  ctx.lobby.chatMessages.push(payload);
+  if (ctx.lobby.chatMessages.length > 60) ctx.lobby.chatMessages.shift();
+  // Patch just the message list so the input field is not disrupted.
+  const list = document.getElementById('lobby-chat-list');
+  if (!list) return;
+  list.innerHTML = renderChatMessages(ctx.lobby.chatMessages);
+  list.scrollTop = list.scrollHeight;
+}
+
+function renderChatMessages(messages) {
+  if (!messages.length) {
+    return '<div class="chat-empty">No messages yet — say hi!</div>';
+  }
+  return messages.map(m => {
+    const isMe = m.userId === ctx.user.id;
+    return `<div class="chat-msg${isMe ? ' chat-msg-me' : ''}">
+      <span class="chat-sender">${esc(m.displayName)}</span>
+      <span class="chat-text">${esc(m.text)}</span>
+    </div>`;
+  }).join('');
+}
+
 // ── STATE: LOBBY (remote multiplayer) ──────────────────────────────
 
 async function renderLobby() {
@@ -1282,15 +1308,18 @@ async function renderLobby() {
 
   // Subscribe to live changes; teardown wired through leaveCurrentState.
   const lobbyId = ctx.lobby.id;
-  const unsubscribe = lobbies.subscribeLobby(lobbyId, {
+  const { unsubscribe, sendChat } = lobbies.subscribeLobby(lobbyId, {
     onLobbyChange:       () => refreshLobbyData(),
     onParticipantChange: () => refreshLobbyData(),
+    onChat:              (payload) => onLobbyChat(payload),
   });
   setupTeardown = () => {
     unsubscribe();
     if (ctx.lobby) ctx.lobby.unsubscribe = null;
   };
   ctx.lobby.unsubscribe  = unsubscribe;
+  ctx.lobby.sendChat     = sendChat;
+  ctx.lobby.chatMessages = [];
   ctx.lobby.gameLaunched = false;
   ctx.lobby.friends      = [];
   ctx.lobby.invited      = new Set();   // user_ids already invited this session
@@ -1373,6 +1402,10 @@ function paintLobby() {
   const allReady  = participants.length > 0 && readyCnt === participants.length;
   const inviteUrl = new URL(`play.html?lobby=${lobby.id}`, location.href).href;
 
+  // Preserve any in-progress chat text so it survives lobby repaints
+  // (triggered by participant joins/readies — common while chatting).
+  const savedChatDraft = document.getElementById('lobby-chat-input')?.value ?? '';
+
   const stateLabels = {
     waiting:   'WAITING FOR PLAYERS',
     ready:     'ALL READY',
@@ -1413,6 +1446,18 @@ function paintLobby() {
             <button class="btn-copy-invite" data-action="copy-invite">COPY</button>
           </div>
         </div>
+
+        <div class="form-card lobby-chat-card">
+          <div class="form-card-title">CHAT</div>
+          <div class="lobby-chat-list" id="lobby-chat-list">
+            ${renderChatMessages(ctx.lobby.chatMessages ?? [])}
+          </div>
+          <div class="lobby-chat-input-row">
+            <input type="text" class="lobby-chat-input" id="lobby-chat-input"
+                   placeholder="Say something…" maxlength="200" autocomplete="off">
+            <button class="btn-chat-send" id="btn-chat-send">SEND</button>
+          </div>
+        </div>
       </div>
 
       <div class="lobby-actions">
@@ -1450,6 +1495,31 @@ function paintLobby() {
       lobbies.setSlotConfig(ctx.lobby.id, field === 'track' ? { track_index: val } : { instrument: val })
         .catch(err => console.error('setSlotConfig failed', err));
     });
+  });
+
+  // Chat send — Broadcast does not echo to sender, so push own message
+  // to local state immediately, then scroll the list to the bottom.
+  const chatInput = document.getElementById('lobby-chat-input');
+  const chatSend  = document.getElementById('btn-chat-send');
+  if (chatInput && savedChatDraft) chatInput.value = savedChatDraft;
+
+  const doSendChat = () => {
+    const text = chatInput?.value.trim();
+    if (!text || !ctx.lobby?.sendChat) return;
+    chatInput.value = '';
+    const senderName = me?.profile?.display_name || me?.profile?.username
+                    || ctx.profile?.display_name || 'Player';
+    const msg = { userId: ctx.user.id, displayName: senderName, text, ts: Date.now() };
+    ctx.lobby.sendChat(msg);
+    onLobbyChat(msg);   // push own message locally (no echo from server)
+  };
+  chatSend?.addEventListener('click', doSendChat);
+  chatInput?.addEventListener('keydown', e => { if (e.key === 'Enter') doSendChat(); });
+
+  // Scroll chat to bottom after repaint.
+  requestAnimationFrame(() => {
+    const list = document.getElementById('lobby-chat-list');
+    if (list) list.scrollTop = list.scrollHeight;
   });
 }
 
