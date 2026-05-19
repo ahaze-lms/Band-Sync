@@ -1654,9 +1654,13 @@ function stopLobbyWarmup() {
 
 function startPianoWarmup(canvasEl, deviceId) {
   const heldNotes = new Set();
-  const renderer  = createPianoRenderer(canvasEl, { color: PLAYER_COLORS[0],
-                                                     noteMin: PIANO_NOTE_MIN,
-                                                     noteMax: PIANO_NOTE_MAX });
+  const renderer  = createPianoRenderer(canvasEl, {
+    color:    PLAYER_COLORS[0],
+    noteMin:  PIANO_NOTE_MIN,
+    noteMax:  PIANO_NOTE_MAX,
+    onKeyDown: note => { resumeIfSuspended(); heldNotes.add(note); playPianoNote(note, 80); },
+    onKeyUp:   note => { heldNotes.delete(note); },
+  });
   function onNoteEvent(evt) {
     resumeIfSuspended();
     if (evt.type === 'noteOn' && evt.velocity > 0) {

@@ -148,27 +148,24 @@ export function createPianoRenderer(canvas, options = {}) {
 
   const mouseHeldNotes = new Set();
 
+  function hitTestKey(clientX, clientY) {
+    const r  = canvas.getBoundingClientRect();
+    const mx = (clientX - r.left) * (CANVAS_W / r.width);
+    const my = (clientY - r.top)  * (CANVAS_H / r.height);
+    if (my < HIGHWAY_H) return null;
+    for (const kr of blackKeyRects) {
+      if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) return kr.note;
+    }
+    for (const kr of whiteKeyRects) {
+      if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) return kr.note;
+    }
+    return null;
+  }
+
   // ── Mouse input ───────────────────────────────────────────────
   canvas.addEventListener('mousedown', e => {
-    const r  = canvas.getBoundingClientRect();
-    const mx = (e.clientX - r.left) * (CANVAS_W / r.width);
-    const my = (e.clientY - r.top)  * (CANVAS_H / r.height);
-    if (my < HIGHWAY_H) return;
-
-    // Black keys first (they sit on top of white keys visually)
-    let hit = null;
-    for (const kr of blackKeyRects) {
-      if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) { hit = kr.note; break; }
-    }
-    if (hit === null) {
-      for (const kr of whiteKeyRects) {
-        if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) { hit = kr.note; break; }
-      }
-    }
-    if (hit !== null) {
-      mouseHeldNotes.add(hit);
-      if (onKeyDown) onKeyDown(hit);
-    }
+    const hit = hitTestKey(e.clientX, e.clientY);
+    if (hit !== null) { mouseHeldNotes.add(hit); if (onKeyDown) onKeyDown(hit); }
   });
 
   const releaseMouse = () => {
@@ -177,6 +174,43 @@ export function createPianoRenderer(canvas, options = {}) {
   };
   canvas.addEventListener('mouseup',    releaseMouse);
   canvas.addEventListener('mouseleave', releaseMouse);
+
+  // ── Touch input ───────────────────────────────────────────────
+  // Track which note each touch identifier is currently holding.
+  const touchNotes = new Map(); // touchId → midiNote
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const hit = hitTestKey(t.clientX, t.clientY);
+      if (hit !== null) { touchNotes.set(t.identifier, hit); if (onKeyDown) onKeyDown(hit); }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const prev = touchNotes.get(t.identifier) ?? null;
+      const hit  = hitTestKey(t.clientX, t.clientY);
+      if (hit !== prev) {
+        if (prev !== null && onKeyUp) onKeyUp(prev);
+        if (hit  !== null && onKeyDown) onKeyDown(hit);
+        if (hit !== null) touchNotes.set(t.identifier, hit);
+        else touchNotes.delete(t.identifier);
+      }
+    }
+  }, { passive: false });
+
+  const releaseTouch = e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const prev = touchNotes.get(t.identifier);
+      if (prev != null && onKeyUp) onKeyUp(prev);
+      touchNotes.delete(t.identifier);
+    }
+  };
+  canvas.addEventListener('touchend',    releaseTouch, { passive: false });
+  canvas.addEventListener('touchcancel', releaseTouch, { passive: false });
 
 
   // ══════════════════════════════════════════════════════════════
