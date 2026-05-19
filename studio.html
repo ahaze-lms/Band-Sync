@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BandSync — Song Creator</title>
+  <!-- Bundled Supabase client (no CDN round-trip). Required by
+       js/services/supabase.js for auth + the songs library. -->
+  <script src="js/vendor/supabase.umd.js"></script>
   <style>
     :root {
       --bg:     #101022;
@@ -179,6 +182,124 @@
       color: var(--purple2);
     }
 
+    /* ── SONG BAR (title + library buttons) ─────────────────────── */
+    .song-bar {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
+    .song-title {
+      flex: 1; min-width: 140px;
+      min-height: 40px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 15px; font-weight: 500;
+      font-family: inherit;
+    }
+    .song-title::placeholder { color: var(--dim); font-style: italic; }
+    .song-title:focus { outline: none; border-color: var(--purple); }
+    .song-actions {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .s-btn {
+      min-height: 40px;
+      padding: 0 14px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 6px;
+      font-size: 12px; letter-spacing: 1px; font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    }
+    .s-btn:hover:not(:disabled) { border-color: var(--purple); }
+    .s-btn:active:not(:disabled) { transform: scale(0.97); }
+    .s-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .s-btn.primary {
+      border-color: var(--purple); color: var(--purple2);
+    }
+    .s-btn.primary:hover:not(:disabled) {
+      background: rgba(127, 119, 221, 0.18);
+    }
+    .save-status {
+      font-size: 10px; letter-spacing: 1px; color: var(--dim);
+      flex-basis: 100%;
+    }
+    .save-status.error { color: var(--red); }
+    .save-status.success { color: var(--teal); }
+
+    /* ── SONGS MODAL ────────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+      z-index: 100;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      width: 100%; max-width: 560px;
+      max-height: 80dvh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 18px;
+      border-bottom: 0.5px solid var(--bg3);
+    }
+    .modal-title {
+      font-size: 13px; letter-spacing: 3px; font-weight: 600; color: var(--text);
+    }
+    .modal-close {
+      background: transparent; border: none; color: var(--dim);
+      font-size: 22px; cursor: pointer;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body {
+      padding: 14px 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .songs-list { display: flex; flex-direction: column; gap: 8px; }
+    .song-row {
+      background: var(--bg3);
+      border: 0.5px solid var(--bg3);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .song-row-info { flex: 1; min-width: 0; }
+    .song-row-name {
+      font-size: 14px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .song-row-meta {
+      font-size: 10px; letter-spacing: 1px; color: var(--dim);
+      margin-top: 2px;
+    }
+    .song-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .song-row .s-btn { min-height: 32px; padding: 0 10px; font-size: 11px; }
+    .modal-empty, .modal-signin {
+      text-align: center;
+      color: var(--dim);
+      padding: 28px 16px;
+      font-size: 12px; letter-spacing: 1px;
+    }
+    .modal-signin a {
+      color: var(--purple2);
+      text-decoration: none;
+    }
+    .modal-signin a:hover { text-decoration: underline; }
+
     /* ── DURATION PANEL (selected-note resize) ──────────────────── */
     .duration-panel {
       background: var(--bg2);
@@ -324,6 +445,16 @@
     <div style="width:80px"></div>
   </div>
 
+  <div class="song-bar">
+    <input id="song-title" class="song-title" type="text" placeholder="Untitled song" maxlength="80">
+    <div class="song-actions">
+      <button id="new-btn"  class="s-btn"          type="button">NEW</button>
+      <button id="open-btn" class="s-btn"          type="button" disabled>OPEN</button>
+      <button id="save-btn" class="s-btn primary"  type="button" disabled>SAVE</button>
+    </div>
+    <div id="save-status" class="save-status"></div>
+  </div>
+
   <div class="transport">
     <div class="transport-section">
       <span class="field-label">BPM</span>
@@ -387,15 +518,34 @@
     <canvas id="touch-keyboard"></canvas>
   </div>
 
+  <!-- ── SONGS MODAL ───────────────────────────────────────────── -->
+  <div class="modal-backdrop" id="songs-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">YOUR SONGS</div>
+        <button class="modal-close" id="songs-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="songs-list" id="songs-list"></div>
+        <div class="modal-empty"  id="songs-empty"  hidden>You haven't saved any songs yet.</div>
+        <div class="modal-signin" id="songs-signin" hidden>
+          <a href="index.html">Sign in</a> to save and load songs.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
     import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
-    import { createSong, durationMs, addNote, removeNote } from './js/core/song.js?v=2';
+    import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=2';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
     import { createPianoRollRenderer } from './js/render/piano-roll.js?v=2';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS } from './js/config.js?v=1';
+    import { getUser, onAuthChange } from './js/services/auth.js?v=1';
+    import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=1';
 
     // ── State ─────────────────────────────────────────────────────
     const song      = createSong(120);
@@ -467,6 +617,10 @@
     let playRafId     = null;
     let playTimeouts  = [];
     let activeGrid    = 'raw';   // active quantize grid; resets to 'raw' on each new take
+
+    // ── Library state (Phase 4) ───────────────────────────────────
+    let currentUser   = null;    // null = signed out, library buttons disabled
+    let currentSongId = null;    // null = unsaved sketch; otherwise the songs.id we're editing
 
     // ── DOM refs ──────────────────────────────────────────────────
     const bpmInput    = document.getElementById('bpm-input');
@@ -717,6 +871,214 @@
         const matches = Math.abs(beats * beatMs - selected.durationMs) < DURATION_MATCH_TOLERANCE_MS;
         b.classList.toggle('active', matches);
       });
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // LIBRARY (Phase 4) — save / load / delete songs
+    // ════════════════════════════════════════════════════════════════
+    const titleInput  = document.getElementById('song-title');
+    const newBtn      = document.getElementById('new-btn');
+    const openBtn     = document.getElementById('open-btn');
+    const saveBtn     = document.getElementById('save-btn');
+    const saveStatus  = document.getElementById('save-status');
+    const modal       = document.getElementById('songs-modal');
+    const modalClose  = document.getElementById('songs-modal-close');
+    const songsList   = document.getElementById('songs-list');
+    const songsEmpty  = document.getElementById('songs-empty');
+    const songsSignin = document.getElementById('songs-signin');
+
+    // Pull the current user once on boot, then keep currentUser in
+    // sync as the auth state changes (sign-in / sign-out from other
+    // tabs etc).
+    (async () => {
+      currentUser = await getUser();
+      updateLibraryButtons();
+    })();
+    onAuthChange(user => {
+      currentUser = user;
+      // Switching accounts wipes the in-memory songId — a saved song
+      // belongs to a specific user and shouldn't follow them across
+      // sessions.
+      if (!user) currentSongId = null;
+      updateLibraryButtons();
+    });
+
+    function updateLibraryButtons() {
+      const signedIn = !!currentUser;
+      saveBtn.disabled = !signedIn;
+      openBtn.disabled = !signedIn;
+      // NEW is always available — it's a local operation.
+      if (!signedIn) {
+        saveBtn.title = 'Sign in to save songs';
+        openBtn.title = 'Sign in to load saved songs';
+      } else {
+        saveBtn.title = '';
+        openBtn.title = '';
+      }
+    }
+
+    // A brief inline status message under the song-bar. Auto-clears
+    // after 3s. `kind` is '' / 'success' / 'error'.
+    let statusTimer = null;
+    function setStatus(text, kind = '') {
+      saveStatus.textContent = text || '';
+      saveStatus.classList.remove('success', 'error');
+      if (kind) saveStatus.classList.add(kind);
+      if (statusTimer) clearTimeout(statusTimer);
+      if (text) statusTimer = setTimeout(() => setStatus(''), 3000);
+    }
+
+    // Discard-confirm only when the user is about to lose unsaved work.
+    // Phase 4 uses a simple heuristic: any notes exist + no currentSongId
+    // (or notes exist + we want to overwrite the current state).
+    function confirmDiscardIfDirty(reason) {
+      if (song.notes.length === 0) return true;
+      return confirm(`${reason}\n\nYou have ${song.notes.length} notes that may not be saved. Continue?`);
+    }
+
+    // ── NEW ───────────────────────────────────────────────────────
+    newBtn.addEventListener('click', () => {
+      if (!confirmDiscardIfDirty('Start a new song?')) return;
+      clearNotes(song);
+      renderer.setSelected(null);
+      currentSongId = null;
+      titleInput.value = '';
+      activeGrid = 'raw';
+      setStatus('New song');
+      updateButtons();
+    });
+
+    // ── SAVE ──────────────────────────────────────────────────────
+    saveBtn.addEventListener('click', async () => {
+      if (!currentUser) return;
+      const name = (titleInput.value || '').trim() || 'Untitled';
+      // Keep the trimmed name displayed so the user sees what was saved.
+      titleInput.value = name;
+      saveBtn.disabled = true;
+      setStatus('Saving…');
+      try {
+        if (currentSongId) {
+          await updateSong(currentSongId, { name, song });
+          setStatus(`Saved "${name}"`, 'success');
+        } else {
+          const row = await createSongRow({
+            ownerId: currentUser.id,
+            name,
+            song,
+          });
+          currentSongId = row.id;
+          setStatus(`Saved "${name}"`, 'success');
+        }
+      } catch (err) {
+        console.error('Save failed', err);
+        setStatus(`Save failed: ${err.message || err}`, 'error');
+      }
+      saveBtn.disabled = false;
+      updateLibraryButtons();
+    });
+
+    // ── OPEN — modal flow ─────────────────────────────────────────
+    openBtn.addEventListener('click', () => openSongsModal());
+    modalClose.addEventListener('click', () => closeSongsModal());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeSongsModal();   // click backdrop to close
+    });
+
+    async function openSongsModal() {
+      modal.hidden = false;
+      songsList.innerHTML = '';
+      songsEmpty.hidden = true;
+      songsSignin.hidden = !!currentUser;
+      if (!currentUser) return;
+      songsList.innerHTML = '<div class="modal-empty">Loading…</div>';
+      try {
+        const rows = await listSongs();
+        songsList.innerHTML = '';
+        if (rows.length === 0) {
+          songsEmpty.hidden = false;
+          return;
+        }
+        for (const row of rows) {
+          songsList.appendChild(renderSongRow(row));
+        }
+      } catch (err) {
+        console.error('listSongs failed', err);
+        songsList.innerHTML = `<div class="modal-empty">Couldn't load songs: ${err.message || err}</div>`;
+      }
+    }
+
+    function closeSongsModal() {
+      modal.hidden = true;
+    }
+
+    function renderSongRow(row) {
+      const div = document.createElement('div');
+      div.className = 'song-row';
+      const updated = new Date(row.updated_at);
+      const meta = `${row.bpm} BPM · ${formatRelative(updated)}`;
+      div.innerHTML = `
+        <div class="song-row-info">
+          <div class="song-row-name"></div>
+          <div class="song-row-meta">${meta}</div>
+        </div>
+        <div class="song-row-actions">
+          <button class="s-btn" data-action="open">OPEN</button>
+          <button class="s-btn" data-action="delete">DELETE</button>
+        </div>
+      `;
+      div.querySelector('.song-row-name').textContent = row.name;
+      div.querySelector('[data-action="open"]').addEventListener('click', () => loadSongIntoEditor(row.id));
+      div.querySelector('[data-action="delete"]').addEventListener('click', () => deleteSongRow(row));
+      return div;
+    }
+
+    async function loadSongIntoEditor(id) {
+      if (!confirmDiscardIfDirty('Open a different song?')) return;
+      try {
+        const row = await getSong(id);
+        const loaded = unpackSong(row);
+        // Replace song state in-place so the renderer + recorder keep
+        // their reference. song.bpm + song.notes is the canonical shape.
+        song.bpm = loaded.bpm;
+        bpmInput.value = loaded.bpm;
+        clearNotes(song);
+        for (const n of loaded.notes) song.notes.push(n);
+        currentSongId = row.id;
+        titleInput.value = row.name;
+        activeGrid = 'raw';
+        renderer.setSelected(null);
+        closeSongsModal();
+        setStatus(`Opened "${row.name}"`, 'success');
+        updateButtons();
+      } catch (err) {
+        console.error('getSong failed', err);
+        setStatus(`Couldn't open: ${err.message || err}`, 'error');
+      }
+    }
+
+    async function deleteSongRow(row) {
+      if (!confirm(`Delete "${row.name}"? This can't be undone.`)) return;
+      try {
+        await deleteSong(row.id);
+        // If we were editing it, drop the link so the next SAVE
+        // creates a new row rather than 404ing on update.
+        if (currentSongId === row.id) currentSongId = null;
+        await openSongsModal();   // refresh the list
+        setStatus(`Deleted "${row.name}"`);
+      } catch (err) {
+        console.error('deleteSong failed', err);
+        setStatus(`Delete failed: ${err.message || err}`, 'error');
+      }
+    }
+
+    // Lightweight "5 min ago" / "2 days ago" / falls back to date.
+    function formatRelative(when) {
+      const ms = Date.now() - when.getTime();
+      if (ms < 60_000)        return 'just now';
+      if (ms < 3_600_000)     return `${Math.floor(ms / 60_000)}m ago`;
+      if (ms < 86_400_000)    return `${Math.floor(ms / 3_600_000)}h ago`;
+      if (ms < 604_800_000)   return `${Math.floor(ms / 86_400_000)}d ago`;
+      return when.toLocaleDateString();
     }
 
     // ── Button state machine ──────────────────────────────────────
