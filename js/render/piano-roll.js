@@ -128,13 +128,16 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
   // ── Internal ────────────────────────────────────────────────────
   // Total "song area" (fit-all window) — the size you'd see at zoom 1.
+  // Considers notes from ALL tracks so the fit always covers everything.
   function computeFitMs() {
     const beatMs = 60_000 / song.bpm;
     const minMs = 8 * 4 * beatMs;   // always at least 8 bars
     let lastEnd = 0;
-    for (const n of song.notes) {
-      const end = n.startMs + n.durationMs;
-      if (end > lastEnd) lastEnd = end;
+    for (const track of song.tracks) {
+      for (const n of track.notes) {
+        const end = n.startMs + n.durationMs;
+        if (end > lastEnd) lastEnd = end;
+      }
     }
     return Math.max(minMs, lastEnd * 1.05);
   }
@@ -155,16 +158,18 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   // X zoom is 16; if it's all in one octave, Y zooms in freely and
   // the rows get nice and fat.
   function computeYView() {
-    let minP, maxP;
-    if (song.notes.length === 0) {
-      // Default centred on the playable warmup keyboard range (G3-G5).
-      minP = 55; maxP = 79;
-    } else {
-      minP = PITCH_MAX; maxP = PITCH_MIN;
-      for (const n of song.notes) {
+    let minP = PITCH_MAX, maxP = PITCH_MIN;
+    let anyNotes = false;
+    for (const track of song.tracks) {
+      for (const n of track.notes) {
+        anyNotes = true;
         if (n.pitch < minP) minP = n.pitch;
         if (n.pitch > maxP) maxP = n.pitch;
       }
+    }
+    if (!anyNotes) {
+      // Default centred on the playable warmup keyboard range (G3-G5).
+      minP = 55; maxP = 79;
     }
     const songSpan = (maxP - minP) + 1;
     // Keep all song pitches visible plus a buffer (so adding nearby
@@ -247,55 +252,95 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     }
   }
 
-  // Note pills — purple vertical gradient with subtly rounded corners.
-  // Selected note also gets a brighter purple2 outline ring so the user
-  // can confirm what they just tapped.
+  // Note pills — per-track-color vertical gradient with rounded corners.
+  // Inactive-track notes are dimmed so the active track reads as "the
+  // layer I'm editing right now." Selected note gets a bright outline.
   function drawNotes(pxPerMs, yView) {
     const { visibleRows, viewPitchTop, rowH } = yView;
     const visiblePitchMin = viewPitchTop - visibleRows + 1;
     const radius = Math.min(3, rowH / 3);
-    for (const note of song.notes) {
-      if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
-      const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
-      const w = Math.max(2, note.durationMs * pxPerMs);
-      // Skip notes entirely off-screen for perf (canvas would clip anyway).
-      if (x + w < KEY_STRIP_W || x > ROLL_W) continue;
-      const yIdx = viewPitchTop - note.pitch;
-      const y = RULER_H + yIdx * rowH;
+    const activeId = song.activeTrackId;
+    // Inactive tracks first so the active track paints on top when
+    // notes share a row at high zoom.
+    const ordered = [
+      ...song.tracks.filter(t => t.id !== activeId),
+      ...song.tracks.filter(t => t.id === activeId),
+    ];
 
-      // Vertical gradient: lighter top → darker bottom, gives the
-      // note pill a soft 3D edge without being skeuomorphic.
-      const grad = ctx.createLinearGradient(0, y + 1, 0, y + rowH - 1);
-      grad.addColorStop(0,    '#9F98E8');
-      grad.addColorStop(0.5,  '#7F77DD');
-      grad.addColorStop(1,    '#5E55B8');
-      ctx.fillStyle = grad;
+    for (const track of ordered) {
+      const isActive  = track.id === activeId;
+      const baseColor = track.color || '#7F77DD';
+      for (const note of track.notes) {
+        if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
+        const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
+        const w = Math.max(2, note.durationMs * pxPerMs);
+        if (x + w < KEY_STRIP_W || x > ROLL_W) continue;
+        const yIdx = viewPitchTop - note.pitch;
+        const y = RULER_H + yIdx * rowH;
 
-      ctx.beginPath();
-      if (typeof ctx.roundRect === 'function') {
-        ctx.roundRect(x, y + 1, w, rowH - 2, radius);
-      } else {
-        ctx.rect(x, y + 1, w, rowH - 2);
-      }
-      ctx.fill();
+        if (isActive) {
+          // Vertical gradient — tint(top) → base → shade(bottom).
+          const grad = ctx.createLinearGradient(0, y + 1, 0, y + rowH - 1);
+          grad.addColorStop(0,   tintHex(baseColor, 0.22));
+          grad.addColorStop(0.5, baseColor);
+          grad.addColorStop(1,   shadeHex(baseColor, 0.22));
+          ctx.fillStyle = grad;
+        } else {
+          // Inactive tracks render as flat dim color so they sit
+          // visually behind the active one without competing.
+          ctx.fillStyle = withAlpha(baseColor, 0.40);
+        }
 
-      // Velocity hint: brighter top edge for louder notes.
-      const v = Math.min(1, note.velocity / 127);
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.08 + 0.18 * v})`;
-      ctx.fillRect(x + radius, y + 1, Math.max(0, w - 2 * radius), 1);
-
-      if (note === selectedNote) {
-        ctx.strokeStyle = '#CFC9F4';
-        ctx.lineWidth   = 1.5;
         ctx.beginPath();
         if (typeof ctx.roundRect === 'function') {
-          ctx.roundRect(x - 0.5, y + 0.5, w + 1, rowH - 1, radius + 1);
+          ctx.roundRect(x, y + 1, w, rowH - 2, radius);
         } else {
-          ctx.rect(x - 0.5, y + 0.5, w + 1, rowH - 1);
+          ctx.rect(x, y + 1, w, rowH - 2);
         }
-        ctx.stroke();
+        ctx.fill();
+
+        if (isActive) {
+          // Velocity hint: brighter top edge for louder notes.
+          const v = Math.min(1, note.velocity / 127);
+          ctx.fillStyle = `rgba(255, 255, 255, ${0.08 + 0.18 * v})`;
+          ctx.fillRect(x + radius, y + 1, Math.max(0, w - 2 * radius), 1);
+        }
+
+        if (note === selectedNote) {
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth   = 1.5;
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x - 0.5, y + 0.5, w + 1, rowH - 1, radius + 1);
+          } else {
+            ctx.rect(x - 0.5, y + 0.5, w + 1, rowH - 1);
+          }
+          ctx.stroke();
+        }
       }
     }
+  }
+
+  // ── Color helpers (hex → tint / shade / alpha) ─────────────────
+  // Derive gradient stops + dim variant from each track's base color.
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return { r: 127, g: 119, b: 221 };  // fallback to default purple
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+  }
+  function tintHex(hex, t) {
+    const { r, g, b } = hexToRgb(hex);
+    const k = Math.min(1, Math.max(0, t));
+    return `rgb(${Math.round(r + (255 - r) * k)}, ${Math.round(g + (255 - g) * k)}, ${Math.round(b + (255 - b) * k)})`;
+  }
+  function shadeHex(hex, t) {
+    const { r, g, b } = hexToRgb(hex);
+    const k = Math.min(1, Math.max(0, t));
+    return `rgb(${Math.round(r * (1 - k))}, ${Math.round(g * (1 - k))}, ${Math.round(b * (1 - k))})`;
+  }
+  function withAlpha(hex, a) {
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
   function drawPlayhead(pxPerMs) {
@@ -413,15 +458,26 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const yView   = computeYView();
     const { visibleRows, viewPitchTop, rowH } = yView;
     const visiblePitchMin = viewPitchTop - visibleRows + 1;
-    // Iterate in reverse so the top-most rendered note wins ties.
-    for (let i = song.notes.length - 1; i >= 0; i--) {
-      const note = song.notes[i];
-      if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
-      const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
-      const w = Math.max(2, note.durationMs * pxPerMs);
-      const yIdx = viewPitchTop - note.pitch;
-      const y = RULER_H + yIdx * rowH;
-      if (lx >= x && lx <= x + w && ly >= y && ly <= y + rowH) return note;
+
+    // Active track is drawn on top, so search it first so the active
+    // layer wins overlapping-note ties. Each track scanned in reverse
+    // (later notes z-index over earlier in the same track).
+    const activeId = song.activeTrackId;
+    const orderedForHit = [
+      ...song.tracks.filter(t => t.id === activeId),
+      ...song.tracks.filter(t => t.id !== activeId),
+    ];
+
+    for (const track of orderedForHit) {
+      for (let i = track.notes.length - 1; i >= 0; i--) {
+        const note = track.notes[i];
+        if (note.pitch < visiblePitchMin || note.pitch > viewPitchTop) continue;
+        const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
+        const w = Math.max(2, note.durationMs * pxPerMs);
+        const yIdx = viewPitchTop - note.pitch;
+        const y = RULER_H + yIdx * rowH;
+        if (lx >= x && lx <= x + w && ly >= y && ly <= y + rowH) return note;
+      }
     }
     return null;
   }

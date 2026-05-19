@@ -60,29 +60,53 @@ export function createHistory(maxSize = 50) {
 
 
 // ── Song snapshot helpers ──────────────────────────────────────────
-// Deep-clone the document-level state. Notes are simple bags of
-// primitives so a per-note spread is enough; nothing here references
-// the rest of the runtime (renderer / recorder / UI).
+// Deep-clone the document-level state. Captures the full multi-track
+// structure plus per-track metadata (mute, solo, color, activeGrid)
+// so undo restores both notes and the track configuration around them.
 export function snapshotSong(song) {
   return {
-    bpm: song.bpm,
-    timeSig: { num: song.timeSig.num, denom: song.timeSig.denom },
-    notes: song.notes.map(n => ({
-      pitch:      n.pitch,
-      startMs:    n.startMs,
-      startMsRaw: n.startMsRaw,
-      durationMs: n.durationMs,
-      velocity:   n.velocity,
+    bpm:           song.bpm,
+    timeSig:       { num: song.timeSig.num, denom: song.timeSig.denom },
+    activeTrackId: song.activeTrackId,
+    tracks: song.tracks.map(t => ({
+      id:         t.id,
+      name:       t.name,
+      role:       t.role,
+      color:      t.color,
+      muted:      !!t.muted,
+      solo:       !!t.solo,
+      activeGrid: t.activeGrid ?? 'raw',
+      notes: t.notes.map(n => ({
+        pitch:      n.pitch,
+        startMs:    n.startMs,
+        startMsRaw: n.startMsRaw,
+        durationMs: n.durationMs,
+        velocity:   n.velocity,
+      })),
     })),
   };
 }
 
 // Write a snapshot back into `song` in place — mutates the existing
 // object so anything holding a reference (renderer, recorder, etc.)
-// keeps working without re-wiring.
+// keeps working without re-wiring. song.notes is a getter aliasing
+// the active track's notes, so it Just Works after the tracks array
+// is reassigned.
 export function restoreSong(song, snap) {
   song.bpm = snap.bpm;
   song.timeSig = { num: snap.timeSig.num, denom: snap.timeSig.denom };
-  song.notes.length = 0;
-  for (const n of snap.notes) song.notes.push({ ...n });
+  song.tracks = snap.tracks.map(t => ({
+    id:         t.id,
+    name:       t.name,
+    role:       t.role,
+    color:      t.color,
+    muted:      !!t.muted,
+    solo:       !!t.solo,
+    activeGrid: t.activeGrid ?? 'raw',
+    notes:      t.notes.map(n => ({ ...n })),
+  }));
+  // Reattach activeTrackId — clamp to an actual track id if the saved
+  // one is missing.
+  const ids = new Set(song.tracks.map(t => t.id));
+  song.activeTrackId = ids.has(snap.activeTrackId) ? snap.activeTrackId : song.tracks[0].id;
 }

@@ -407,32 +407,88 @@
       color: var(--purple2);
     }
 
-    /* ── TRACK ROW ──────────────────────────────────────────────── */
+    /* ── INPUT ROW (global device picker) ───────────────────────── */
+    .input-row {
+      background: var(--bg2);
+      border: 0.5px solid var(--bg3);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* ── TRACK LIST ─────────────────────────────────────────────── */
+    .track-list {
+      display: flex; flex-direction: column;
+      gap: 8px;
+    }
     .track-row {
       background: var(--bg2);
       border: 0.5px solid var(--bg3);
       border-radius: 12px;
-      padding: 12px 14px;
+      padding: 10px 14px;
       display: flex; align-items: center; gap: 12px;
       flex-wrap: wrap;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
     }
+    .track-row:hover { border-color: var(--bg3); background: var(--bg3); }
+    /* Active row gets a brighter border + a faint tinted background so
+       it reads as "the layer you're editing." Inactive rows look quieter. */
+    .track-row.active {
+      border-color: var(--purple);
+      background: rgba(127, 119, 221, 0.06);
+      cursor: default;
+    }
+    .track-row.active:hover { background: rgba(127, 119, 221, 0.10); }
     .track-tag {
       background: var(--bg3);
       border: 0.5px solid var(--bg3);
-      border-left: 3px solid var(--purple);
+      border-left: 3px solid var(--track-color, var(--purple));
       border-radius: 6px;
       padding: 6px 12px;
       font-size: 11px; letter-spacing: 2px;
       color: var(--text);
+      white-space: nowrap;
     }
-    /* Quantize cluster lives inside the track row now. Push right on
-       desktop; on mobile, flex-wrap drops it to its own line where
-       margin-left:auto has no effect. */
+    .track-row:not(.active) .track-tag { color: var(--dim); }
+    /* Quantize cluster lives inside each track row. Only the active
+       row shows it — keeps inactive rows quiet and uncluttered. */
     .track-tools {
       display: flex; align-items: center; gap: 8px;
       flex-wrap: wrap;
       margin-left: auto;
     }
+    .track-row:not(.active) .track-tools { display: none; }
+    .track-row-remove {
+      background: transparent; color: var(--dim);
+      border: none;
+      width: 28px; height: 28px;
+      font-size: 16px; line-height: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .track-row-remove:hover { color: var(--red); background: var(--bg3); }
+    .track-row-remove:disabled { opacity: 0.2; cursor: not-allowed; }
+
+    /* ADD TRACK button — sits at the end of the track list. */
+    .add-track-btn {
+      background: transparent;
+      border: 1px dashed var(--bg3);
+      border-radius: 12px;
+      padding: 12px;
+      color: var(--dim);
+      font-size: 11px; letter-spacing: 2px; font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .add-track-btn:hover:not(:disabled) {
+      border-color: var(--purple); color: var(--purple2);
+      background: rgba(127, 119, 221, 0.06);
+    }
+    .add-track-btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .track-info {
       font-size: 12px; color: var(--dim);
       flex: 1; min-width: 0;
@@ -647,23 +703,19 @@
 
   <div id="save-status" class="save-status"></div>
 
-  <div class="track-row">
-    <div class="track-tag">TRACK 1 · PIANO</div>
+  <!-- Input device picker — global (one MIDI / keyboard at a time
+       feeds the active track). -->
+  <div class="input-row">
+    <span class="field-label">INPUT</span>
     <select id="track-input" class="track-input-select" aria-label="Input device">
       <option value="">Initializing…</option>
     </select>
     <div id="midi-status" class="midi-status">…</div>
-    <div class="track-tools">
-      <span class="field-label">QUANTIZE</span>
-      <div class="quantize-buttons">
-        <button class="q-btn active" data-grid="raw"  type="button">RAW</button>
-        <button class="q-btn"        data-grid="1/4"  type="button">1/4</button>
-        <button class="q-btn"        data-grid="1/8"  type="button">1/8</button>
-        <button class="q-btn"        data-grid="1/16" type="button">1/16</button>
-        <button class="q-btn"        data-grid="1/32" type="button">1/32</button>
-      </div>
-    </div>
   </div>
+
+  <!-- Track list — one row per track, populated by JS from song.tracks.
+       The "+ ADD TRACK" button appends a new track up to MAX_TRACKS. -->
+  <div class="track-list" id="track-list"></div>
 
   <div class="duration-panel" id="duration-panel" hidden>
     <span class="field-label">NOTE LENGTH</span>
@@ -723,16 +775,20 @@
   <script type="module">
     import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
     import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
-    import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=3';
+    import {
+      createSong, durationMs, addNote, removeNote, clearNotes,
+      getActiveTrack, setActiveTrack, addTrack, removeTrack,
+      songHasNotes, totalNoteCount, MAX_TRACKS,
+    } from './js/core/song.js?v=4';
     import { createRecorder } from './js/core/recorder.js?v=2';
-    import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=7';
+    import { quantize } from './js/core/quantizer.js?v=2';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=8';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
-    import { createHistory, snapshotSong, restoreSong } from './js/core/history.js?v=1';
+    import { createHistory, snapshotSong, restoreSong } from './js/core/history.js?v=2';
     import { getUser, onAuthChange } from './js/services/auth.js?v=1';
-    import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=2';
+    import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=3';
 
     // ── State ─────────────────────────────────────────────────────
     const song      = createSong(120);
@@ -834,7 +890,6 @@
     let playStartedAt = 0;
     let playRafId     = null;
     let playTimeouts  = [];
-    let activeGrid    = 'raw';   // active quantize grid; resets to 'raw' on each new take
     let playPositionMs = 0;      // "play from" position; user drags the ruler to set it
 
     // ── Library state (Phase 4) ───────────────────────────────────
@@ -865,6 +920,7 @@
       bpmInput.value = song.bpm;
       timeSigSel.value = `${song.timeSig.num}/${song.timeSig.denom}`;
       renderer.setSelected(null);
+      renderTrackList();  // tracks were replaced — repaint the rows
     }
 
     function doUndo() {
@@ -1082,9 +1138,10 @@
         if (countInBeat >= 4) {
           countingIn = false;
           recorder.start();
-          activeGrid = 'raw';         // fresh take is unquantized by default
+          getActiveTrack(song).activeGrid = 'raw';   // fresh take is unquantized
           playPositionMs = 0;         // and starts from bar 1
           renderer.setSelected(null); // any prior selection no longer exists
+          renderTrackList();          // re-paint the active row's quantize buttons
           updateButtons();
           timeDisplay.textContent = 'Rec 0.0s';
           return;
@@ -1168,22 +1225,114 @@
       for (const id of playTimeouts) clearTimeout(id);
       playTimeouts = [];
       const secs = (durationMs(song) / 1000).toFixed(1);
-      timeDisplay.textContent = `Recorded ${secs}s · ${song.notes.length} notes`;
+      timeDisplay.textContent = `Recorded ${secs}s · ${totalNoteCount(song)} notes`;
       updateButtons();
     }
 
-    // ── Quantize buttons ──────────────────────────────────────────
-    const qButtons = document.querySelectorAll('.q-btn');
-    qButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.disabled) return;
-        const grid = btn.dataset.grid;
-        quantize(song, grid);
-        activeGrid = grid;
+    // ════════════════════════════════════════════════════════════════
+    // TRACK LIST (Phase 5) — one row per track, dynamically rendered
+    // from song.tracks. Active row gets quantize controls; inactive
+    // rows are click-to-activate. ADD TRACK button at the end.
+    // ════════════════════════════════════════════════════════════════
+    const trackListEl = document.getElementById('track-list');
+
+    function renderTrackList() {
+      trackListEl.innerHTML = '';
+      song.tracks.forEach((track, idx) => {
+        const row = document.createElement('div');
+        row.className = 'track-row';
+        row.dataset.trackId = track.id;
+        if (track.id === song.activeTrackId) row.classList.add('active');
+        row.style.setProperty('--track-color', track.color);
+
+        const tag = document.createElement('div');
+        tag.className = 'track-tag';
+        tag.textContent = `${track.name.toUpperCase()} · ${track.role.toUpperCase()}`;
+        row.appendChild(tag);
+
+        // Active track gets the quantize cluster.
+        const tools = document.createElement('div');
+        tools.className = 'track-tools';
+        const qLabel = document.createElement('span');
+        qLabel.className = 'field-label';
+        qLabel.textContent = 'QUANTIZE';
+        tools.appendChild(qLabel);
+        const qWrap = document.createElement('div');
+        qWrap.className = 'quantize-buttons';
+        const grids = ['raw', '1/4', '1/8', '1/16', '1/32'];
+        for (const grid of grids) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'q-btn';
+          b.dataset.grid = grid;
+          b.textContent = grid === 'raw' ? 'RAW' : grid;
+          if (grid === (track.activeGrid ?? 'raw')) b.classList.add('active');
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (track.notes.length === 0) return;
+            quantize(track, song.bpm, grid);
+            track.activeGrid = grid;
+            pushHistory();
+            renderTrackList();
+            updateButtons();
+          });
+          qWrap.appendChild(b);
+        }
+        tools.appendChild(qWrap);
+        row.appendChild(tools);
+
+        // Remove (disabled when only 1 track left, or when track has notes).
+        if (song.tracks.length > 1) {
+          const rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'track-row-remove';
+          rm.textContent = '×';
+          rm.title = 'Remove track';
+          rm.setAttribute('aria-label', 'Remove track');
+          rm.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (track.notes.length > 0 &&
+                !confirm(`Remove "${track.name}" and its ${track.notes.length} notes?`)) {
+              return;
+            }
+            removeTrack(song, track.id);
+            renderer.setSelected(null);
+            pushHistory();
+            renderTrackList();
+            updateButtons();
+          });
+          row.appendChild(rm);
+        }
+
+        // Click on an inactive row → make it the active track.
+        row.addEventListener('click', () => {
+          if (track.id === song.activeTrackId) return;
+          setActiveTrack(song, track.id);
+          renderer.setSelected(null);
+          renderTrackList();
+          updateButtons();
+        });
+
+        trackListEl.appendChild(row);
+      });
+
+      // ADD TRACK button — disabled at MAX_TRACKS.
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'add-track-btn';
+      addBtn.textContent = `+ ADD TRACK  (${song.tracks.length} / ${MAX_TRACKS})`;
+      addBtn.disabled = song.tracks.length >= MAX_TRACKS;
+      addBtn.addEventListener('click', () => {
+        const t = addTrack(song);
+        if (!t) return;
+        setActiveTrack(song, t.id);
+        renderer.setSelected(null);
         pushHistory();
+        renderTrackList();
         updateButtons();
       });
-    });
+      trackListEl.appendChild(addBtn);
+    }
 
     // ── Duration buttons (selected-note resize) ───────────────────
     // Beats values map to musical lengths: 0.25=1/16, 0.5=1/8, 1=1/4,
@@ -1304,8 +1453,9 @@
     // Phase 4 uses a simple heuristic: any notes exist + no currentSongId
     // (or notes exist + we want to overwrite the current state).
     function confirmDiscardIfDirty(reason) {
-      if (song.notes.length === 0) return true;
-      return confirm(`${reason}\n\nYou have ${song.notes.length} notes that may not be saved. Continue?`);
+      if (!songHasNotes(song)) return true;
+      const n = totalNoteCount(song);
+      return confirm(`${reason}\n\nYou have ${n} note${n === 1 ? '' : 's'} that may not be saved. Continue?`);
     }
 
     // ── NEW ───────────────────────────────────────────────────────
@@ -1315,10 +1465,15 @@
       renderer.setSelected(null);
       currentSongId = null;
       titleInput.value = '';
-      activeGrid = 'raw';
+      // Reset to a single empty track. The createSong helper builds
+      // the right shape for us; swap our song's mutable parts to match.
+      const fresh = createSong(song.bpm);
+      song.tracks = fresh.tracks;
+      song.activeTrackId = fresh.activeTrackId;
       playPositionMs = 0;
       song.timeSig = { num: 4, denom: 4 };
       timeSigSel.value = '4/4';
+      renderTrackList();
       resetHistory();   // empty song becomes the new undo baseline
       setStatus('New song');
       updateButtons();
@@ -1437,19 +1592,19 @@
         const row = await getSong(id);
         const loaded = unpackSong(row);
         // Replace song state in-place so the renderer + recorder keep
-        // their reference. song.bpm + song.timeSig + song.notes are
-        // the canonical fields the rest of the app reads.
+        // their reference. Multi-track aware — replaces tracks +
+        // activeTrackId wholesale.
         song.bpm = loaded.bpm;
         song.timeSig = loaded.timeSig;
+        song.tracks = loaded.tracks;
+        song.activeTrackId = loaded.activeTrackId;
         bpmInput.value = loaded.bpm;
         timeSigSel.value = `${loaded.timeSig.num}/${loaded.timeSig.denom}`;
-        clearNotes(song);
-        for (const n of loaded.notes) song.notes.push(n);
         currentSongId = row.id;
         titleInput.value = row.name;
-        activeGrid = 'raw';
         playPositionMs = 0;
         renderer.setSelected(null);
+        renderTrackList();
         resetHistory();   // loaded song is the new undo baseline
         closeSongsModal();
         setStatus(`Opened "${row.name}"`, 'success');
@@ -1551,7 +1706,8 @@
         const sel = renderer.getSelected();
         if (!sel) return;
         const beatMs = 60_000 / song.bpm;
-        const divisor = GRID_DIVISORS[activeGrid] || 16;
+        const grid = getActiveTrack(song).activeGrid ?? 'raw';
+        const divisor = GRID_DIVISORS[grid] || 16;
         const stepMs  = beatMs * (4 / divisor);
 
         if (e.code === 'ArrowLeft') {
@@ -1594,14 +1750,14 @@
       playBtn.classList.toggle('active', playing);
       recordBtn.disabled = rec || countingIn || playing;
       stopBtn.disabled   = !rec && !countingIn && !playing;
-      playBtn.disabled   = rec || countingIn || song.notes.length === 0;
+      // PLAY only checks the active track since playback for Phase 5a
+      // is active-track only. Phase 5b will broaden to all unmuted tracks.
+      playBtn.disabled   = rec || countingIn || getActiveTrack(song).notes.length === 0;
 
-      // Quantize buttons: highlight active grid, disable while busy or empty.
-      const lockQuantize = rec || countingIn || playing || song.notes.length === 0;
-      qButtons.forEach(b => {
-        b.classList.toggle('active', b.dataset.grid === activeGrid);
-        b.disabled = lockQuantize;
-      });
+      // Per-track quantize buttons live in track-list DOM and are
+      // (re)rendered by renderTrackList. Nothing to refresh here, but
+      // we do disable interactivity by re-rendering when busy.
+      // (The renderTrackList call paths run on each meaningful change.)
 
       // Duration panel mirrors selection state.
       refreshDurationPanel();
@@ -1620,6 +1776,9 @@
       updateButtons();
     }, 100);
 
+    // Initial render: build the track list from song.tracks, then
+    // sync button state + seed undo history.
+    renderTrackList();
     updateButtons();
     // Seed the undo history with the empty-song baseline. Without this
     // the first edit has nothing to roll back to.

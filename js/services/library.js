@@ -107,52 +107,72 @@ export async function deleteSong(id) {
 // SHAPE HELPERS
 // ════════════════════════════════════════════════════════════════════
 
-// Wrap the flat in-memory song into the future-compatible track shape.
-// Phase 4 always emits exactly one track named "Piano". Phase 5 will
-// expand to 4 tracks with different roles per track.
+// Serialize the in-memory multi-track song into the Supabase data
+// blob. Per-track metadata (name, role, color, mute/solo, activeGrid)
+// rides along so reopening restores the exact editing state.
 export function packSong(song) {
   return {
     timeSig: song.timeSig
       ? { num: song.timeSig.num, denom: song.timeSig.denom }
       : { num: 4, denom: 4 },
-    tracks: [
-      {
-        name:  'Piano',
-        role:  'piano',
-        color: PRIMARY_TRACK_COLOR,
-        notes: song.notes.map(n => ({
+    activeTrackId: song.activeTrackId,
+    tracks: song.tracks.map(t => ({
+      id:         t.id,
+      name:       t.name,
+      role:       t.role,
+      color:      t.color,
+      muted:      !!t.muted,
+      solo:       !!t.solo,
+      activeGrid: t.activeGrid ?? 'raw',
+      notes: t.notes.map(n => ({
+        pitch:      n.pitch,
+        startMs:    n.startMs,
+        startMsRaw: n.startMsRaw ?? n.startMs,
+        durationMs: n.durationMs,
+        velocity:   n.velocity,
+      })),
+    })),
+  };
+}
+
+// Read a packed row back into the in-memory shape that studio.html
+// consumes. Multi-track aware. Legacy single-track rows (saved before
+// Phase 5) come back as a 1-track song. Missing per-track metadata is
+// backfilled with sensible defaults.
+export function unpackSong(row) {
+  const ts          = row?.data?.timeSig;
+  const savedTracks = row?.data?.tracks ?? [];
+  const tracks = savedTracks.length > 0
+    ? savedTracks.map((t, i) => ({
+        id:         t.id ?? `t-load-${i + 1}`,
+        name:       t.name  ?? `Track ${i + 1}`,
+        role:       t.role  ?? 'piano',
+        color:      t.color ?? PRIMARY_TRACK_COLOR,
+        muted:      !!t.muted,
+        solo:       !!t.solo,
+        activeGrid: t.activeGrid ?? 'raw',
+        notes: (t.notes ?? []).map(n => ({
           pitch:      n.pitch,
           startMs:    n.startMs,
           startMsRaw: n.startMsRaw ?? n.startMs,
           durationMs: n.durationMs,
           velocity:   n.velocity,
         })),
-      },
-    ],
-  };
-}
-
-// Read the first track's notes out of a packed row. Multi-track rows
-// (Phase 5+) still open correctly — Studio just sees track 1 for now,
-// and Phase 5's UI will switch between tracks once it lands. Legacy
-// rows without timeSig default to 4/4.
-export function unpackSong(row) {
-  const tracks = row?.data?.tracks ?? [];
-  const first  = tracks[0];
-  const notes  = first?.notes ?? [];
-  const ts     = row?.data?.timeSig;
+      }))
+    : [{
+        id:         't-load-1',
+        name:       'Track 1',
+        role:       'piano',
+        color:      PRIMARY_TRACK_COLOR,
+        muted:      false,
+        solo:       false,
+        activeGrid: 'raw',
+        notes:      [],
+      }];
   return {
-    bpm:     row.bpm,
-    timeSig: {
-      num:   ts?.num   ?? 4,
-      denom: ts?.denom ?? 4,
-    },
-    notes: notes.map(n => ({
-      pitch:      n.pitch,
-      startMs:    n.startMs,
-      startMsRaw: n.startMsRaw ?? n.startMs,
-      durationMs: n.durationMs,
-      velocity:   n.velocity,
-    })),
+    bpm:           row.bpm,
+    timeSig:       { num: ts?.num ?? 4, denom: ts?.denom ?? 4 },
+    activeTrackId: row?.data?.activeTrackId ?? tracks[0].id,
+    tracks,
   };
 }
