@@ -416,6 +416,16 @@ async function renderSetup() {
   setupTeardown = () => {};
 }
 
+function speedLabel(n) {
+  const ms = FALL_TIMES_MS[n - 1];
+  return `Level ${n} (${(ms / 1000).toFixed(1)}s fall)`;
+}
+
+function difficultyLabel(n) {
+  const hw = HIT_WINDOWS[n - 1];
+  return `${n} · ${hw.name} (±${hw.perfect}ms perfect)`;
+}
+
 function paintSetup() {
   const song    = ctx.song;
   const setup   = ctx.setup;
@@ -440,23 +450,20 @@ function paintSetup() {
         <div class="setup-section-label">DIFFICULTY &amp; SPEED</div>
         <div class="setup-difficulty">
           <div class="field">
-            <label class="field-label">SPEED — how fast notes fall</label>
-            <select data-field="speed">
-              ${FALL_TIMES_MS.map((ms, i) => {
-                const level = i + 1;
-                const s = (ms / 1000).toFixed(1);
-                return `<option value="${level}" ${setup.speedLevel === level ? 'selected' : ''}>Level ${level} — ${s}s fall</option>`;
-              }).join('')}
-            </select>
+            <label class="field-label">
+              SPEED — <span class="field-value" data-display="speed">${speedLabel(setup.speedLevel)}</span>
+            </label>
+            <input type="range" min="1" max="${FALL_TIMES_MS.length}" step="1"
+                   value="${setup.speedLevel}" data-field="speed" data-slider>
+            <div class="slider-scale"><span>slow</span><span>fast</span></div>
           </div>
           <div class="field">
-            <label class="field-label">DIFFICULTY — timing tolerance</label>
-            <select data-field="difficulty">
-              ${HIT_WINDOWS.map((hw, i) => {
-                const level = i + 1;
-                return `<option value="${level}" ${setup.hitWindowLevel === level ? 'selected' : ''}>${level} — ${hw.name} (±${hw.perfect}ms perfect)</option>`;
-              }).join('')}
-            </select>
+            <label class="field-label">
+              DIFFICULTY — <span class="field-value" data-display="difficulty">${difficultyLabel(setup.hitWindowLevel)}</span>
+            </label>
+            <input type="range" min="1" max="${HIT_WINDOWS.length}" step="1"
+                   value="${setup.hitWindowLevel}" data-field="difficulty" data-slider>
+            <div class="slider-scale"><span>forgiving</span><span>strict</span></div>
           </div>
         </div>
       </div>
@@ -500,6 +507,25 @@ function paintSetup() {
       if (n > ENABLED_PLAYERS) return;
       setup.playerCount = n;
       paintSetup();
+    });
+  });
+
+  // Live slider updates — write to setup + refresh the inline value label
+  // on every drag tick. The generic `change` handler below also fires on
+  // release, but `input` is what makes the label feel live.
+  stateEl.querySelectorAll('input[type=range][data-slider]').forEach(el => {
+    el.addEventListener('input', () => {
+      const field = el.dataset.field;
+      const n = Number(el.value);
+      if (field === 'speed') {
+        setup.speedLevel = n;
+        const disp = stateEl.querySelector('[data-display="speed"]');
+        if (disp) disp.textContent = speedLabel(n);
+      } else if (field === 'difficulty') {
+        setup.hitWindowLevel = n;
+        const disp = stateEl.querySelector('[data-display="difficulty"]');
+        if (disp) disp.textContent = difficultyLabel(n);
+      }
     });
   });
 
