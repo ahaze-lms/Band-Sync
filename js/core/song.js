@@ -16,6 +16,10 @@
 export function createSong(bpm = 120) {
   return {
     bpm,
+    // num = beats per bar, denom = which note value gets the beat.
+    // Per DAW convention, BPM always means quarter-notes-per-minute
+    // regardless of denom, so denom is mostly visual / metadata.
+    timeSig: { num: 4, denom: 4 },
     notes: [],
   };
 }

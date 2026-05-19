@@ -132,14 +132,15 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   // Beat + bar vertical gridlines (drawn through the grid area; the
-  // ruler has its own ticks).
+  // ruler has its own ticks). Bar lines fall every `timeSig.num` beats.
   function drawGridlines(totalMs, pxPerMs) {
     const beatMs = 60_000 / song.bpm;
+    const barBeats = song.timeSig?.num ?? 4;
     const beatsVisible = Math.floor(totalMs / beatMs) + 1;
     for (let beat = 0; beat <= beatsVisible; beat++) {
       const x = KEY_STRIP_W + beat * beatMs * pxPerMs;
       if (x > ROLL_W) break;
-      const isBarLine = beat % 4 === 0;
+      const isBarLine = beat % barBeats === 0;
       ctx.strokeStyle = isBarLine ? '#2a2a40' : '#181826';
       ctx.lineWidth   = isBarLine ? 1 : 0.5;
       ctx.beginPath();
@@ -234,9 +235,10 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     ctx.lineTo(ROLL_W, RULER_H);
     ctx.stroke();
 
-    // Bar tick marks + numbers (every 4 beats).
+    // Bar tick marks + numbers — span = (timeSig.num) beats.
     const beatMs = 60_000 / song.bpm;
-    const barMs  = beatMs * 4;
+    const barBeats = song.timeSig?.num ?? 4;
+    const barMs  = beatMs * barBeats;
     const barsVisible = Math.ceil(totalMs / barMs);
 
     ctx.font = '10px "Segoe UI", sans-serif';

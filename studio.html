@@ -85,6 +85,18 @@
     .bpm-input:focus {
       outline: none; border-color: var(--purple);
     }
+    .timesig-input {
+      min-width: 74px;
+      min-height: 44px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 16px; font-weight: 600; text-align: center;
+      padding: 4px 8px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .timesig-input:focus { outline: none; border-color: var(--purple); }
+    .timesig-input:hover { border-color: var(--purple); }
     .tap-btn {
       min-height: 44px; padding: 0 16px;
       background: var(--bg3); color: var(--text);
@@ -475,6 +487,19 @@
       <button id="tap-btn" class="tap-btn" type="button">TAP</button>
     </div>
 
+    <div class="transport-section">
+      <span class="field-label">SIG</span>
+      <select id="timesig-input" class="timesig-input" aria-label="Time signature">
+        <option value="4/4" selected>4/4</option>
+        <option value="3/4">3/4</option>
+        <option value="2/4">2/4</option>
+        <option value="6/8">6/8</option>
+        <option value="5/4">5/4</option>
+        <option value="7/8">7/8</option>
+        <option value="12/8">12/8</option>
+      </select>
+    </div>
+
     <div class="transport-actions">
       <button id="record-btn" class="t-btn record" type="button">
         <span class="dot"></span>REC
@@ -553,15 +578,15 @@
   <script type="module">
     import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
     import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
-    import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=2';
+    import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=3';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=3';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=4';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
     import { getUser, onAuthChange } from './js/services/auth.js?v=1';
-    import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=1';
+    import { listSongs, getSong, createSong as createSongRow, updateSong, deleteSong, unpackSong } from './js/services/library.js?v=2';
 
     // ── State ─────────────────────────────────────────────────────
     const song      = createSong(120);
@@ -650,6 +675,7 @@
 
     // ── DOM refs ──────────────────────────────────────────────────
     const bpmInput    = document.getElementById('bpm-input');
+    const timeSigSel  = document.getElementById('timesig-input');
     const tapBtn      = document.getElementById('tap-btn');
     const recordBtn   = document.getElementById('record-btn');
     const stopBtn     = document.getElementById('stop-btn');
@@ -780,6 +806,17 @@
       const v = parseInt(bpmInput.value, 10);
       if (Number.isFinite(v) && v >= 40 && v <= 240) {
         song.bpm = v;
+      }
+    });
+
+    // ── Time signature select ─────────────────────────────────────
+    // "num/denom" → { num, denom }. Affects bar grouping in the roll
+    // ruler + the bars.beats display. Existing notes' absolute ms
+    // positions are unchanged; only their interpretation shifts.
+    timeSigSel.addEventListener('change', () => {
+      const [num, denom] = timeSigSel.value.split('/').map(Number);
+      if (Number.isFinite(num) && Number.isFinite(denom)) {
+        song.timeSig = { num, denom };
       }
     });
 
@@ -1043,6 +1080,8 @@
       titleInput.value = '';
       activeGrid = 'raw';
       playPositionMs = 0;
+      song.timeSig = { num: 4, denom: 4 };
+      timeSigSel.value = '4/4';
       setStatus('New song');
       updateButtons();
     });
@@ -1137,9 +1176,12 @@
         const row = await getSong(id);
         const loaded = unpackSong(row);
         // Replace song state in-place so the renderer + recorder keep
-        // their reference. song.bpm + song.notes is the canonical shape.
+        // their reference. song.bpm + song.timeSig + song.notes are
+        // the canonical fields the rest of the app reads.
         song.bpm = loaded.bpm;
+        song.timeSig = loaded.timeSig;
         bpmInput.value = loaded.bpm;
+        timeSigSel.value = `${loaded.timeSig.num}/${loaded.timeSig.denom}`;
         clearNotes(song);
         for (const n of loaded.notes) song.notes.push(n);
         currentSongId = row.id;
@@ -1255,14 +1297,16 @@
       }
     });
 
-    // "Bar.Beat" musical-position formatter (4/4 assumed). 0ms → 1.1.
-    // Used in the recording / playback time display so the readout
-    // looks like a DAW rather than just a stopwatch.
+    // "Bar.Beat" musical-position formatter. Bars roll over every
+    // `song.timeSig.num` beats. Beats are always quarter-notes per
+    // DAW convention (BPM is quarter-notes-per-minute regardless of
+    // the time-sig denominator).
     function formatBarsBeats(ms, bpm) {
       const beatMs = 60_000 / bpm;
       const totalBeats = ms / beatMs;
-      const bar  = Math.floor(totalBeats / 4) + 1;
-      const beat = Math.floor(totalBeats % 4) + 1;
+      const barBeats = song.timeSig?.num ?? 4;
+      const bar  = Math.floor(totalBeats / barBeats) + 1;
+      const beat = Math.floor(totalBeats % barBeats) + 1;
       return `${bar}.${beat}`;
     }
 

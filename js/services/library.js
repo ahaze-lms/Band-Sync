@@ -112,6 +112,9 @@ export async function deleteSong(id) {
 // expand to 4 tracks with different roles per track.
 export function packSong(song) {
   return {
+    timeSig: song.timeSig
+      ? { num: song.timeSig.num, denom: song.timeSig.denom }
+      : { num: 4, denom: 4 },
     tracks: [
       {
         name:  'Piano',
@@ -131,13 +134,19 @@ export function packSong(song) {
 
 // Read the first track's notes out of a packed row. Multi-track rows
 // (Phase 5+) still open correctly — Studio just sees track 1 for now,
-// and Phase 5's UI will switch between tracks once it lands.
+// and Phase 5's UI will switch between tracks once it lands. Legacy
+// rows without timeSig default to 4/4.
 export function unpackSong(row) {
   const tracks = row?.data?.tracks ?? [];
   const first  = tracks[0];
   const notes  = first?.notes ?? [];
+  const ts     = row?.data?.timeSig;
   return {
-    bpm:   row.bpm,
+    bpm:     row.bpm,
+    timeSig: {
+      num:   ts?.num   ?? 4,
+      denom: ts?.denom ?? 4,
+    },
     notes: notes.map(n => ({
       pitch:      n.pitch,
       startMs:    n.startMs,
