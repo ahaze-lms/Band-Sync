@@ -1,5 +1,6 @@
 import { updateProfile, isUsernameTaken } from '../services/profile.js';
 import { generateCode, listMyCodes, revokeCode, getRecentUses } from '../services/device-codes.js';
+import * as sessionAttachments from '../services/session-attachments.js';
 import { AVATARS, ACCENT_COLORS, refreshProfile, avatarEmoji, timeAgo } from '../app.js';
 
 export function mount(el, ctx, navigate, { onboarding = false } = {}) {
@@ -87,6 +88,18 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
           <a href="#" data-screen-link="history" class="history-link">history</a>.
         </div>
         <div class="activity-list" id="activity-list">
+          <div class="pairing-empty">Loading…</div>
+        </div>
+      </div>
+
+      <div class="form-card" id="devices-card">
+        <div class="form-card-title">CONNECTED DEVICES</div>
+        <div class="pairing-explainer">
+          Devices where one of your codes is still active. While active,
+          the host can save scores against your account. Revoke any you
+          don't recognize — tokens auto-expire after 24 hours regardless.
+        </div>
+        <div class="activity-list" id="devices-list">
           <div class="pairing-empty">Loading…</div>
         </div>
       </div>
@@ -282,6 +295,38 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
     `;
   }
 
+  // ── Connected devices (active session_attachments) ────────────
+  async function refreshConnectedDevicesList() {
+    const listEl = document.getElementById('devices-list');
+    if (!listEl) return;
+    try {
+      const rows = await sessionAttachments.listForUser(user.id);
+      if (rows.length === 0) {
+        listEl.innerHTML = '<div class="pairing-empty">NO ACTIVE DEVICES</div>';
+        return;
+      }
+      listEl.innerHTML = rows.map(renderDeviceRow).join('');
+    } catch (ex) {
+      listEl.innerHTML = `<div class="pairing-empty" style="color:var(--red)">${esc(ex.message)}</div>`;
+    }
+  }
+
+  function renderDeviceRow(r) {
+    const name = r.host
+      ? esc(r.host.display_name || r.host.username || 'someone')
+      : '(unknown)';
+    const av  = r.host ? avatarEmoji(r.host.avatar) : '·';
+    const lastUsed = `last used ${esc(timeAgo(r.last_used_at))}`;
+    return `
+      <div class="activity-row" data-token="${esc(r.token)}">
+        <span class="activity-avatar">${av}</span>
+        <span class="activity-name">${name}</span>
+        <span class="activity-time" title="${esc(new Date(r.last_used_at).toLocaleString())}">${lastUsed}</span>
+        <button class="btn-revoke" data-revoke-token="${esc(r.token)}">REVOKE</button>
+      </div>
+    `;
+  }
+
   if (!onboarding) {
     document.getElementById('btn-gen-code').addEventListener('click', async () => {
       const btn    = document.getElementById('btn-gen-code');
@@ -312,8 +357,24 @@ export function mount(el, ctx, navigate, { onboarding = false } = {}) {
       });
     });
 
+    // Revoke a connected device (delegated — list is re-rendered on refresh).
+    document.getElementById('devices-list').addEventListener('click', async e => {
+      const btn = e.target.closest('[data-revoke-token]');
+      if (!btn) return;
+      btn.disabled = true; btn.textContent = '...';
+      try {
+        await sessionAttachments.revoke(btn.dataset.revokeToken);
+        await refreshConnectedDevicesList();
+      } catch (ex) {
+        btn.textContent = 'REVOKE';
+        btn.disabled = false;
+        document.getElementById('pairing-error').textContent = ex.message;
+      }
+    });
+
     refreshPairingList();
     refreshActivityList();
+    refreshConnectedDevicesList();
     countdownTimer = setInterval(paintCountdowns, 1000);
   }
 

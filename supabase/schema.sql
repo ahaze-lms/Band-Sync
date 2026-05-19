@@ -163,6 +163,24 @@ create policy "sa_update_own"  on public.session_attachments for update using (a
 create policy "sa_delete_own"  on public.session_attachments for delete using (auth.uid() = user_id);
 -- No INSERT policy — only claim_device_code() (SECURITY DEFINER) inserts.
 
+-- Opportunistic cleanup of long-expired/revoked attachments + used
+-- device codes. Called from claim_device_code on every fresh claim
+-- so the audit log + Connected Devices view stay clean without a
+-- scheduled job.
+create or replace function public.cleanup_attachments_and_codes()
+returns void
+language sql security definer
+set search_path = public
+as $$
+  delete from public.session_attachments
+  where (expires_at < now() - interval '30 days')
+     or (revoked_at is not null and revoked_at < now() - interval '30 days');
+
+  delete from public.device_codes
+  where used_at is not null
+    and used_at < now() - interval '90 days';
+$$;
+
 create or replace function public.claim_device_code(p_code text)
 returns table (
   user_id       uuid,
@@ -179,6 +197,8 @@ declare
   v_token text;
 begin
   if auth.uid() is null then return; end if;
+
+  perform public.cleanup_attachments_and_codes();
 
   select * into v_row
   from public.device_codes
