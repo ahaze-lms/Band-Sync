@@ -96,6 +96,7 @@
 - ~~**Piano warmup touch + click** — shipped. `touchstart`/`touchmove`/`touchend` in `piano.js`; slide-across-keys glissando supported. `onKeyDown`/`onKeyUp` wired in warmup.~~
 - ~~**Piano warmup `keyboardOnly` mode** — shipped. Canvas renders just the key strip (72px, no highway). `rebuildLobbyWarmup` toggles `.lobby-warmup-drums` on the wrapper so drums still crop correctly.~~
 - ~~**`,` = C5 alias** — shipped. Comma key triggers C5 alongside Q; shows `,` hint on falling blocks.~~
+- **Octave shift for computer-keyboard input** — `js/core/keyboard-input.js` hard-codes z-row → C4 and q-row → C5. That means QWERTY-only users (no MIDI hardware) can only reach C4–B5 in Studio AND in play.html, even though Studio's on-screen keyboard shows C3–C6 and the game might want notes outside that range. Need ◀OCT / OCT▶ buttons next to the on-screen keyboard (and a keyboard shortcut, probably "[" / "]") that shift the whole mapping ±12 semitones. Fix applies to both surfaces since they share `keyboard-input.js`. Note added 2026-05-19 — circle back during a polish pass.
 - **Lobby invite on song select** — under discussion. Proposal: create lobby when REMOTE LOBBY is clicked (before song pick) so the invite link is available immediately. `lobbies.song_id` starts null, set when host picks a song. Deferred pending decision.
 - **History integration for replay** — `ctx.lastReplayLog` is in-memory only (lost on reload). Could serialise and store in `play_session_slots` as a JSONB column for persistent replay.
 - Twilio SMS invites (§26 → Future enhancements)
