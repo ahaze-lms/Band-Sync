@@ -385,3 +385,166 @@ create policy "pss_select_own" on public.play_session_slots
   for select using (auth.uid() = user_id);
 create policy "pss_select_host" on public.play_session_slots
   for select using (public.user_hosts_session(session_id));
+
+-- ── LOBBIES — DESIGN.md §27 (remote multiplayer) ─────────────────
+create table public.lobbies (
+  id                uuid primary key default gen_random_uuid(),
+  host_user_id      uuid references auth.users on delete cascade not null,
+  song_file         text not null,
+  song_title        text not null,
+  state             text not null
+                      check (state in ('waiting','ready','starting','playing','done','abandoned'))
+                      default 'waiting',
+  speed_level       int,
+  hit_window_level  int,
+  start_at          timestamptz,
+  session_id        uuid references public.play_sessions on delete set null,
+  created_at        timestamptz default now(),
+  expires_at        timestamptz default (now() + interval '2 hours')
+);
+
+create index lobbies_host_idx    on public.lobbies (host_user_id, created_at desc);
+create index lobbies_state_idx   on public.lobbies (state) where state in ('waiting','ready','starting','playing');
+create index lobbies_expires_idx on public.lobbies (expires_at);
+
+create table public.lobby_participants (
+  lobby_id     uuid references public.lobbies on delete cascade not null,
+  user_id      uuid references auth.users on delete cascade not null,
+  slot         int check (slot between 1 and 4),
+  instrument   text,
+  track_index  int,
+  is_ready     boolean default false,
+  joined_at    timestamptz default now(),
+  primary key (lobby_id, user_id)
+);
+
+create index lobby_participants_user_idx on public.lobby_participants (user_id);
+create unique index lobby_participants_slot_unique
+  on public.lobby_participants (lobby_id, slot)
+  where slot is not null;
+
+-- Recursion-breaking helpers, same pattern as user_in_session / user_hosts_session.
+create or replace function public.user_in_lobby(p_lobby_id uuid)
+returns boolean
+language sql security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.lobby_participants
+    where lobby_id = p_lobby_id and user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.user_hosts_lobby(p_lobby_id uuid)
+returns boolean
+language sql security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.lobbies
+    where id = p_lobby_id and host_user_id = auth.uid()
+  );
+$$;
+
+grant execute on function public.user_in_lobby(uuid)    to authenticated;
+grant execute on function public.user_hosts_lobby(uuid) to authenticated;
+
+alter table public.lobbies enable row level security;
+
+create policy "lobbies_insert_host"        on public.lobbies for insert with check (auth.uid() = host_user_id);
+create policy "lobbies_select_host"        on public.lobbies for select using (auth.uid() = host_user_id);
+create policy "lobbies_select_participant" on public.lobbies for select using (public.user_in_lobby(id));
+create policy "lobbies_update_host"        on public.lobbies for update using (auth.uid() = host_user_id);
+create policy "lobbies_delete_host"        on public.lobbies for delete using (auth.uid() = host_user_id);
+
+alter table public.lobby_participants enable row level security;
+
+create policy "lp_insert_self"        on public.lobby_participants for insert with check (auth.uid() = user_id);
+create policy "lp_insert_host"        on public.lobby_participants for insert with check (public.user_hosts_lobby(lobby_id));
+create policy "lp_select_participant" on public.lobby_participants for select using (public.user_in_lobby(lobby_id));
+create policy "lp_select_host"        on public.lobby_participants for select using (public.user_hosts_lobby(lobby_id));
+create policy "lp_update_self"        on public.lobby_participants for update using (auth.uid() = user_id);
+create policy "lp_update_host"        on public.lobby_participants for update using (public.user_hosts_lobby(lobby_id));
+create policy "lp_delete_self"        on public.lobby_participants for delete using (auth.uid() = user_id);
+create policy "lp_delete_host"        on public.lobby_participants for delete using (public.user_hosts_lobby(lobby_id));
+
+-- Realtime publication.
+alter publication supabase_realtime add table public.lobbies;
+alter publication supabase_realtime add table public.lobby_participants;
+
+create or replace function public.create_lobby(
+  p_song_file         text,
+  p_song_title        text,
+  p_speed_level       int default null,
+  p_hit_window_level  int default null
+)
+returns uuid
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_lobby_id uuid;
+begin
+  if auth.uid() is null then raise exception 'auth required'; end if;
+
+  insert into public.lobbies
+    (host_user_id, song_file, song_title, speed_level, hit_window_level)
+  values
+    (auth.uid(), p_song_file, p_song_title, p_speed_level, p_hit_window_level)
+  returning id into v_lobby_id;
+
+  insert into public.lobby_participants (lobby_id, user_id, slot)
+  values (v_lobby_id, auth.uid(), 1);
+
+  return v_lobby_id;
+end;
+$$;
+
+grant execute on function public.create_lobby(text, text, int, int) to authenticated;
+
+create or replace function public.join_lobby(p_lobby_id uuid)
+returns int
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_state    text;
+  v_slot     int;
+  v_existing int;
+begin
+  if auth.uid() is null then raise exception 'auth required'; end if;
+
+  select state into v_state
+  from public.lobbies
+  where id = p_lobby_id
+  for update;
+
+  if v_state is null or v_state not in ('waiting','ready') then
+    return null;
+  end if;
+
+  select slot into v_existing
+  from public.lobby_participants
+  where lobby_id = p_lobby_id and user_id = auth.uid();
+
+  if v_existing is not null then return v_existing; end if;
+
+  select s into v_slot
+  from generate_series(1, 4) s
+  where s not in (
+    select slot from public.lobby_participants
+    where lobby_id = p_lobby_id and slot is not null
+  )
+  order by s
+  limit 1;
+
+  if v_slot is null then return null; end if;
+
+  insert into public.lobby_participants (lobby_id, user_id, slot)
+  values (p_lobby_id, auth.uid(), v_slot);
+
+  return v_slot;
+end;
+$$;
+
+grant execute on function public.join_lobby(uuid) to authenticated;
