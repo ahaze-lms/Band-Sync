@@ -1,9 +1,14 @@
 // ════════════════════════════════════════════════════════════════════
 // BandSync — Piano-roll renderer (Studio)
 // ════════════════════════════════════════════════════════════════════
-// Canvas piano-roll view for a song. Phase 1 is view-only: draws the
-// notes captured by the recorder, plus a playhead during playback.
-// Edit interactions (drag, delete, click-to-add) are deferred.
+// Canvas piano-roll view for a song. Draws the notes captured by the
+// recorder, plus a playhead during playback. Phase 3 adds editing:
+//   - tap empty grid → onAdd(pitch, startMs)
+//   - tap a note     → onSelect(note) — note gets a highlight ring
+//   - drag a note    → updates note.pitch / startMs / startMsRaw in
+//                      place every pointermove tick, then onMove(note)
+//                      fires on pointerup
+//   - long-press a note (touch) or right-click it (mouse) → onDelete(note)
 //
 // Drawing happens in logical coordinates (ROLL_W × ROLL_H) and a
 // per-frame setTransform maps that into the canvas's actual pixel
@@ -28,10 +33,24 @@ const KEY_STRIP_W = 56;     // left margin width (key labels live here)
 // Black-key semitones within an octave (relative to C).
 const BLACK_KEY_SET = new Set([1, 3, 6, 8, 10]);
 
-export function createPianoRollRenderer(canvas, song) {
+export function createPianoRollRenderer(canvas, song, options = {}) {
   const ctx = canvas.getContext('2d');
 
-  let playheadMs = -1;      // -1 = don't draw playhead
+  const {
+    onAdd    = null,   // (pitch, startMs)         — empty grid tapped
+    onSelect = null,   // (note | null)             — note tapped, ring drawn
+    onMove   = null,   // (note)                    — drag finished
+    onDelete = null,   // (note)                    — long-press / right-click
+  } = options;
+
+  let playheadMs   = -1;        // -1 = don't draw playhead
+  let selectedNote = null;      // highlighted note, or null
+
+  // Pointer interaction state — shared between mouse + touch via Pointer Events.
+  let drag = null;
+  //   shape: { note, gridPos, startClientX, startClientY, started, longPressTimer }
+  const DRAG_THRESHOLD_PX = 4;
+  const LONG_PRESS_MS     = 500;
 
   // ── Buffer sync (crisp canvas at any size) ─────────────────────
   function syncBufferToDisplay() {
@@ -51,6 +70,8 @@ export function createPianoRollRenderer(canvas, song) {
 
   // ── Public ──────────────────────────────────────────────────────
   function setPlayhead(ms) { playheadMs = ms; }
+  function setSelected(note) { selectedNote = note; }
+  function getSelected() { return selectedNote; }
 
   function draw() {
     syncBufferToDisplay();
@@ -122,7 +143,9 @@ export function createPianoRollRenderer(canvas, song) {
     }
   }
 
-  // Note rectangles — purple accent, rounded inset.
+  // Note rectangles — purple accent, rounded inset. Selected note also
+  // gets a brighter purple2 outline ring so the user can confirm what
+  // they just tapped.
   function drawNotes(pxPerMs, rowH) {
     for (const note of song.notes) {
       if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
@@ -138,6 +161,12 @@ export function createPianoRollRenderer(canvas, song) {
       const v = Math.min(1, note.velocity / 127);
       ctx.fillStyle = `rgba(255, 255, 255, ${0.05 + 0.15 * v})`;
       ctx.fillRect(x, y + 1, w, 1.5);
+
+      if (note === selectedNote) {
+        ctx.strokeStyle = '#AFA9EC';
+        ctx.lineWidth   = 1.5;
+        ctx.strokeRect(x - 0.5, y + 0.5, w + 1, rowH - 1);
+      }
     }
   }
 
@@ -178,5 +207,140 @@ export function createPianoRollRenderer(canvas, song) {
     ctx.stroke();
   }
 
-  return { draw, setPlayhead };
+  // ── Hit-testing (logical coords) ────────────────────────────────
+  function clientToLogical(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) / rect.width  * ROLL_W,
+      y: (clientY - rect.top)  / rect.height * ROLL_H,
+    };
+  }
+
+  function noteAtLogical(lx, ly) {
+    if (lx < KEY_STRIP_W) return null;
+    const totalMs = computeViewMs();
+    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+    const rowH    = ROLL_H / PITCH_COUNT;
+    // Iterate in reverse so the top-most rendered note wins ties.
+    for (let i = song.notes.length - 1; i >= 0; i--) {
+      const note = song.notes[i];
+      if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
+      const x = KEY_STRIP_W + note.startMs * pxPerMs;
+      const w = Math.max(2, note.durationMs * pxPerMs);
+      const yIdx = PITCH_MAX - note.pitch;
+      const y = yIdx * rowH;
+      if (lx >= x && lx <= x + w && ly >= y && ly <= y + rowH) return note;
+    }
+    return null;
+  }
+
+  function gridPosAtLogical(lx, ly) {
+    if (lx < KEY_STRIP_W) return null;
+    const totalMs = computeViewMs();
+    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+    const rowH    = ROLL_H / PITCH_COUNT;
+    const startMs = Math.max(0, (lx - KEY_STRIP_W) / pxPerMs);
+    const yIdx    = Math.floor(ly / rowH);
+    const pitch   = PITCH_MAX - yIdx;
+    if (pitch < PITCH_MIN || pitch > PITCH_MAX) return null;
+    return { pitch, startMs };
+  }
+
+  // ── Pointer interaction ────────────────────────────────────────
+  // Distinguishes tap vs drag via a small threshold, and uses a 500ms
+  // pointerdown-on-note timer for the touch-friendly "long-press to
+  // delete" gesture.
+  canvas.addEventListener('pointerdown', (e) => {
+    const pt   = clientToLogical(e.clientX, e.clientY);
+    const note = noteAtLogical(pt.x, pt.y);
+    const grid = note ? null : gridPosAtLogical(pt.x, pt.y);
+    if (!note && !grid) return;     // clicked the key strip — ignore
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    drag = {
+      note,
+      gridPos: grid,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      started: false,
+      longPressTimer: null,
+    };
+    if (note) {
+      drag.longPressTimer = setTimeout(() => {
+        if (drag && drag.note === note && !drag.started) {
+          if (selectedNote === note) selectedNote = null;
+          if (onDelete) onDelete(note);
+          drag = null;
+        }
+      }, LONG_PRESS_MS);
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag || !drag.note) return;       // only existing notes are draggable
+    const dx = e.clientX - drag.startClientX;
+    const dy = e.clientY - drag.startClientY;
+    if (!drag.started && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+      drag.started = true;
+      if (drag.longPressTimer) {
+        clearTimeout(drag.longPressTimer);
+        drag.longPressTimer = null;
+      }
+    }
+    if (!drag.started) return;
+    const pt = clientToLogical(e.clientX, e.clientY);
+    const totalMs = computeViewMs();
+    const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
+    const rowH    = ROLL_H / PITCH_COUNT;
+    const newStart = Math.max(0, (pt.x - KEY_STRIP_W) / pxPerMs);
+    const yIdx     = Math.floor(pt.y / rowH);
+    const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, PITCH_MAX - yIdx));
+    // Move updates BOTH startMs and startMsRaw — otherwise a later
+    // quantize toggle would snap the moved note back to its original
+    // recorded location, which is not what the user expects.
+    drag.note.startMs    = newStart;
+    drag.note.startMsRaw = newStart;
+    drag.note.pitch      = newPitch;
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (!drag) return;
+    if (drag.longPressTimer) {
+      clearTimeout(drag.longPressTimer);
+      drag.longPressTimer = null;
+    }
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+
+    if (drag.started && drag.note) {
+      if (onMove) onMove(drag.note);
+    } else if (drag.note) {
+      // Tap on a note — select it.
+      selectedNote = drag.note;
+      if (onSelect) onSelect(drag.note);
+    } else if (drag.gridPos) {
+      // Tap on empty grid — add a note. Selection clears (the user is
+      // creating, not editing an existing).
+      selectedNote = null;
+      if (onSelect) onSelect(null);
+      if (onAdd) onAdd(drag.gridPos.pitch, drag.gridPos.startMs);
+    }
+    drag = null;
+  });
+
+  canvas.addEventListener('pointercancel', () => {
+    if (drag && drag.longPressTimer) clearTimeout(drag.longPressTimer);
+    drag = null;
+  });
+
+  // Right-click anywhere on the grid: if it's on a note, delete it.
+  canvas.addEventListener('contextmenu', (e) => {
+    const pt = clientToLogical(e.clientX, e.clientY);
+    const note = noteAtLogical(pt.x, pt.y);
+    if (!note) return;
+    e.preventDefault();
+    if (selectedNote === note) selectedNote = null;
+    if (onDelete) onDelete(note);
+  });
+
+  return { draw, setPlayhead, setSelected, getSelected };
 }

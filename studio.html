@@ -227,6 +227,8 @@
       flex: 1;
       display: block;
       border-radius: 8px;
+      touch-action: none;   /* don't fight page-scroll while tap/drag-editing notes */
+      cursor: crosshair;
     }
     .empty-hint {
       text-align: center;
@@ -344,10 +346,10 @@
   <script type="module">
     import { initMIDI, getInputs, attachListener, detachAll, onStateChange } from './js/core/midi.js?v=1';
     import { playPianoNote, playClick, resumeIfSuspended } from './js/core/audio.js?v=1';
-    import { createSong, durationMs } from './js/core/song.js?v=1';
+    import { createSong, durationMs, addNote, removeNote } from './js/core/song.js?v=2';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=1';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=2';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS } from './js/config.js?v=1';
 
@@ -355,7 +357,38 @@
     const song      = createSong(120);
     const recorder  = createRecorder(song);
     const canvas    = document.getElementById('roll-canvas');
-    const renderer  = createPianoRollRenderer(canvas, song);
+    const renderer  = createPianoRollRenderer(canvas, song, {
+      // Tap empty grid → add a new note. Duration is one beat at the
+      // current tempo (visible on the roll, easy to drag/quantize
+      // afterward). Audible preview plays the pitch you just placed.
+      onAdd: (pitch, startMs) => {
+        resumeIfSuspended();
+        const beatMs = 60_000 / song.bpm;
+        addNote(song, {
+          pitch,
+          startMs,
+          startMsRaw: startMs,
+          durationMs: beatMs,
+          velocity:   80,
+        });
+        playPianoNote(pitch, 80);
+      },
+      // Selection is owned by the renderer; we still preview the
+      // selected note's pitch so you can hear what you grabbed.
+      onSelect: (note) => {
+        if (note) {
+          resumeIfSuspended();
+          playPianoNote(note.pitch, note.velocity);
+        }
+      },
+      // Drag finishes — node data was already updated in place by the
+      // renderer. Nothing extra to do for now beyond a no-op hook.
+      onMove: () => {},
+      // Right-click / long-press a note → delete it from the song.
+      onDelete: (note) => {
+        removeNote(song, note);
+      },
+    });
     // Shared between MIDI and on-screen keyboard — lights up the
     // touch keyboard whenever any source is holding a note.
     const heldNotes = new Set();
@@ -516,7 +549,8 @@
         if (countInBeat >= 4) {
           countingIn = false;
           recorder.start();
-          activeGrid = 'raw';   // fresh take is unquantized by default
+          activeGrid = 'raw';        // fresh take is unquantized by default
+          renderer.setSelected(null); // any prior selection no longer exists
           updateButtons();
           timeDisplay.textContent = 'Rec 0.0s';
           return;

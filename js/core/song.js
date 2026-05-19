@@ -28,6 +28,15 @@ export function addNote(song, note) {
   song.notes.push(note);
 }
 
+// Remove a specific note (by identity, not by value). Returns true if
+// the note was found and removed.
+export function removeNote(song, note) {
+  const idx = song.notes.indexOf(note);
+  if (idx === -1) return false;
+  song.notes.splice(idx, 1);
+  return true;
+}
+
 // Total length in ms, derived from the last-ending note.
 // Returns 0 for an empty song.
 export function durationMs(song) {
