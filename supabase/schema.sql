@@ -134,18 +134,49 @@ create policy "dc_select_own" on public.device_codes for select using (auth.uid(
 create policy "dc_update_own" on public.device_codes for update using (auth.uid() = user_id);
 create policy "dc_delete_own" on public.device_codes for delete using (auth.uid() = user_id);
 
+-- ── SESSION ATTACHMENTS ───────────────────────────────────────────
+-- DESIGN.md §26 Evolution v2. Durable token issued at claim time so
+-- the host's reloads can rehydrate a friend identity without the
+-- friend regenerating a 6-digit code every song.
+create table public.session_attachments (
+  token          text primary key,
+  user_id        uuid references auth.users on delete cascade not null,
+  host_user_id   uuid references auth.users on delete cascade not null,
+  display_name   text,
+  avatar         text,
+  accent_color   text,
+  created_at     timestamptz default now(),
+  last_used_at   timestamptz default now(),
+  expires_at     timestamptz not null,
+  revoked_at     timestamptz,
+  revoked_reason text
+);
+
+create index session_attachments_user_idx on public.session_attachments (user_id, expires_at);
+create index session_attachments_host_idx on public.session_attachments (host_user_id);
+
+alter table public.session_attachments enable row level security;
+
+create policy "sa_select_own"  on public.session_attachments for select using (auth.uid() = user_id);
+create policy "sa_select_host" on public.session_attachments for select using (auth.uid() = host_user_id);
+create policy "sa_update_own"  on public.session_attachments for update using (auth.uid() = user_id);
+create policy "sa_delete_own"  on public.session_attachments for delete using (auth.uid() = user_id);
+-- No INSERT policy — only claim_device_code() (SECURITY DEFINER) inserts.
+
 create or replace function public.claim_device_code(p_code text)
 returns table (
-  user_id      uuid,
-  display_name text,
-  avatar       text,
-  accent_color text
+  user_id       uuid,
+  display_name  text,
+  avatar        text,
+  accent_color  text,
+  session_token text
 )
 language plpgsql security definer
 set search_path = public
 as $$
 declare
-  v_row public.device_codes%rowtype;
+  v_row   public.device_codes%rowtype;
+  v_token text;
 begin
   if auth.uid() is null then return; end if;
 
@@ -162,12 +193,89 @@ begin
     set used_at = now(), used_by_user = auth.uid()
     where code = p_code;
 
+  v_token := replace(gen_random_uuid()::text, '-', '') ||
+             replace(gen_random_uuid()::text, '-', '');
+
+  insert into public.session_attachments
+    (token, user_id, host_user_id, display_name, avatar, accent_color, expires_at)
+  values
+    (v_token, v_row.user_id, auth.uid(), v_row.display_name,
+     v_row.avatar, v_row.accent_color, now() + interval '24 hours');
+
+  return query
+    select v_row.user_id, v_row.display_name, v_row.avatar,
+           v_row.accent_color, v_token;
+end;
+$$;
+
+grant execute on function public.claim_device_code(text) to authenticated;
+
+-- Host's rehydrate path. Validates token + bumps last_used_at.
+create or replace function public.attach_session(p_token text)
+returns table (
+  user_id      uuid,
+  display_name text,
+  avatar       text,
+  accent_color text
+)
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_row public.session_attachments%rowtype;
+begin
+  if auth.uid() is null then return; end if;
+
+  select * into v_row
+  from public.session_attachments
+  where token = p_token
+    and revoked_at is null
+    and expires_at > now()
+    and host_user_id = auth.uid()
+  for update;
+
+  if not found then return; end if;
+
+  update public.session_attachments
+    set last_used_at = now()
+    where token = p_token;
+
   return query
     select v_row.user_id, v_row.display_name, v_row.avatar, v_row.accent_color;
 end;
 $$;
 
-grant execute on function public.claim_device_code(text) to authenticated;
+grant execute on function public.attach_session(text) to authenticated;
+
+-- Friend-initiated revoke from Connected Devices view.
+create or replace function public.revoke_session_attachment(p_token text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+begin
+  if auth.uid() is null then return false; end if;
+
+  select user_id into v_user_id
+  from public.session_attachments
+  where token = p_token;
+
+  if v_user_id is null or v_user_id <> auth.uid() then
+    return false;
+  end if;
+
+  update public.session_attachments
+    set revoked_at = coalesce(revoked_at, now()),
+        revoked_reason = coalesce(revoked_reason, 'user')
+    where token = p_token;
+
+  return true;
+end;
+$$;
+
+grant execute on function public.revoke_session_attachment(text) to authenticated;
 
 -- ── PLAY SESSIONS ─────────────────────────────────────────────────
 create table public.play_sessions (

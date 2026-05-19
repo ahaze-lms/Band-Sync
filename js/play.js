@@ -20,6 +20,7 @@
 import { getUser }            from './services/auth.js';
 import { getProfile }         from './services/profile.js';
 import { claimCode }          from './services/device-codes.js';
+import * as sessionAttachments from './services/session-attachments.js';
 import { saveSession }        from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
@@ -61,6 +62,8 @@ const ctx = {
   saveStatus:    null,  // { state: 'saving'|'saved'|'failed', sessionId?, error? }
   bests:         null,  // host's personal bests: { [song_file]: { score, grade, ... } }
   oldBests:      null,  // snapshot of bests at game start — for NEW PB detection on results
+  attachments:   null,  // { 'p2': { token, userId, displayName, avatar, accentColor }, ... }
+  pairedFriends: null,  // [{ token, user_id, display_name, ... }] — friends ever paired with this device, for dropdown
 };
 
 let setupTeardown = null;
@@ -85,6 +88,27 @@ async function init() {
   // Best-effort; an empty/failed fetch just means no PB displays.
   try { ctx.bests = await getMyPersonalBests(user.id); }
   catch (err) { console.warn('play.js: getMyPersonalBests failed', err); ctx.bests = {}; }
+
+  // Rehydrate any durable friend-attachment tokens stored in localStorage
+  // from previous sessions (DESIGN.md §26 Evolution v2). Slots default
+  // to those rehydrated identities until the host explicitly detaches.
+  try {
+    const { rehydrated } = await sessionAttachments.reattachAll(user.id);
+    ctx.attachments = rehydrated;
+  } catch (err) {
+    console.warn('play.js: reattachAll failed', err);
+    ctx.attachments = {};
+  }
+
+  // List all friends ever paired with this device (for one-tap reattach
+  // in the identity dropdown). Doesn't depend on localStorage — sourced
+  // from session_attachments directly.
+  try {
+    ctx.pairedFriends = await sessionAttachments.listPaired(user.id);
+  } catch (err) {
+    console.warn('play.js: listPaired failed', err);
+    ctx.pairedFriends = [];
+  }
 
   // Library manifest.
   try {
@@ -137,14 +161,73 @@ function makeFriendIdentity(claim) {
   };
 }
 
-// Slots default: P1 is Me, all others Guest.
+function slotKey(slotIdx) { return `p${slotIdx + 1}`; }
+
+function persistAttachmentForSlot(slotIdx, claim) {
+  if (!claim?.session_token) return;
+  const key = slotKey(slotIdx);
+  const stored = {
+    token:       claim.session_token,
+    userId:      claim.user_id,
+    displayName: claim.display_name,
+    avatar:      claim.avatar,
+    accentColor: claim.accent_color,
+  };
+  sessionAttachments.save(ctx.user.id, key, stored);
+  if (!ctx.attachments) ctx.attachments = {};
+  ctx.attachments[key] = stored;
+}
+
+function forgetAttachmentForSlot(slotIdx) {
+  const key = slotKey(slotIdx);
+  sessionAttachments.remove(ctx.user.id, key);
+  if (ctx.attachments) delete ctx.attachments[key];
+}
+
+// Add / refresh a friend in the paired-friends cache after a successful
+// claim, so they appear in other slots' dropdowns immediately without
+// waiting for a server round-trip.
+function rememberPairedFriend(claim) {
+  if (!claim?.session_token || claim.user_id === ctx.user?.id) return;
+  if (!ctx.pairedFriends) ctx.pairedFriends = [];
+  const entry = {
+    token:        claim.session_token,
+    user_id:      claim.user_id,
+    display_name: claim.display_name,
+    avatar:       claim.avatar,
+    accent_color: claim.accent_color,
+    last_used_at: new Date().toISOString(),
+    expires_at:   new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+  const existingIdx = ctx.pairedFriends.findIndex(f => f.user_id === claim.user_id);
+  if (existingIdx >= 0) ctx.pairedFriends[existingIdx] = entry;
+  else ctx.pairedFriends.unshift(entry);
+}
+
+// Slots default: P1 is Me. P2+ uses a rehydrated friend attachment if
+// one's in localStorage for that slot, else Guest.
 function defaultSlot(idx, song) {
   return {
-    identity:   idx === 0 ? makeHostIdentity() : makeGuestIdentity(idx),
+    identity:   defaultIdentity(idx),
     instrument: 'piano',
     deviceId:   null,
     trackIndex: Math.min(idx, song.tracks.length - 1),
   };
+}
+
+function defaultIdentity(idx) {
+  if (idx === 0) return makeHostIdentity();
+  const attached = ctx.attachments?.[`p${idx + 1}`];
+  if (attached) {
+    return {
+      kind:        'friend',
+      userId:      attached.userId,
+      displayName: attached.displayName || 'Friend',
+      avatar:      attached.avatar      || 'note',
+      accentColor: attached.accentColor || null,
+    };
+  }
+  return makeGuestIdentity(idx);
 }
 
 function defaultSetup(song) {
@@ -395,6 +478,7 @@ function paintSetup() {
     btn.addEventListener('click', () => {
       const i = Number(btn.dataset.player);
       setup.players[i].identity = makeGuestIdentity(i);
+      forgetAttachmentForSlot(i);
       paintSetup();
     });
   });
@@ -419,6 +503,10 @@ function handleIdentityChange(slotIdx, value) {
     paintSetup();
     return;
   }
+  if (value.startsWith('paired:')) {
+    attachPairedFriend(slotIdx, value.slice('paired:'.length));
+    return;
+  }
   if (value === 'claim') {
     // Don't apply yet — open modal. If they cancel we need the previous
     // identity to remain, so re-paint *before* the modal opens (resets
@@ -433,10 +521,46 @@ function handleIdentityChange(slotIdx, value) {
           enforceSingleHost(slotIdx);
         } else {
           p.identity = makeFriendIdentity(claim);
+          persistAttachmentForSlot(slotIdx, claim);
+          rememberPairedFriend(claim);
         }
         paintSetup();
       },
     });
+  }
+}
+
+// One-tap reattach for a friend who's previously paired with this
+// device. Validates the cached token via attach_session — catches the
+// case where the friend revoked it since we last loaded the list — and
+// falls back to dropping the dead entry from the cache.
+async function attachPairedFriend(slotIdx, friendUserId) {
+  const setup  = ctx.setup;
+  const p      = setup.players[slotIdx];
+  const paired = ctx.pairedFriends?.find(f => f.user_id === friendUserId);
+  if (!paired) { paintSetup(); return; }
+
+  try {
+    const profile = await sessionAttachments.attach(paired.token);
+    if (!profile) {
+      // Token died server-side (revoked / expired). Drop from cache + repaint.
+      ctx.pairedFriends = ctx.pairedFriends.filter(f => f.token !== paired.token);
+      paintSetup();
+      return;
+    }
+    const claim = {
+      user_id:       profile.user_id,
+      display_name:  profile.display_name,
+      avatar:        profile.avatar,
+      accent_color:  profile.accent_color,
+      session_token: paired.token,
+    };
+    p.identity = makeFriendIdentity(claim);
+    persistAttachmentForSlot(slotIdx, claim);
+    paintSetup();
+  } catch (err) {
+    console.warn('attachPairedFriend failed', err);
+    paintSetup();
   }
 }
 
@@ -498,6 +622,7 @@ function identityCell(slotIdx, slot) {
   }
 
   const meLabel = `Me — ${esc(ctx.profile?.display_name || ctx.profile?.username || 'You')}`;
+  const pairedOpts = pairedFriendOptions(slot);
 
   // Guest → editable name input + compact kind-switcher. Default name
   // stays a valid value; editing is purely optional.
@@ -515,6 +640,7 @@ function identityCell(slotIdx, slot) {
                 title="Change identity">
           <option value="guest" selected>Guest</option>
           <option value="host">${meLabel}</option>
+          ${pairedOpts}
           <option value="claim">Join with code…</option>
         </select>
       </div>
@@ -525,10 +651,22 @@ function identityCell(slotIdx, slot) {
   return `
     <select data-player="${slotIdx}" data-field="identity">
       <option value="host" selected>${meLabel}</option>
+      ${pairedOpts}
       <option value="claim">Join with code…</option>
       <option value="guest">Guest ${slotIdx + 1}</option>
     </select>
   `;
+}
+
+// Render <option> elements for previously-paired friends. Skips anyone
+// who's the current host (since "Me" already covers them).
+function pairedFriendOptions(_slot) {
+  const friends = ctx.pairedFriends ?? [];
+  if (!friends.length) return '';
+  return friends
+    .filter(f => f.user_id !== ctx.user?.id)
+    .map(f => `<option value="paired:${esc(f.user_id)}">${esc(f.display_name || 'Friend')}</option>`)
+    .join('');
 }
 
 // ── CLAIM MODAL ────────────────────────────────────────────────────
