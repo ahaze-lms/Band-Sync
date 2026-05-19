@@ -22,6 +22,7 @@ import { getProfile }         from './services/profile.js';
 import { claimCode }          from './services/device-codes.js';
 import * as sessionAttachments from './services/session-attachments.js';
 import * as lobbies            from './services/lobbies.js';
+import { getFriends, sendPlayInvite } from './services/social.js';
 import { saveSession }        from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
@@ -1227,11 +1228,20 @@ async function renderLobby() {
   };
   ctx.lobby.unsubscribe  = unsubscribe;
   ctx.lobby.gameLaunched = false;
+  ctx.lobby.friends      = [];
+  ctx.lobby.invited      = new Set();   // user_ids already invited this session
 
-  // Measure clock offset proactively so it's ready when START is pressed.
-  lobbies.measureClockOffset()
-    .then(offset => { ctx.clockOffset = offset; })
-    .catch(err  => console.warn('clock offset measurement failed', err));
+  // Load friends + measure clock offset in parallel — neither blocks the UI.
+  Promise.all([
+    getFriends(ctx.user.id).then(f => {
+      // Sort: online first, then alphabetical.
+      ctx.lobby.friends = f.sort((a, b) => {
+        if (a.friend.is_online !== b.friend.is_online) return b.friend.is_online ? 1 : -1;
+        return (a.friend.display_name ?? '').localeCompare(b.friend.display_name ?? '');
+      });
+    }),
+    lobbies.measureClockOffset().then(offset => { ctx.clockOffset = offset; }),
+  ]).catch(err => console.warn('lobby entry pre-load failed', err));
 
   await refreshLobbyData();
 }
@@ -1319,9 +1329,14 @@ function paintLobby() {
         </div>
 
         <div class="form-card">
-          <div class="form-card-title">SHARE INVITE</div>
+          <div class="form-card-title">INVITE A FRIEND</div>
+          ${renderFriendPicker()}
+        </div>
+
+        <div class="form-card">
+          <div class="form-card-title">SHARE LINK</div>
           <div class="pairing-explainer">
-            Send this link to friends — they'll join automatically when they open it.
+            Or send this link — anyone with it joins automatically.
           </div>
           <div class="invite-link-row">
             <input type="text" class="invite-link-input" readonly value="${esc(inviteUrl)}">
@@ -1355,6 +1370,48 @@ function paintLobby() {
   stateEl.querySelectorAll('[data-action="kick"]').forEach(btn => {
     btn.addEventListener('click', () => kickParticipant(btn.dataset.userId));
   });
+  stateEl.querySelectorAll('[data-action="invite-friend"]').forEach(btn => {
+    btn.addEventListener('click', () => inviteFriend(btn.dataset.userId, btn));
+  });
+}
+
+function renderFriendPicker() {
+  const friends = ctx.lobby?.friends ?? [];
+  const already = new Set((ctx.lobby?.participants ?? []).map(p => p.user_id));
+  if (!friends.length) {
+    return '<div class="pairing-explainer">No friends yet — add some from the home screen.</div>';
+  }
+  return `<div class="lobby-roster">${friends.map(({ friend: f }) => {
+    const inLobby   = already.has(f.id);
+    const invited   = ctx.lobby?.invited?.has(f.id);
+    const disabled  = inLobby || invited;
+    const label     = inLobby ? 'IN LOBBY' : invited ? 'INVITED ✓' : 'INVITE';
+    return `
+      <div class="participant-row">
+        <span class="participant-avatar">${avatarEmoji(f.avatar)}</span>
+        <span class="participant-name">
+          ${esc(f.display_name ?? f.username ?? 'Friend')}
+          ${f.is_online ? '' : '<span class="dim" style="font-size:10px"> · offline</span>'}
+        </span>
+        <button class="btn-kick" style="min-width:72px"
+          data-action="invite-friend" data-user-id="${esc(f.id)}"
+          ${disabled ? 'disabled' : ''}>${label}</button>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+async function inviteFriend(friendId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'SENDING…';
+  try {
+    await sendPlayInvite(ctx.user.id, friendId, null, ctx.lobby.id);
+    ctx.lobby.invited.add(friendId);
+    btn.textContent = 'INVITED ✓';
+  } catch (err) {
+    console.error('inviteFriend failed', err);
+    btn.disabled = false;
+    btn.textContent = 'INVITE';
+  }
 }
 
 function renderParticipantRow(p, viewerIsHost) {

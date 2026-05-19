@@ -116,18 +116,24 @@ export function mount(el, ctx, navigate) {
     const list  = document.getElementById('invites-list');
     if (!invites.length) { panel.style.display = 'none'; return; }
     panel.style.display = '';
-    list.innerHTML = invites.map(inv => `
-      <div class="friend-row" id="inv-${inv.id}">
-        <span class="friend-avatar">${avatarEmoji(inv.sender?.avatar)}</span>
-        <div class="friend-info">
-          <span class="friend-name">${esc(inv.sender?.display_name ?? inv.sender?.username)}</span>
-          <span class="dim" style="font-size:10px">wants to play!</span>
-        </div>
-        <button class="btn btn-primary btn-sm" data-id="${inv.id}" data-action="accepted">ACCEPT</button>
-        <button class="btn btn-ghost btn-sm"   data-id="${inv.id}" data-action="declined">DECLINE</button>
-      </div>
-    `).join('');
-    list.querySelectorAll('button[data-action]').forEach(btn => {
+    list.innerHTML = invites.map(inv => {
+      const isLobby = !!inv.lobby_id;
+      return `
+        <div class="friend-row" id="inv-${inv.id}">
+          <span class="friend-avatar">${avatarEmoji(inv.sender?.avatar)}</span>
+          <div class="friend-info">
+            <span class="friend-name">${esc(inv.sender?.display_name ?? inv.sender?.username)}</span>
+            <span class="dim" style="font-size:10px">${isLobby ? 'invited you to a remote game' : 'wants to play!'}</span>
+          </div>
+          ${isLobby
+            ? `<a class="btn btn-primary btn-sm" href="play.html?lobby=${esc(inv.lobby_id)}"
+                 data-id="${inv.id}" data-action="accepted">JOIN LOBBY</a>`
+            : `<button class="btn btn-primary btn-sm" data-id="${inv.id}" data-action="accepted">ACCEPT</button>`
+          }
+          <button class="btn btn-ghost btn-sm" data-id="${inv.id}" data-action="declined">DECLINE</button>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('button[data-action], a[data-action]').forEach(btn => {
       btn.addEventListener('click', async () => {
         await respondToPlayInvite(btn.dataset.id, btn.dataset.action);
         document.getElementById(`inv-${btn.dataset.id}`)?.remove();

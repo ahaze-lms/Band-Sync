@@ -115,9 +115,17 @@ export async function getUnreadCount(userId) {
 
 // ── PLAY INVITES ──────────────────────────────────────────────────
 
-export async function sendPlayInvite(fromId, toId, songId = null) {
+// lobbyId: uuid — when set, the invite carries a lobby join link.
+// Lobby invites get a 30-minute window; generic invites keep the
+// default 5-minute DB expiry.
+export async function sendPlayInvite(fromId, toId, songId = null, lobbyId = null) {
+  const row = { from_id: fromId, to_id: toId, song_id: songId };
+  if (lobbyId) {
+    row.lobby_id  = lobbyId;
+    row.expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  }
   const { data, error } = await supabase
-    .from('play_invites').insert({ from_id: fromId, to_id: toId, song_id: songId })
+    .from('play_invites').insert(row)
     .select().single();
   if (error) throw error;
   return data;
@@ -126,7 +134,7 @@ export async function sendPlayInvite(fromId, toId, songId = null) {
 export async function getPendingPlayInvites(userId) {
   const { data, error } = await supabase
     .from('play_invites')
-    .select(`id, song_id, expires_at, created_at,
+    .select(`id, song_id, lobby_id, expires_at, created_at,
       sender:from_id(id,username,display_name,avatar,accent_color)`)
     .eq('to_id', userId).eq('status', 'pending')
     .gt('expires_at', new Date().toISOString());
