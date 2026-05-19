@@ -69,8 +69,9 @@ const ctx = {
   mode:          'local',  // 'local' (default) | 'remote' — controls what song-select click does
   lobby:         null,     // { id, lobby, participants, tracks, unsubscribe, gameLaunched } when in lobby
   clockOffset:   null,     // ms: Date.now() - serverTime, measured on lobby entry for Phase 5
-  gameChannel:   null,     // { broadcast, unsubscribe } during a remote game (Phase 6)
-  remoteScores:  null,     // Map<userId, scorePayload> during a remote game (Phase 6)
+  gameChannel:            null,     // { broadcast, unsubscribe } during a remote game (Phase 6)
+  remoteScores:           null,     // Map<userId, scorePayload> during a remote game (Phase 6)
+  remoteCountoffStartsAt: null,     // performance.now() target for remote warm-up countdown
 };
 
 let setupTeardown = null;
@@ -1097,10 +1098,23 @@ function startGameTimer() {
 
   const tick = () => {
     if (!ctx.activeGame) return;
+    const el = document.getElementById('game-time');
+
+    // Remote warm-up: count down until the count-off fires.
+    if (ctx.remoteCountoffStartsAt !== null) {
+      const msLeft = ctx.remoteCountoffStartsAt - performance.now();
+      if (msLeft > 0) {
+        const secsLeft = Math.ceil(msLeft / 1000);
+        if (el) el.textContent = `STARTING IN ${secsLeft}`;
+        ctx.gameTimer = requestAnimationFrame(tick);
+        return;
+      }
+      ctx.remoteCountoffStartsAt = null;   // count-off has fired — switch to normal timer
+    }
+
     const t  = Math.max(0, ctx.activeGame.getSongTime());
     const mm = Math.floor(t / 60000);
     const ss = String(Math.floor((t / 1000) % 60)).padStart(2, '0');
-    const el = document.getElementById('game-time');
     if (el) el.textContent = `${mm}:${ss} / ${mmT}:${ssT}`;
     ctx.gameTimer = requestAnimationFrame(tick);
   };
@@ -1726,6 +1740,9 @@ async function launchRemoteGame(countoffStartsAt) {
     }],
   };
 
+  // Store so startGameTimer can show the warm-up countdown in the header.
+  ctx.remoteCountoffStartsAt = countoffStartsAt;
+
   // Render game screen (loads MIDI, creates engine), then start immediately
   // with the synchronized countoff timestamp — no "▶ START SONG" warmup.
   await renderGame();
@@ -1778,7 +1795,8 @@ function leaveCurrentState() {
   if (setupTeardown) { setupTeardown(); setupTeardown = null; }
   if (ctx.activeGame) { ctx.activeGame.destroy(); ctx.activeGame = null; }
   if (ctx.gameChannel) { ctx.gameChannel.unsubscribe(); ctx.gameChannel = null; }
-  ctx.remoteScores = null;
+  ctx.remoteScores           = null;
+  ctx.remoteCountoffStartsAt = null;
   stopGameTimer();
   // Tear down any open modals so they don't leak across state transitions.
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
