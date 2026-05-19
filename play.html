@@ -715,7 +715,167 @@
       .player-tag { grid-row: span 4; align-self: start; padding-top: 10px; }
 
       .song-grid { grid-template-columns: 1fr; }
+      .lobby-cards { grid-template-columns: 1fr; }
     }
+
+    /* ── MODE TOGGLE (song-select) ──────────────────────────────── */
+    .mode-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .mode-opt {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      color: var(--dim);
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      text-align: left;
+      display: flex; flex-direction: column; gap: 4px;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .mode-opt-title {
+      font-size: 12px; letter-spacing: 2px; font-weight: 600;
+      color: #fff;
+    }
+    .mode-opt-sub {
+      font-size: 11px; color: var(--dim);
+    }
+    .mode-opt:hover { border-color: var(--purple); background: var(--bg3); }
+    .mode-opt.selected {
+      border-color: var(--purple);
+      background: rgba(127,119,221,0.08);
+    }
+
+    /* ── REMOTE LOBBY ──────────────────────────────────────────── */
+    .lobby-header { text-align: center; margin-bottom: 24px; }
+    .lobby-song   { font-size: 22px; font-weight: 600; color: #fff; margin-top: 8px; }
+
+    .lobby-state-pill {
+      display: inline-block;
+      padding: 4px 12px; margin-top: 10px;
+      border-radius: 12px;
+      background: var(--bg);
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+    }
+    .lobby-state-pill.state-ready    { color: var(--teal);   border-color: var(--teal); }
+    .lobby-state-pill.state-playing  { color: var(--purple); border-color: var(--purple); }
+    .lobby-state-pill.state-abandoned { color: var(--red); border-color: var(--red); }
+
+    .lobby-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .lobby-roster { display: flex; flex-direction: column; gap: 2px; }
+    .participant-row {
+      display: grid;
+      grid-template-columns: 36px 24px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: var(--bg);
+      border: 0.5px solid transparent;
+    }
+    .participant-row.is-ready { border-color: var(--teal); background: rgba(29,158,117,0.06); }
+    .participant-slot {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px; color: var(--purple2);
+      text-align: center;
+    }
+    .participant-avatar { font-size: 16px; text-align: center; }
+    .participant-name {
+      color: #fff;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .participant-ready {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px; color: var(--dim);
+    }
+    .participant-row.is-ready .participant-ready { color: var(--teal); }
+    .btn-kick {
+      background: transparent;
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 9px; letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-kick:hover { border-color: var(--red); color: var(--red); }
+
+    .invite-link-row { display: flex; gap: 8px; margin-top: 8px; }
+    .invite-link-input {
+      flex: 1;
+      background: var(--bg);
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      min-width: 0;
+    }
+    .btn-copy-invite {
+      background: var(--purple);
+      border: 0;
+      color: #fff;
+      padding: 0 16px;
+      border-radius: 6px;
+      font-size: 11px; letter-spacing: 2px; font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-copy-invite:hover { filter: brightness(1.1); }
+
+    .lobby-actions {
+      display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .btn-ghost-lobby, .btn-ready, .btn-not-ready, .btn-start-lobby {
+      padding: 12px 22px;
+      border-radius: 8px;
+      font-size: 11px; letter-spacing: 2px; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-ghost-lobby {
+      background: transparent;
+      border: 0.5px solid var(--border2);
+      color: var(--dim);
+    }
+    .btn-ghost-lobby:hover { border-color: var(--red); color: var(--red); }
+    .btn-not-ready {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      color: #fff;
+    }
+    .btn-not-ready:hover { border-color: var(--teal); }
+    .btn-ready {
+      background: rgba(29,158,117,0.18);
+      border: 1px solid var(--teal);
+      color: var(--teal);
+    }
+    .btn-start-lobby {
+      background: var(--purple);
+      border: 0;
+      color: #fff;
+    }
+    .btn-start-lobby:disabled {
+      background: var(--bg2);
+      border: 0.5px solid var(--border);
+      color: var(--dim);
+      cursor: not-allowed;
+    }
+    .btn-start-lobby:not(:disabled):hover { filter: brightness(1.1); }
   </style>
 </head>
 <body>
@@ -732,6 +892,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=14"></script>
+  <script type="module" src="js/play.js?v=15"></script>
 </body>
 </html>

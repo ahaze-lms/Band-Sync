@@ -179,3 +179,27 @@ export async function listParticipants(lobbyId) {
 
   return (data ?? []).map(r => ({ ...r, profile: profiles[r.user_id] ?? null }));
 }
+
+// ── Realtime ─────────────────────────────────────────────────────
+
+// Subscribe to a single lobby's live changes. Returns an unsubscribe
+// function — call it on unmount / leave to release the channel.
+//
+//   onLobbyChange      (payload)  — INSERT/UPDATE/DELETE on the lobby row
+//   onParticipantChange(payload)  — INSERT/UPDATE/DELETE on lobby_participants
+//
+// Callbacks get the raw postgres_changes payload — usually you'll
+// just call your existing "re-fetch state" function and ignore the
+// payload contents.
+export function subscribeLobby(lobbyId, { onLobbyChange, onParticipantChange } = {}) {
+  const channel = supabase.channel(`lobby:${lobbyId}`)
+    .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'lobbies', filter: `id=eq.${lobbyId}` },
+        payload => onLobbyChange?.(payload))
+    .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'lobby_participants', filter: `lobby_id=eq.${lobbyId}` },
+        payload => onParticipantChange?.(payload))
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
+}

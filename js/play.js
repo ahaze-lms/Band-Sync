@@ -21,6 +21,7 @@ import { getUser }            from './services/auth.js';
 import { getProfile }         from './services/profile.js';
 import { claimCode }          from './services/device-codes.js';
 import * as sessionAttachments from './services/session-attachments.js';
+import * as lobbies            from './services/lobbies.js';
 import { saveSession }        from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
 import { initMIDI, getInputs, onStateChange } from './core/midi.js';
@@ -64,6 +65,8 @@ const ctx = {
   oldBests:      null,  // snapshot of bests at game start — for NEW PB detection on results
   attachments:   null,  // { 'p2': { token, userId, displayName, avatar, accentColor }, ... }
   pairedFriends: null,  // [{ token, user_id, display_name, ... }] — friends ever paired with this device, for dropdown
+  mode:          'local',  // 'local' (default) | 'remote' — controls what song-select click does
+  lobby:         null,     // { id, lobby, participants, unsubscribe } when in lobby state
 };
 
 let setupTeardown = null;
@@ -124,6 +127,26 @@ async function init() {
 
   const invite = new URLSearchParams(location.search).get('invite');
   if (invite) ctx.inviteId = invite;
+
+  // Remote-lobby join via shareable URL (?lobby=<id>). Bypasses
+  // song-select — the lobby already knows the song.
+  const lobbyParam = new URLSearchParams(location.search).get('lobby');
+  if (lobbyParam) {
+    try {
+      const slot = await lobbies.join(lobbyParam);
+      if (slot != null) {
+        ctx.lobby = { id: lobbyParam };
+        renderLobby();
+        return;
+      }
+      renderError('CANNOT JOIN LOBBY',
+        'This lobby is full, closed, or no longer exists.');
+      return;
+    } catch (err) {
+      renderError('CANNOT JOIN LOBBY', err.message);
+      return;
+    }
+  }
 
   renderSongSelect();
 }
@@ -280,6 +303,16 @@ function renderSongSelect() {
 
   stateEl.innerHTML = `
     <div class="state-inner">
+      <div class="mode-toggle">
+        <button class="mode-opt ${ctx.mode === 'local' ? 'selected' : ''}" data-mode="local">
+          <span class="mode-opt-title">SOLO / COUCH</span>
+          <span class="mode-opt-sub">Everyone on this device</span>
+        </button>
+        <button class="mode-opt ${ctx.mode === 'remote' ? 'selected' : ''}" data-mode="remote">
+          <span class="mode-opt-title">REMOTE LOBBY</span>
+          <span class="mode-opt-sub">Friends on their own devices</span>
+        </button>
+      </div>
       <div class="section-label">LIBRARY — ${songs.length} SONGS</div>
       <div class="song-grid">
         ${songs.map(songCard).join('')}
@@ -287,13 +320,43 @@ function renderSongSelect() {
     </div>
   `;
 
+  stateEl.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ctx.mode = btn.dataset.mode;
+      renderSongSelect();
+    });
+  });
+
   stateEl.querySelectorAll('[data-song-file]').forEach(el => {
     el.addEventListener('click', () => {
       const file = el.dataset.songFile;
-      applySong(songs.find(s => s.file === file));
-      renderSetup();
+      const song = songs.find(s => s.file === file);
+      if (ctx.mode === 'remote') {
+        createRemoteLobby(song);
+      } else {
+        applySong(song);
+        renderSetup();
+      }
     });
   });
+}
+
+async function createRemoteLobby(song) {
+  try {
+    const lobbyId = await lobbies.create(song.file, song.title, {
+      speedLevel:      ctx.setup?.speedLevel      ?? DEFAULT_SPEED_LEVEL,
+      hitWindowLevel:  ctx.setup?.hitWindowLevel  ?? DEFAULT_HIT_WINDOW_LEVEL,
+    });
+    ctx.lobby = { id: lobbyId };
+    // Update URL so reload reattaches + the bar is the share link.
+    const url = new URL(location.href);
+    url.searchParams.set('lobby', lobbyId);
+    history.replaceState({}, '', url.toString());
+    renderLobby();
+  } catch (err) {
+    console.error('createRemoteLobby failed', err);
+    renderError('COULD NOT CREATE LOBBY', err.message || String(err));
+  }
 }
 
 function songCard(song) {
@@ -1138,6 +1201,233 @@ function resultsRow(i, r) {
       <div class="results-grade">${s.grade || '—'}</div>
     </div>
   `;
+}
+
+// ── STATE: LOBBY (remote multiplayer) ──────────────────────────────
+
+async function renderLobby() {
+  leaveCurrentState();
+  setStateLabel('LOBBY');
+
+  if (!ctx.lobby?.id) {
+    renderError('NO LOBBY', 'Lobby context missing — go back to song select.');
+    return;
+  }
+
+  // Subscribe to live changes; teardown wired through leaveCurrentState.
+  const lobbyId = ctx.lobby.id;
+  const unsubscribe = lobbies.subscribeLobby(lobbyId, {
+    onLobbyChange:       () => refreshLobbyData(),
+    onParticipantChange: () => refreshLobbyData(),
+  });
+  setupTeardown = () => {
+    unsubscribe();
+    if (ctx.lobby) ctx.lobby.unsubscribe = null;
+  };
+  ctx.lobby.unsubscribe = unsubscribe;
+
+  await refreshLobbyData();
+}
+
+async function refreshLobbyData() {
+  if (!ctx.lobby?.id) return;
+  try {
+    const [lobby, participants] = await Promise.all([
+      lobbies.getLobby(ctx.lobby.id),
+      lobbies.listParticipants(ctx.lobby.id),
+    ]);
+    if (!lobby) {
+      renderError('LOBBY CLOSED', 'This lobby has ended or expired.');
+      return;
+    }
+    ctx.lobby.lobby = lobby;
+    ctx.lobby.participants = participants;
+
+    // If the host abandoned while we were watching, bail out gracefully.
+    if (lobby.state === 'abandoned' && lobby.host_user_id !== ctx.user.id) {
+      stateEl.innerHTML = `
+        <div class="state-inner">
+          <div class="center-msg">
+            <div class="title">HOST LEFT THE LOBBY</div>
+            <p class="dim">Returning to song select…</p>
+          </div>
+        </div>`;
+      setTimeout(() => exitLobby({ skipServer: true }), 2000);
+      return;
+    }
+
+    paintLobby();
+  } catch (err) {
+    console.error('refreshLobbyData failed', err);
+  }
+}
+
+function paintLobby() {
+  const { lobby, participants } = ctx.lobby;
+  const me        = participants.find(p => p.user_id === ctx.user.id);
+  const isHost    = lobby.host_user_id === ctx.user.id;
+  const readyCnt  = participants.filter(p => p.is_ready).length;
+  const allReady  = participants.length > 0 && readyCnt === participants.length;
+  const inviteUrl = new URL(`play.html?lobby=${lobby.id}`, location.href).href;
+
+  const stateLabels = {
+    waiting:   'WAITING FOR PLAYERS',
+    ready:     'LOCKED IN — START HANDSHAKE COMING (PHASE 5)',
+    starting:  'SYNCING CLOCKS…',
+    playing:   'IN GAME',
+    done:      'GAME FINISHED',
+    abandoned: 'ABANDONED',
+  };
+
+  stateEl.innerHTML = `
+    <div class="state-inner">
+      <div class="lobby-header">
+        <div class="section-label">REMOTE LOBBY${isHost ? ' — YOU ARE HOST' : ''}</div>
+        <div class="lobby-song">${esc(lobby.song_title)}</div>
+        <div class="lobby-state-pill state-${esc(lobby.state)}">${esc(stateLabels[lobby.state] || lobby.state.toUpperCase())}</div>
+      </div>
+
+      <div class="lobby-cards">
+        <div class="form-card">
+          <div class="form-card-title">PARTICIPANTS — ${participants.length}/4</div>
+          <div class="lobby-roster">
+            ${participants.map(p => renderParticipantRow(p, isHost)).join('')}
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="form-card-title">SHARE INVITE</div>
+          <div class="pairing-explainer">
+            Send this link to friends — they'll join automatically when they open it.
+          </div>
+          <div class="invite-link-row">
+            <input type="text" class="invite-link-input" readonly value="${esc(inviteUrl)}">
+            <button class="btn-copy-invite" data-action="copy-invite">COPY</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lobby-actions">
+        <button class="btn-ghost-lobby" data-action="leave">${isHost ? 'CLOSE LOBBY' : '← LEAVE'}</button>
+        ${me ? `
+          <button class="${me.is_ready ? 'btn-ready' : 'btn-not-ready'}" data-action="toggle-ready">
+            ${me.is_ready ? '✓ READY' : 'READY UP'}
+          </button>
+        ` : ''}
+        ${isHost ? `
+          <button class="btn-start-lobby" data-action="start" ${allReady && lobby.state === 'waiting' ? '' : 'disabled'}>
+            ${lobby.state === 'waiting'
+                ? (allReady ? '▶ START SONG' : `WAITING — ${readyCnt}/${participants.length} READY`)
+                : 'LOCKED IN'}
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  stateEl.querySelector('[data-action="leave"]')?.addEventListener('click', () => exitLobby());
+  stateEl.querySelector('[data-action="toggle-ready"]')?.addEventListener('click', toggleReady);
+  stateEl.querySelector('[data-action="start"]')?.addEventListener('click', startLobby);
+  stateEl.querySelector('[data-action="copy-invite"]')?.addEventListener('click', copyInvite);
+  stateEl.querySelectorAll('[data-action="kick"]').forEach(btn => {
+    btn.addEventListener('click', () => kickParticipant(btn.dataset.userId));
+  });
+}
+
+function renderParticipantRow(p, viewerIsHost) {
+  const name        = p.profile?.display_name || p.profile?.username || 'Player';
+  const av          = avatarEmoji(p.profile?.avatar);
+  const isMe        = p.user_id === ctx.user.id;
+  const isLobbyHost = ctx.lobby.lobby.host_user_id === p.user_id;
+  const canKick     = viewerIsHost && !isMe;
+
+  const suffix = [
+    isMe        ? '(you)' : '',
+    isLobbyHost ? 'HOST'  : '',
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <div class="participant-row ${p.is_ready ? 'is-ready' : ''}">
+      <span class="participant-slot">P${p.slot ?? '?'}</span>
+      <span class="participant-avatar">${av}</span>
+      <span class="participant-name">${esc(name)}${suffix ? ` <span class="dim">· ${esc(suffix)}</span>` : ''}</span>
+      <span class="participant-ready">${p.is_ready ? '✓ READY' : 'WAITING…'}</span>
+      ${canKick ? `<button class="btn-kick" data-action="kick" data-user-id="${esc(p.user_id)}">KICK</button>` : ''}
+    </div>
+  `;
+}
+
+async function toggleReady() {
+  const me = ctx.lobby?.participants?.find(p => p.user_id === ctx.user.id);
+  if (!me) return;
+  try {
+    await lobbies.setReady(ctx.lobby.id, !me.is_ready);
+    // Realtime triggers refreshLobbyData on success.
+  } catch (err) {
+    console.error('setReady failed', err);
+  }
+}
+
+async function startLobby() {
+  // Phase 3+4 just transitions state. Phase 5 wires the clock-sync
+  // handshake and phase 6 hands off to the gameplay engine.
+  try {
+    await lobbies.setState(ctx.lobby.id, 'ready');
+  } catch (err) {
+    console.error('startLobby failed', err);
+  }
+}
+
+async function kickParticipant(userId) {
+  try {
+    await lobbies.kick(ctx.lobby.id, userId);
+  } catch (err) {
+    console.error('kick failed', err);
+  }
+}
+
+function copyInvite() {
+  const input = stateEl.querySelector('.invite-link-input');
+  if (!input) return;
+  input.select();
+  navigator.clipboard?.writeText(input.value).catch(() => {
+    try { document.execCommand('copy'); } catch {}
+  });
+  const btn = stateEl.querySelector('[data-action="copy-invite"]');
+  if (btn) {
+    btn.textContent = 'COPIED';
+    setTimeout(() => { if (btn.textContent === 'COPIED') btn.textContent = 'COPY'; }, 1500);
+  }
+}
+
+// Leave the lobby (self) or close it (host). Clears URL param + ctx
+// and returns to song-select. skipServer=true when the server already
+// invalidated the lobby (e.g. host abandoned while we were watching).
+async function exitLobby({ skipServer = false } = {}) {
+  const lobby   = ctx.lobby?.lobby;
+  const lobbyId = ctx.lobby?.id;
+  const wasHost = lobby?.host_user_id === ctx.user.id;
+
+  if (!skipServer && lobbyId) {
+    try {
+      if (wasHost) {
+        await lobbies.updateLobby(lobbyId, { state: 'abandoned' });
+      } else {
+        await lobbies.leave(lobbyId);
+      }
+    } catch (err) {
+      console.warn('exitLobby cleanup failed', err);
+    }
+  }
+
+  if (ctx.lobby?.unsubscribe) { ctx.lobby.unsubscribe(); }
+  ctx.lobby = null;
+
+  const url = new URL(location.href);
+  url.searchParams.delete('lobby');
+  history.replaceState({}, '', url.toString());
+
+  renderSongSelect();
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────
