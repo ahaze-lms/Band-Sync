@@ -7,11 +7,12 @@
   <style>
     /* ── VARIABLES ─────────────────────────────────────────────── */
     :root {
-      --bg:       #07070f;
-      --bg2:      #0d0d1a;
-      --bg3:      #111120;
-      --border:   #1e1e30;
-      --border2:  #2a2a40;
+      --bg:       #101022;   /* was #07070f — lifted to visible dark-navy */
+      --bg2:      #18182e;   /* was #0d0d1a — cards / surfaces */
+      --bg3:      #1e1e34;   /* was #111120 — inputs / hover */
+      --border:   #272742;   /* was #1e1e30 — clearly visible borders */
+      --border2:  #32324e;   /* was #2a2a40 */
+      --card-bg:  #18182e;   /* alias of bg2 for semantic clarity */
       --purple:   #7F77DD;
       --purple2:  #AFA9EC;
       --teal:     #1D9E75;
@@ -20,8 +21,8 @@
       --amber2:   #EF9F27;
       --red:      #E24B4A;
       --red2:     #F09595;
-      --text:     #d4d4e2;     /* keep in sync with index.html */
-      --dim:      #8585a0;     /* lifted from #55556a for mobile legibility */
+      --text:     #e0e0ef;   /* was #d4d4e2 — slightly brighter for mobile */
+      --dim:      #9090aa;   /* was #8585a0 — lifted for daylight legibility */
       --radius:   10px;
     }
 
@@ -716,6 +717,48 @@
 
       .song-grid { grid-template-columns: 1fr; }
       .lobby-cards { grid-template-columns: 1fr; }
+
+      /* Lobby — stack instrument/track/device selects so they don't
+         overflow a narrow participant row */
+      .lobby-my-config { flex-wrap: wrap; }
+      .lobby-slot-sel  { flex: 1 1 calc(50% - 6px); min-width: 0; }
+
+      /* Results — single column */
+      .results-grid { grid-template-columns: 1fr !important; }
+
+      /* Buttons — minimum 44px touch target everywhere */
+      button { min-height: 40px; }
+      .count-btn { width: 52px; height: 52px; }
+    }
+
+    /* ── PHONE (≤480px) — tighter chrome, bigger touch targets ─── */
+    @media (max-width: 480px) {
+      #state { padding: 16px 12px; }
+
+      /* Game screen: more canvas, less chrome */
+      .game-shell { gap: 4px; }
+      .game-header { padding: 6px 10px; gap: 8px; }
+      /* Hide BPM / duration meta — keep identity + time only */
+      .game-header .game-meta:first-of-type { display: none; }
+      /* Score card: tighten and hide the P/G/M/W detail row */
+      .score-card   { gap: 6px; padding: 2px 4px; }
+      .score-pgmw   { display: none; }
+      .score-stat .val.big { font-size: 14px; }
+      .score-stat .lab     { display: none; }   /* SCORE / COMBO labels eat space */
+      /* Feedback pop: smaller so it doesn't cover too much canvas */
+      .feedback-overlay { font-size: 36px; }
+      /* Controls bar: bigger tap targets, no warmup hint text */
+      .game-controls { padding: 6px 8px; gap: 6px; flex-wrap: wrap; }
+      .warmup-hint   { display: none; }
+      .btn-primary, .btn-ghost { min-height: 44px; padding: 0 14px; }
+      /* Lobby warmup: slightly taller crop so more of keyboard is visible */
+      .lobby-warmup-canvas-wrap { height: 160px; }
+      /* Lobby actions: stack on very narrow screens */
+      .lobby-actions { flex-wrap: wrap; gap: 8px; }
+      .btn-ghost-lobby, .btn-ready, .btn-not-ready,
+      .btn-start-lobby { flex: 1 1 auto; min-height: 44px; text-align: center; }
+      /* Song cards: tighter padding */
+      .song-card { padding: 14px 16px; }
     }
 
     /* ── MODE TOGGLE (song-select) ──────────────────────────────── */
