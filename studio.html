@@ -407,14 +407,17 @@
       color: var(--purple2);
     }
 
-    /* ── INPUT ROW (global device picker) ───────────────────────── */
-    .input-row {
-      background: var(--bg2);
-      border: 0.5px solid var(--bg3);
-      border-radius: 12px;
-      padding: 10px 14px;
+    /* ── INPUT SECTION (sub-row inside the top-bar tile) ────────── */
+    /* flex-basis: 100% forces this to wrap onto its own line under
+       the main transport row. Subtle top border separates it visually
+       without needing its own tile. */
+    .input-section {
+      flex-basis: 100%;
       display: flex; align-items: center; gap: 10px;
       flex-wrap: wrap;
+      padding-top: 8px;
+      margin-top: 4px;
+      border-top: 0.5px solid var(--bg3);
     }
 
     /* ── TRACK LIST ─────────────────────────────────────────────── */
@@ -675,6 +678,8 @@
       <div class="stat-label">BPM</div>
     </div>
 
+    <button id="tap-btn" class="tap-btn" type="button">TAP</button>
+
     <div class="stat-pill">
       <select id="timesig-input" class="stat-value timesig-input" aria-label="Time signature">
         <option value="4/4" selected>4/4</option>
@@ -700,8 +705,6 @@
       </button>
     </div>
 
-    <button id="tap-btn" class="tap-btn" type="button">TAP</button>
-
     <div class="hist-buttons">
       <button id="undo-btn" class="hist-btn" type="button" disabled aria-label="Undo">↶</button>
       <button id="redo-btn" class="hist-btn" type="button" disabled aria-label="Redo">↷</button>
@@ -717,20 +720,20 @@
       </div>
     </div>
 
+    <!-- Input picker as a sub-row inside the top-bar tile. flex-basis
+         100% forces it to wrap below the main row regardless of width. -->
+    <div class="input-section">
+      <span class="field-label">INPUT</span>
+      <select id="track-input" class="track-input-select" aria-label="Input device">
+        <option value="">Initializing…</option>
+      </select>
+      <div id="midi-status" class="midi-status">…</div>
+    </div>
+
     <div id="time-display" class="time-display"></div>
   </div>
 
   <div id="save-status" class="save-status"></div>
-
-  <!-- Input device picker — global (one MIDI / keyboard at a time
-       feeds the active track). -->
-  <div class="input-row">
-    <span class="field-label">INPUT</span>
-    <select id="track-input" class="track-input-select" aria-label="Input device">
-      <option value="">Initializing…</option>
-    </select>
-    <div id="midi-status" class="midi-status">…</div>
-  </div>
 
   <!-- Track list — one row per track, populated by JS from song.tracks.
        The "+ ADD TRACK" button appends a new track up to MAX_TRACKS. -->
