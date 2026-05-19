@@ -46,9 +46,18 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     onPlayheadDrag = null,   // (ms)                — fires while ruler is being dragged
   } = options;
 
-  let playheadMs   = 0;         // current playhead position; always drawn
-  let selectedNote = null;      // highlighted note, or null
+  let playheadMs    = 0;        // current playhead position; always drawn
+  let selectedNote  = null;     // highlighted note, or null
   let rulerDragging = false;    // true while user is dragging the top ruler
+
+  // Zoom state. 1 = fit-all (default). 2 = show half, 4 = quarter, etc.
+  // viewOffsetMs is the song-time at the left edge of the visible
+  // window. When zoom > 1, the user can be viewing any window of the
+  // song; ensurePlayheadVisible() keeps playback from disappearing.
+  let zoomFactor   = 1;
+  let viewOffsetMs = 0;
+  const MAX_ZOOM = 16;
+  const MIN_ZOOM = 1;
 
   // Pointer interaction state — shared between mouse + touch via Pointer Events.
   let drag = null;
@@ -73,9 +82,30 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   // ── Public ──────────────────────────────────────────────────────
-  function setPlayhead(ms) { playheadMs = ms; }
+  function setPlayhead(ms) {
+    playheadMs = ms;
+    ensurePlayheadVisible();
+  }
   function setSelected(note) { selectedNote = note; }
   function getSelected() { return selectedNote; }
+
+  // Zoom anchored on the playhead — the spot you care about stays
+  // in view across zoom changes. setZoom clamps to [MIN_ZOOM, MAX_ZOOM].
+  function setZoom(factor) {
+    const oldFactor = zoomFactor;
+    zoomFactor = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, factor));
+    if (zoomFactor === oldFactor) return;
+    if (zoomFactor <= 1) {
+      viewOffsetMs = 0;
+    } else {
+      const viewMs = computeViewMs();
+      viewOffsetMs = clampOffset(playheadMs - viewMs / 2);
+    }
+  }
+  function getZoom() { return zoomFactor; }
+  function zoomIn()  { setZoom(zoomFactor * 2); }
+  function zoomOut() { setZoom(zoomFactor / 2); }
+  function zoomFit() { setZoom(1); }
 
   function draw() {
     syncBufferToDisplay();
@@ -97,15 +127,40 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   // ── Internal ────────────────────────────────────────────────────
-  function computeViewMs() {
+  // Total "song area" (fit-all window) — the size you'd see at zoom 1.
+  function computeFitMs() {
     const beatMs = 60_000 / song.bpm;
-    const minMs = 8 * 4 * beatMs;   // 8 bars at 4/4
+    const minMs = 8 * 4 * beatMs;   // always at least 8 bars
     let lastEnd = 0;
     for (const n of song.notes) {
       const end = n.startMs + n.durationMs;
       if (end > lastEnd) lastEnd = end;
     }
     return Math.max(minMs, lastEnd * 1.05);
+  }
+  // Visible window size in ms — fit / zoom.
+  function computeViewMs() {
+    return computeFitMs() / zoomFactor;
+  }
+  // Pan offset is clamped to song boundaries so you can't scroll past.
+  function clampOffset(offset) {
+    const viewMs = computeViewMs();
+    const maxOffset = Math.max(0, computeFitMs() - viewMs);
+    return Math.max(0, Math.min(offset, maxOffset));
+  }
+  // Whenever the playhead moves (drag, playback, programmatic) make
+  // sure it stays inside the visible window when zoomed. Pans the
+  // view as a side-effect.
+  function ensurePlayheadVisible() {
+    if (zoomFactor <= 1) { viewOffsetMs = 0; return; }
+    const viewMs = computeViewMs();
+    if (playheadMs < viewOffsetMs) {
+      viewOffsetMs = clampOffset(playheadMs - viewMs * 0.1);
+    } else if (playheadMs > viewOffsetMs + viewMs) {
+      viewOffsetMs = clampOffset(playheadMs - viewMs * 0.9);
+    } else {
+      viewOffsetMs = clampOffset(viewOffsetMs);
+    }
   }
 
   // Subtle row stripes — black-key rows slightly darker.
@@ -133,13 +188,16 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
   // Beat + bar vertical gridlines (drawn through the grid area; the
   // ruler has its own ticks). Bar lines fall every `timeSig.num` beats.
+  // Iterates only the beats inside the visible window (cheap when
+  // zoomed in to e.g. 4 bars of a long song).
   function drawGridlines(totalMs, pxPerMs) {
     const beatMs = 60_000 / song.bpm;
     const barBeats = song.timeSig?.num ?? 4;
-    const beatsVisible = Math.floor(totalMs / beatMs) + 1;
-    for (let beat = 0; beat <= beatsVisible; beat++) {
-      const x = KEY_STRIP_W + beat * beatMs * pxPerMs;
-      if (x > ROLL_W) break;
+    const startBeat = Math.floor(viewOffsetMs / beatMs);
+    const endBeat   = Math.ceil((viewOffsetMs + totalMs) / beatMs);
+    for (let beat = startBeat; beat <= endBeat; beat++) {
+      const x = KEY_STRIP_W + (beat * beatMs - viewOffsetMs) * pxPerMs;
+      if (x < KEY_STRIP_W || x > ROLL_W) continue;
       const isBarLine = beat % barBeats === 0;
       ctx.strokeStyle = isBarLine ? '#2a2a40' : '#181826';
       ctx.lineWidth   = isBarLine ? 1 : 0.5;
@@ -157,8 +215,10 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const radius = Math.min(3, rowH / 3);
     for (const note of song.notes) {
       if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
-      const x = KEY_STRIP_W + note.startMs * pxPerMs;
+      const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
+      // Skip notes entirely off-screen for perf (canvas would clip anyway).
+      if (x + w < KEY_STRIP_W || x > ROLL_W) continue;
       const yIdx = PITCH_MAX - note.pitch;
       const y = RULER_H + yIdx * rowH;
 
@@ -198,8 +258,8 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   function drawPlayhead(pxPerMs) {
-    const x = KEY_STRIP_W + Math.max(0, playheadMs) * pxPerMs;
-    if (x > ROLL_W) return;
+    const x = KEY_STRIP_W + (Math.max(0, playheadMs) - viewOffsetMs) * pxPerMs;
+    if (x < KEY_STRIP_W || x > ROLL_W) return;
     ctx.strokeStyle = '#1D9E75';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -255,19 +315,21 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     ctx.lineTo(ROLL_W, RULER_H);
     ctx.stroke();
 
-    // Bar tick marks + numbers — span = (timeSig.num) beats.
+    // Bar tick marks + numbers — span = (timeSig.num) beats. Iterates
+    // only the bars inside the visible window.
     const beatMs = 60_000 / song.bpm;
     const barBeats = song.timeSig?.num ?? 4;
     const barMs  = beatMs * barBeats;
-    const barsVisible = Math.ceil(totalMs / barMs);
+    const startBar = Math.floor(viewOffsetMs / barMs);
+    const endBar   = Math.ceil((viewOffsetMs + totalMs) / barMs);
 
     ctx.font = '10px "Segoe UI", sans-serif';
     ctx.fillStyle = '#8585a0';
     ctx.textBaseline = 'middle';
 
-    for (let bar = 0; bar <= barsVisible; bar++) {
-      const x = KEY_STRIP_W + bar * barMs * pxPerMs;
-      if (x > ROLL_W) break;
+    for (let bar = startBar; bar <= endBar; bar++) {
+      const x = KEY_STRIP_W + (bar * barMs - viewOffsetMs) * pxPerMs;
+      if (x < KEY_STRIP_W || x > ROLL_W) continue;
       ctx.strokeStyle = '#3a3a52';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
@@ -279,8 +341,8 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
 
     // Playhead handle — a small notch in the ruler so you can see
     // where to grab it.
-    const phX = KEY_STRIP_W + Math.max(0, playheadMs) * pxPerMs;
-    if (phX <= ROLL_W) {
+    const phX = KEY_STRIP_W + (Math.max(0, playheadMs) - viewOffsetMs) * pxPerMs;
+    if (phX >= KEY_STRIP_W && phX <= ROLL_W) {
       ctx.fillStyle = '#1D9E75';
       ctx.beginPath();
       ctx.moveTo(phX - 5, 2);
@@ -310,7 +372,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     for (let i = song.notes.length - 1; i >= 0; i--) {
       const note = song.notes[i];
       if (note.pitch < PITCH_MIN || note.pitch > PITCH_MAX) continue;
-      const x = KEY_STRIP_W + note.startMs * pxPerMs;
+      const x = KEY_STRIP_W + (note.startMs - viewOffsetMs) * pxPerMs;
       const w = Math.max(2, note.durationMs * pxPerMs);
       const yIdx = PITCH_MAX - note.pitch;
       const y = RULER_H + yIdx * rowH;
@@ -325,7 +387,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
     const rowH    = GRID_H / PITCH_COUNT;
-    const startMs = Math.max(0, (lx - KEY_STRIP_W) / pxPerMs);
+    const startMs = Math.max(0, viewOffsetMs + (lx - KEY_STRIP_W) / pxPerMs);
     const yIdx    = Math.floor((ly - RULER_H) / rowH);
     const pitch   = PITCH_MAX - yIdx;
     if (pitch < PITCH_MIN || pitch > PITCH_MAX) return null;
@@ -333,11 +395,11 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
   }
 
   // Returns the song-time (ms) at a given logical X, clamped to >= 0.
-  // Used by the ruler-drag path.
+  // Used by the ruler-drag path. Accounts for the current pan offset.
   function msAtLogicalX(lx) {
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
-    return Math.max(0, (lx - KEY_STRIP_W) / pxPerMs);
+    return Math.max(0, viewOffsetMs + (lx - KEY_STRIP_W) / pxPerMs);
   }
 
   function isInRulerLogical(lx, ly) {
@@ -408,7 +470,7 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     const totalMs = computeViewMs();
     const pxPerMs = (ROLL_W - KEY_STRIP_W) / totalMs;
     const rowH    = GRID_H / PITCH_COUNT;
-    const newStart = Math.max(0, (pt.x - KEY_STRIP_W) / pxPerMs);
+    const newStart = Math.max(0, viewOffsetMs + (pt.x - KEY_STRIP_W) / pxPerMs);
     const yIdx     = Math.floor((pt.y - RULER_H) / rowH);
     const newPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, PITCH_MAX - yIdx));
     // Move updates BOTH startMs and startMsRaw — otherwise a later
@@ -464,5 +526,8 @@ export function createPianoRollRenderer(canvas, song, options = {}) {
     if (onDelete) onDelete(note);
   });
 
-  return { draw, setPlayhead, setSelected, getSelected };
+  return {
+    draw, setPlayhead, setSelected, getSelected,
+    setZoom, getZoom, zoomIn, zoomOut, zoomFit,
+  };
 }

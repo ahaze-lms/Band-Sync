@@ -206,6 +206,22 @@
     .s-btn.primary:hover:not(:disabled) {
       background: rgba(127, 119, 221, 0.18);
     }
+    /* Undo / Redo cluster in the top-bar — touch-friendly 40×44. */
+    .hist-buttons { display: flex; gap: 4px; }
+    .hist-btn {
+      width: 40px; height: 44px;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3); border-radius: 8px;
+      font-size: 20px; line-height: 1;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+      padding: 0;
+    }
+    .hist-btn:hover:not(:disabled) { border-color: var(--purple); color: var(--purple2); }
+    .hist-btn:active:not(:disabled) { transform: scale(0.94); }
+    .hist-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
     .overflow-wrap { position: relative; }
     .overflow-btn {
       width: 40px; height: 44px;
@@ -485,9 +501,16 @@
       text-align: center;
       font-size: 9px; letter-spacing: 2px; color: var(--dim);
     }
-    .history-buttons {
-      display: flex; gap: 4px;
+    /* Zoom cluster lives in the roll-bottom strip. Small compact
+       buttons since they're contextual to the roll, not a primary
+       transport action. */
+    .zoom-buttons {
+      display: flex; align-items: center; gap: 4px;
       flex-shrink: 0;
+    }
+    .zoom-label {
+      font-size: 10px; letter-spacing: 1px; color: var(--dim);
+      min-width: 28px; text-align: center;
     }
     .r-btn {
       width: 32px; height: 32px;
@@ -604,6 +627,11 @@
 
     <button id="tap-btn" class="tap-btn" type="button">TAP</button>
 
+    <div class="hist-buttons">
+      <button id="undo-btn" class="hist-btn" type="button" disabled aria-label="Undo">↶</button>
+      <button id="redo-btn" class="hist-btn" type="button" disabled aria-label="Redo">↷</button>
+    </div>
+
     <button id="save-btn" class="s-btn primary" type="button" disabled>SAVE</button>
 
     <div class="overflow-wrap">
@@ -652,12 +680,14 @@
   <div class="roll-wrap">
     <canvas id="roll-canvas"></canvas>
     <div class="roll-bottom">
+      <div class="zoom-buttons">
+        <button id="zoom-out-btn" class="r-btn" type="button" aria-label="Zoom out">−</button>
+        <button id="zoom-fit-btn" class="r-btn" type="button" aria-label="Fit">⊡</button>
+        <button id="zoom-in-btn"  class="r-btn" type="button" aria-label="Zoom in">+</button>
+        <span class="zoom-label" id="zoom-label">1×</span>
+      </div>
       <div class="gesture-hint">
         TAP EMPTY GRID TO ADD · TAP NOTE TO SELECT · DRAG TO MOVE · LONG-PRESS OR RIGHT-CLICK TO DELETE
-      </div>
-      <div class="history-buttons">
-        <button id="undo-btn" class="r-btn" type="button" disabled aria-label="Undo">↶</button>
-        <button id="redo-btn" class="r-btn" type="button" disabled aria-label="Redo">↷</button>
       </div>
     </div>
     <div class="empty-hint" id="empty-hint">
@@ -696,7 +726,7 @@
     import { createSong, durationMs, addNote, removeNote, clearNotes } from './js/core/song.js?v=3';
     import { createRecorder } from './js/core/recorder.js?v=2';
     import { quantize } from './js/core/quantizer.js?v=1';
-    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=5';
+    import { createPianoRollRenderer } from './js/render/piano-roll.js?v=6';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
     import { PIANO_NOTE_MIN, PIANO_NOTE_MAX, PLAYER_COLORS, DEVICE_ID_KEYBOARD } from './js/config.js?v=1';
     import { createKeyboardInput } from './js/core/keyboard-input.js?v=1';
@@ -1208,6 +1238,21 @@
     const redoBtn      = document.getElementById('redo-btn');
     undoBtn.addEventListener('click', () => doUndo());
     redoBtn.addEventListener('click', () => doRedo());
+
+    // ── Zoom controls ─────────────────────────────────────────────
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+    const zoomFitBtn = document.getElementById('zoom-fit-btn');
+    const zoomInBtn  = document.getElementById('zoom-in-btn');
+    const zoomLabel  = document.getElementById('zoom-label');
+    function refreshZoomLabel() {
+      const z = renderer.getZoom();
+      // Display 1× / 2× / 0.5× etc — fixed at 1 decimal for fractional.
+      zoomLabel.textContent = Number.isInteger(z) ? `${z}×` : `${z.toFixed(1)}×`;
+    }
+    zoomOutBtn.addEventListener('click', () => { renderer.zoomOut(); refreshZoomLabel(); });
+    zoomFitBtn.addEventListener('click', () => { renderer.zoomFit(); refreshZoomLabel(); });
+    zoomInBtn .addEventListener('click', () => { renderer.zoomIn();  refreshZoomLabel(); });
+    refreshZoomLabel();
     const modal       = document.getElementById('songs-modal');
     const modalClose  = document.getElementById('songs-modal-close');
     const songsList   = document.getElementById('songs-list');
