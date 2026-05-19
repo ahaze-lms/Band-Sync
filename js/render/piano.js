@@ -75,8 +75,9 @@ export function createPianoRenderer(canvas, options = {}) {
     //                so players passively learn note recognition.
     //   blockHint  — secondary, drawn smaller at the bottom of the block.
     //                Usually the QWERTY key for keyboard-input players ("Z").
-    blockLabel = null,
-    blockHint  = null,
+    blockLabel   = null,
+    blockHint    = null,
+    keyboardOnly = false,  // warmup mode: render just the keys, no highway
   } = options;
 
   // ── Build keyboard layout ─────────────────────────────────────
@@ -85,7 +86,8 @@ export function createPianoRenderer(canvas, options = {}) {
     if (!isBlackKey(n)) whiteKeys.push(n);
   }
   const CANVAS_W = whiteKeys.length * WHITE_KEY_W;
-  const CANVAS_H = HIGHWAY_H + WHITE_KEY_H;
+  const CANVAS_H = keyboardOnly ? WHITE_KEY_H : HIGHWAY_H + WHITE_KEY_H;
+  const kyTop    = keyboardOnly ? 0 : HIGHWAY_H;
 
   const noteXCenter = {};
   for (let i = 0; i < whiteKeys.length; i++) {
@@ -136,14 +138,14 @@ export function createPianoRenderer(canvas, options = {}) {
 
   // ── Click detection rects (for mouse → key) ───────────────────
   const whiteKeyRects = whiteKeys.map((note, i) => ({
-    note, x: i * WHITE_KEY_W + 1, y: HIGHWAY_H + 1, w: WHITE_KEY_W - 2, h: WHITE_KEY_H - 4,
+    note, x: i * WHITE_KEY_W + 1, y: kyTop + 1, w: WHITE_KEY_W - 2, h: WHITE_KEY_H - 4,
   }));
   const blackKeyRects = [];
   for (let n = noteMin; n <= noteMax; n++) {
     if (!isBlackKey(n)) continue;
     const cx = noteXCenter[n];
     if (cx == null) continue;
-    blackKeyRects.push({ note: n, x: cx - BLACK_KEY_W / 2, y: HIGHWAY_H, w: BLACK_KEY_W, h: BLACK_KEY_H });
+    blackKeyRects.push({ note: n, x: cx - BLACK_KEY_W / 2, y: kyTop, w: BLACK_KEY_W, h: BLACK_KEY_H });
   }
 
   const mouseHeldNotes = new Set();
@@ -152,7 +154,7 @@ export function createPianoRenderer(canvas, options = {}) {
     const r  = canvas.getBoundingClientRect();
     const mx = (clientX - r.left) * (CANVAS_W / r.width);
     const my = (clientY - r.top)  * (CANVAS_H / r.height);
-    if (my < HIGHWAY_H) return null;
+    if (my < kyTop) return null;
     for (const kr of blackKeyRects) {
       if (mx >= kr.x && mx <= kr.x + kr.w && my >= kr.y && my <= kr.y + kr.h) return kr.note;
     }
@@ -309,7 +311,6 @@ export function createPianoRenderer(canvas, options = {}) {
   }
 
   function drawKeyboard(heldNotes, notePreview) {
-    const kyTop = HIGHWAY_H;
 
     // White keys
     for (let i = 0; i < whiteKeys.length; i++) {
@@ -450,9 +451,9 @@ export function createPianoRenderer(canvas, options = {}) {
       ctx.setTransform(sx, 0, 0, sy, 0, 0);
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       const notePreview = computePreview(fallingBlocks);
-      drawHighway(fallingBlocks, heldNotes);
+      if (!keyboardOnly) drawHighway(fallingBlocks, heldNotes);
       drawKeyboard(heldNotes, notePreview);
-      if (countoff) drawCountoff(countoff.beatNum, countoff.beatProgress);
+      if (!keyboardOnly && countoff) drawCountoff(countoff.beatNum, countoff.beatProgress);
     },
 
     // ── Position helpers (used by the screen's spawn logic) ───

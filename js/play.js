@@ -1655,9 +1655,10 @@ function stopLobbyWarmup() {
 function startPianoWarmup(canvasEl, deviceId) {
   const heldNotes = new Set();
   const renderer  = createPianoRenderer(canvasEl, {
-    color:    PLAYER_COLORS[0],
-    noteMin:  PIANO_NOTE_MIN,
-    noteMax:  PIANO_NOTE_MAX,
+    color:       PLAYER_COLORS[0],
+    noteMin:     PIANO_NOTE_MIN,
+    noteMax:     PIANO_NOTE_MAX,
+    keyboardOnly: true,
     onKeyDown: note => { resumeIfSuspended(); heldNotes.add(note); playPianoNote(note, 80); },
     onKeyUp:   note => { heldNotes.delete(note); },
   });
@@ -1740,8 +1741,9 @@ function rebuildLobbyWarmup() {
   const instrument = instrSel?.value
     ?? ctx.lobby.participants?.find(p => p.user_id === ctx.user.id)?.instrument
     ?? 'piano';
-  // CSS class controls canvas height so the crop shows the right region.
   canvas.className = instrument === 'drums' ? 'warmup-canvas-drums' : 'warmup-canvas-piano';
+  const wrap = canvas.parentElement;
+  if (wrap) wrap.classList.toggle('lobby-warmup-drums', instrument === 'drums');
   const deviceId   = ctx.lobby.myDeviceId ?? DEVICE_ID_KEYBOARD;
   ctx.lobby.warmup = instrument === 'drums'
     ? startDrumsWarmup(canvas, deviceId)
