@@ -22,11 +22,29 @@ export function createRecorder(song) {
   let recording = false;
   const pending = new Map();  // pitch → { startMs, velocity }
 
-  function start() {
-    startedAt = performance.now();
+  // Start a recording take. `offsetMs` is the song-time the recording
+  // begins at — 0 means "fresh take from the top", any positive value
+  // is a "punch-in" that preserves notes before the offset and replaces
+  // notes from the offset onward (standard DAW punch-in behavior).
+  //
+  // Pre-rolling startedAt so elapsedMs() returns SONG-TIME (not real
+  // time-since-press) means downstream consumers — noteOn timestamps,
+  // the UI timer, overdub playback — all get aligned numbers without
+  // doing offset math themselves.
+  function start(offsetMs = 0) {
+    startedAt = performance.now() - offsetMs;
     recording = true;
     pending.clear();
-    song.notes.length = 0;    // fresh take overwrites previous recording
+    if (offsetMs === 0) {
+      song.notes.length = 0;   // fresh take overwrites the whole track
+    } else {
+      // Punch-in: drop the existing notes from the offset onward.
+      // Earlier notes survive (the part of the song the user is keeping).
+      const notes = song.notes;
+      for (let i = notes.length - 1; i >= 0; i--) {
+        if (notes[i].startMs >= offsetMs) notes.splice(i, 1);
+      }
+    }
   }
 
   function noteOn(pitch, velocity) {

@@ -802,7 +802,7 @@
       getActiveTrack, setActiveTrack, addTrack, removeTrack,
       songHasNotes, totalNoteCount, MAX_TRACKS,
     } from './js/core/song.js?v=4';
-    import { createRecorder } from './js/core/recorder.js?v=2';
+    import { createRecorder } from './js/core/recorder.js?v=3';
     import { quantize } from './js/core/quantizer.js?v=2';
     import { createPianoRollRenderer } from './js/render/piano-roll.js?v=8';
     import { createPianoRenderer } from './js/render/piano.js?v=1';
@@ -929,8 +929,10 @@
     // While recording, the OTHER tracks' notes play through so the
     // user can play along with what's already there. Mute / solo
     // still apply. The active track is skipped (it's what's being
-    // recorded — we don't want it doubling).
-    function startOverdubPlayback() {
+    // recorded — we don't want it doubling). When punching in at a
+    // non-zero offset, notes before the offset are skipped — the
+    // user joins the song mid-stream.
+    function startOverdubPlayback(offsetMs = 0) {
       cancelOverdubPlayback();
       recStartedAt = performance.now();
       const activeId = song.activeTrackId;
@@ -938,12 +940,11 @@
         if (track.id === activeId) continue;
         if (!isTrackAudible(track)) continue;
         for (const note of track.notes) {
-          // Note times are relative to song-start which is the same
-          // moment recording started (recorder uses performance.now()
-          // identically). Plain setTimeout delays line up.
+          const delay = note.startMs - offsetMs;
+          if (delay < 0) continue;
           const id = setTimeout(() => {
             if (recorder.isRecording()) playPianoNote(note.pitch, note.velocity);
-          }, note.startMs);
+          }, delay);
           overdubTimeouts.push(id);
         }
       }
@@ -1198,14 +1199,20 @@
         timeDisplay.textContent = `Count-in ${countInBeat}/4`;
         if (countInBeat >= 4) {
           countingIn = false;
-          recorder.start();
+          // Punch-in: pass the playhead position to the recorder. If
+          // it's 0 the recorder treats this as a fresh take and clears
+          // the active track; otherwise it preserves earlier notes and
+          // replaces only the punched region.
+          const punchOffset = playPositionMs;
+          recorder.start(punchOffset);
           getActiveTrack(song).activeGrid = 'raw';   // fresh take is unquantized
-          playPositionMs = 0;         // and starts from bar 1
           renderer.setSelected(null); // any prior selection no longer exists
-          startOverdubPlayback();     // other tracks play through while you record
+          startOverdubPlayback(punchOffset);
           renderTrackList();          // re-paint the active row's quantize buttons
           updateButtons();
-          timeDisplay.textContent = 'Rec 0.0s';
+          timeDisplay.textContent = punchOffset > 0
+            ? `Rec · ${formatBarsBeats(punchOffset, song.bpm)} · ${(punchOffset / 1000).toFixed(1)}s`
+            : 'Rec 0.0s';
           return;
         }
         countInTimer = setTimeout(fireBeat, beatMs);
@@ -1216,13 +1223,17 @@
     // ── Transport: STOP ───────────────────────────────────────────
     stopBtn.addEventListener('click', () => {
       if (recorder.isRecording()) {
+        // Capture the position the take ended at BEFORE stop() —
+        // recorder.elapsedMs() returns song-time during recording.
+        const recEndedAt = recorder.elapsedMs();
         recorder.stop();
         cancelOverdubPlayback();   // other tracks were playing through — stop them too
         const secs = (durationMs(song) / 1000).toFixed(1);
         timeDisplay.textContent = `Recorded ${secs}s · ${totalNoteCount(song)} notes`;
-        // Fresh take — playhead returns to start so the obvious PLAY
-        // hears the whole thing.
-        playPositionMs = 0;
+        // Park the playhead where the take ended. For a fresh take
+        // this stays at 0 since the recording started there; for a
+        // punch-in it sits at the end of what you just recorded.
+        playPositionMs = recEndedAt;
         pushHistory();   // a take is a single undoable event
       } else if (countingIn) {
         countingIn = false;
