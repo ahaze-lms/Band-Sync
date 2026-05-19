@@ -1417,6 +1417,7 @@ async function startLobby() {
     launchRemoteGame(performance.now() + 3000);
   } catch (err) {
     console.error('startLobby failed', err);
+    alert(`Could not start — ${err.message ?? err}\n\nHave you run migration 0006 in Supabase?`);
   }
 }
 
