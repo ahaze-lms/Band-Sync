@@ -195,7 +195,7 @@
       margin-bottom: 10px;
     }
 
-    /* Difficulty + speed selectors — two side-by-side dropdowns */
+    /* Difficulty + speed selectors — two side-by-side sliders */
     .setup-difficulty {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -204,6 +204,59 @@
     @media (max-width: 768px) {
       .setup-difficulty { grid-template-columns: 1fr; }
     }
+    .field-value {
+      color: var(--text);
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+    .slider-scale {
+      display: flex; justify-content: space-between;
+      font-size: 9px; letter-spacing: 2px; color: var(--dim);
+      margin-top: 2px;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      width: 100%;
+      height: 24px;
+      cursor: pointer;
+      margin: 4px 0 0;
+    }
+    input[type=range]:focus { outline: none; }
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--purple);
+      margin-top: -7px;
+      border: 2px solid var(--bg2);
+      box-shadow: 0 0 0 1px var(--purple);
+      transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.1); }
+    input[type=range]:active::-webkit-slider-thumb { background: var(--purple2); }
+    input[type=range]::-moz-range-track {
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--purple);
+      border: 2px solid var(--bg2);
+      box-shadow: 0 0 0 1px var(--purple);
+      transition: transform 0.1s;
+    }
+    input[type=range]::-moz-range-thumb:hover { transform: scale(1.1); }
+    input[type=range]:active::-moz-range-thumb { background: var(--purple2); }
 
     /* Player count buttons */
     .player-count {
@@ -1080,6 +1133,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=21"></script>
+  <script type="module" src="js/play.js?v=22"></script>
 </body>
 </html>
