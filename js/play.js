@@ -949,15 +949,23 @@ async function renderGame() {
   try {
     if (song.file.startsWith('studio:')) {
       // Phase 6 — Studio songs live in Supabase, not on disk. Fetch
-      // the row, unpack to the in-memory shape, then re-shape to the
-      // exact { tracks: [{ name, notes }] } the engine expects.
+      // the row, unpack to the in-memory shape, then translate each
+      // note from Studio's field names (pitch / velocity / durationMs)
+      // to the MIDI-parser names the engine + renderer expect
+      // (note / vel / durMs). Without this mapping the engine reads
+      // n.durMs as undefined and no falling blocks ever spawn.
       const id = song.file.slice('studio:'.length);
       const row = await getStudioSong(id);
       const unpacked = unpackSong(row);
       parsed = {
         tracks: unpacked.tracks.map(t => ({
           name:  t.name,
-          notes: t.notes,    // { pitch, startMs, durationMs, velocity } — engine-ready
+          notes: t.notes.map(n => ({
+            note:    n.pitch,
+            vel:     n.velocity,
+            startMs: n.startMs,
+            durMs:   n.durationMs,
+          })),
         })),
       };
     } else {
