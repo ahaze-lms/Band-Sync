@@ -956,7 +956,9 @@ async function renderGame() {
       // n.durMs as undefined and no falling blocks ever spawn.
       const id = song.file.slice('studio:'.length);
       const row = await getStudioSong(id);
+      console.log('[studio-load] raw row from supabase:', row);
       const unpacked = unpackSong(row);
+      console.log('[studio-load] unpacked song:', unpacked);
       parsed = {
         tracks: unpacked.tracks.map(t => ({
           name:  t.name,
@@ -968,6 +970,9 @@ async function renderGame() {
           })),
         })),
       };
+      console.log('[studio-load] adapted parsed (engine-shape):', parsed);
+      console.log('[studio-load] first track note count:', parsed.tracks[0]?.notes?.length ?? 0);
+      console.log('[studio-load] first three notes:', parsed.tracks[0]?.notes?.slice(0, 3));
     } else {
       const res = await fetch('songs/' + song.file, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
