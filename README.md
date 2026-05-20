@@ -43,15 +43,19 @@ A browser-based, Synthesia-style multiplayer rhythm game for up to 4 players. Ea
 - ✅ Durable session attachments — claim issues a localStorage token so reloads rehydrate without a fresh code (24h TTL, revocable from CONNECTED DEVICES)
 - ✅ Paired-friend dropdown for one-tap reattach within the token window
 
-### Song Creator — early at `studio.html` (§25, phase 1 + 1.5 shipped)
+### Song Creator — live at `studio.html` (§25, phases 1 → 6 essentially shipped)
 
-- ✅ Transport bar — BPM number input + tap-tempo + RECORD / STOP / PLAY + live time display
-- ✅ MIDI live recording into a song; 4-beat count-in before the take starts
-- ✅ Piano-roll canvas — C2–C7 range, beat + bar gridlines, purple note rectangles with velocity-shaded top edge, teal playhead during playback
-- ✅ Playback through the existing `audio.js` piano synth
-- ✅ On-screen touch keyboard (phase 1.5) — slide-across-keys works; phones without Web MIDI (incl. iOS Safari) can record end-to-end
-- ✅ Mobile-first layout: stacked transport on phones, 44px+ touch targets, DPR-crisp at 4K
-- 🔜 Quantize panel (phase 2), then edit (phase 3), Supabase save/load (phase 4), multi-track + drum view (phase 5), publish + export `.mid` + collaboration (phase 6)
+The piano-roll editor is a real DAW-shaped tool: record live MIDI / touch / QWERTY, edit notes with the mouse, save and reload via Supabase, then play your songs back in `play.html` as rhythm-game charts.
+
+- ✅ **Top bar:** stacked BPM/SIG stat pills · TAP · round REC / PLAY / STOP + skip ⏮ / ⏭ · undo (↶) / redo (↷) · SAVE · ⋯ overflow (NEW / OPEN). Editable title inline; input device picker sub-row wraps below.
+- ✅ **Multi-track** up to 4 with per-track color, mute / solo / CLEAR (↻) / REMOVE (×), per-track quantize cluster (RAW · 1/4 · 1/8 · 1/16 · 1/32). Click a row to make it active.
+- ✅ **Recording** via MIDI, on-screen touch keyboard, or computer QWERTY. 4-beat count-in. **Overdub** plays other tracks through during REC. **Punch-in** — REC respects the playhead position.
+- ✅ **Edit:** tap to add / select notes, drag to move, long-press / right-click to delete. **Multi-select** via rubber-band lasso + shift-click. Group move / arrow-nudge / delete / set-length.
+- ✅ **Piano roll** with time ruler + draggable playhead, per-track gradient note pills, time-sig-aware bars (4/4 · 3/4 · 2/4 · 6/8 · 5/4 · 7/8 · 12/8), X+Y zoom (sqrt-dampened Y, song-aware).
+- ✅ **Save / load** to Supabase `songs` table. Multi-track + timeSig + mute/solo + per-track quantize round-trip.
+- ✅ **Undo / redo** with Ctrl+Z + on-screen buttons; 80-entry ring snapshots the whole document.
+- ✅ **Studio → Play integration:** saved Studio songs appear in `play.html` song-select under YOUR SONGS with a teal MINE badge; route through setup + gameplay in both SOLO/COUCH and REMOTE LOBBY modes. *(Currently the falling-notes render path has a bug — debug logs are in `playGame()`'s studio branch awaiting investigation.)*
+- 🔜 Phase 5c drum-view variant of the piano roll, friend-sharing, public Browse/Discover library, `.mid` export, real samples.
 
 ### Social & account layer — live at `index.html`
 

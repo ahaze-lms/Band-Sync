@@ -1,8 +1,8 @@
-# BandSync — Design Document v19
+# BandSync — Design Document v20
 
-> Updated 2026-05-19. Supersedes v18.
+> Updated 2026-05-19. Supersedes v19.
 >
-> Major changes from v18: **Studio phase 1 shipped** — `studio.html` replaces the marketing stub with a working record / view / playback loop. New modules `js/core/song.js`, `js/core/recorder.js`, `js/render/piano-roll.js`. MIDI input live-records into a song model; piano roll canvas (C2–C7) draws notes with crisp DPR-aware rendering; PLAY schedules through `audio.js`; BPM number input + tap-tempo + 4-beat count-in. **Studio phase 1.5 shipped** — on-screen touch keyboard reusing `js/render/piano.js` in `keyboardOnly` mode; phones (incl. iOS Safari) can now record without MIDI; shared `heldNotes` lights up the keyboard regardless of input source. **Setup screen sliders** — speed + difficulty changed from dropdowns to range inputs with live value readout. **Solo workflow documented** — CLAUDE.md and process now explicit: push directly to `main`, no PRs or feature branches for solo work.
+> Major changes from v19: **Studio went from phase 1 → essentially feature-complete in a single push** — phases 2 (quantize), 3 (edit: add / select / drag-move / delete), 3.5 (note-length toolbar), 4 (Supabase save / load / delete), 5a (multi-track up to 4), 5b (mute/solo + multi-track playback + overdub recording during REC), plus a long polish list: undo/redo (Ctrl+Z + on-screen ↶/↷ buttons, 80-entry ring buffer), X+Y zoom (sqrt-dampened Y, song-aware capping), time-signature picker, punch-in recording (REC respects the playhead position; notes after the punch get replaced, earlier ones preserved), multi-select with rubber-band lasso + group move/delete/arrow-nudge/length, per-track CLEAR (↻) + REMOVE (×), rewind ⏮ / forward ⏭ transport with Home/End keys. **Studio top-bar redesign** — single consolidated row with stacked BPM/SIG stat pills, round transport buttons, overflow menu (NEW/OPEN), bandsync subtitle, mobile-first wrap. Note pills now use a per-track gradient with rounded corners. Gesture hint strip + collapsible touch keyboard at the bottom. **Studio → Play integration (Phase 6)** — saved Studio songs appear in `play.html` song-select under a YOUR SONGS section with a teal MINE badge; clicking one routes through setup + gameplay the same way bundled `.mid` songs do, in both SOLO/COUCH and REMOTE LOBBY modes. *Open bug:* falling notes don't render for Studio songs yet — debug logs were left in `playGame()` mid-session, next session picks that up. **Home + nav links to Studio** — top nav has a STUDIO entry; the home-screen hero pairs a teal "🎹 STUDIO" button next to the big purple PLAY NOW.
 
 ---
 
@@ -43,14 +43,19 @@
 - **Lobby warmup panel** — device picker (Computer Keyboard or any connected MIDI device) in participant row + a live playable canvas below lobby cards. Piano: shows keyboard only (CSS crop — container `height: 140px; overflow: hidden`, canvas `position: absolute; bottom: 0; height: 520px`). Drums: shows full drum-pad view. Switching instrument or device calls `rebuildLobbyWarmup()` immediately (reads DOM before DB round-trip). `stopLobbyWarmup()` cleans up on state change.
 - **Phase 8 RLS:** `user_in_lobby_session()` helper + `pss_insert_self_in_session` + `pss_select_in_lobby_session` — remote players write and read their own slot rows.
 
-**Studio** (`studio.html`) — phase 1 + 1.5 shipped:
-- Transport bar: BPM number input + TAP button + RECORD / STOP / PLAY + live time display
-- MIDI input live-records into a song (`js/core/song.js` + `js/core/recorder.js`); on-screen touch keyboard via `js/render/piano.js` in `keyboardOnly` mode handles phones without MIDI
-- Piano roll canvas (`js/render/piano-roll.js`) — C2–C7 pitch range, black/white row bands, beat + bar gridlines, purple note rectangles with velocity shading, teal playhead during playback. Crisp DPR-aware via the same ResizeObserver pattern as `piano.js`
-- 4-beat count-in (reuses `audio.js` `playClick`); playback via `setTimeout`-scheduled notes through `playPianoNote`
-- Mobile-first CSS: full single-column layout on phones, transport wraps, 44px+ touch targets, 16px+ form input sizing to avoid iOS auto-zoom, `touch-action: none` on the keyboard canvas so dragging across keys doesn't scroll the page
-- Shared `heldNotes` set so MIDI, mouse, and touch all light up the same key visually
-- Not yet built: quantize, edit (drag / delete / add notes), Supabase persistence, multi-track, drums view, export `.mid`, collaboration, publish
+**Studio** (`studio.html`) — phases 1 through 6 essentially shipped in one push. The piano-roll editor is now a real DAW-shaped tool:
+- **Top bar (single row):** BACK · editable title + "BANDSYNC STUDIO" subtitle · stacked BPM/SIG stat pills · TAP · round REC / PLAY / STOP + skip ⏮ / ⏭ · undo (↶) / redo (↷) · SAVE · overflow (⋯ → NEW / OPEN). Input device picker is a sub-row that wraps below.
+- **Multi-track:** up to 4 tracks (purple → teal → orange → red palette). Click a row to make it active (recording + edits route there). Each row has M / S / CLEAR (↻) / REMOVE (×) on the left + per-track quantize cluster on the right.
+- **Recording:** 4-beat count-in then live MIDI / touch / QWERTY capture into the active track. **Overdub** plays other audible tracks through during recording. **Punch-in** — REC respects the playhead; notes after the punch get replaced, earlier notes preserved. Mute/solo with standard DAW semantics. PLAY plays every audible track aligned.
+- **Edit:** tap empty grid to add, tap note to select, drag to move, long-press / right-click to delete. **Multi-select** via rubber-band lasso on empty drag + shift-click toggle; group move / delete / arrow-nudge / set-length all share the selection Set.
+- **Piano roll:** ruler with bar numbers, draggable green playhead (or Home/End keys), per-track gradient note pills, selection ring, time-signature-aware bar grouping (4/4 · 3/4 · 2/4 · 6/8 · 5/4 · 7/8 · 12/8), zoom in/out/fit (X + sqrt-dampened Y, song-aware), pan auto-follows playhead during playback.
+- **Save / load:** Supabase `songs` table (Phase 4 migration); SAVE creates or updates the current row, OPEN modal lists by `updated_at`. Multi-track + timeSig + mute/solo + per-track quantize + activeTrackId all round-trip.
+- **Undo / redo:** Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z; on-screen ↶ ↷ buttons in the top bar. 80-entry ring snapshots the whole song document (tracks + notes + bpm + timeSig).
+- **Audio:** still synthesized via `audio.js`; per-note `setTimeout` scheduling sub-10ms.
+- **Mobile:** every panel reflows; touch-action:none on the canvas; collapsible on-screen touch keyboard (state persisted to localStorage).
+- **Studio → Play integration (Phase 6):** saved Studio songs appear in `play.html` song-select under YOUR SONGS with a teal MINE badge; clicking one routes into setup + gameplay (works in SOLO/COUCH and REMOTE LOBBY). *Currently broken:* falling notes don't render in gameplay — investigation in progress (see §25 status). Once fixed, Studio + play.html close the loop end-to-end.
+- **Open from anywhere:** STUDIO link in the top nav; teal "🎹 STUDIO" button next to PLAY NOW on the home hero.
+- **Not yet:** drum-view variant of the piano roll (Phase 5c, deferred), per-friend sharing, public Browse/Discover library, export to `.mid`, real samples (still synth).
 
 **HISTORY screen** — every session you appear in, grouped by date, with PB badges. RLS-correct: hosted sessions show all slots, joined sessions show only yours.
 
@@ -695,6 +700,9 @@ Abstract names recognized today: `KICK`, `SNARE`, `SNARE_RIM`, `HH_CLOSED`, `HH_
 | 2026-05-19 | Solo-project workflow documented in CLAUDE.md — no PRs, no feature branches, no worktrees. Push directly to `main`; GitHub Pages redeploys in ~30s. The rule travels with the repo via CLAUDE.md so multi-machine sessions get the same behaviour. Worktree-based sessions are explicitly identified as friction to relaunch from instead of forcing PR ceremony. |
 | 2026-05-19 | **Studio phase 1 shipped** — `studio.html` replaces the marketing stub with a working app. New modules: `js/core/song.js` (in-memory `{bpm, notes:[{pitch,startMs,durationMs,velocity}]}`), `js/core/recorder.js` (`performance.now()`-timestamped capture, closes held notes on `stop()`), `js/render/piano-roll.js` (C2–C7 canvas, row bands, beat/bar gridlines, purple note rectangles with velocity-shaded top edge, teal playhead; ResizeObserver + DPR crisp-canvas mirroring `piano.js`). Transport bar: BPM number input + TAP button (last-4-taps average, 2s reset window) + RECORD / STOP / PLAY + live time display. 4-beat count-in via existing `audio.js` `playClick`. Playback uses per-note `setTimeout` — imprecise by ~5ms but inaudible for melodic playback (Web-Audio precise scheduling can come with the samples phase). Mobile-first CSS: stacked transport on phones, 44px+ touch targets, 16px+ form inputs to stop iOS auto-zoom, `dvh` viewport. |
 | 2026-05-19 | **Studio phase 1.5 shipped** — on-screen touch keyboard reusing `js/render/piano.js` with `keyboardOnly: true` (same as the lobby warmup pattern at `js/play.js:1681`). `onKeyDown` / `onKeyUp` callbacks route into the same `recorder.noteOn` / `noteOff` + `playPianoNote(80)` pipeline as MIDI. Velocity fixed at 80 since touch has no native velocity. `heldNotes` set shared between MIDI and touch so visual feedback lights up the keyboard regardless of input source. `touch-action: none` on the canvas so slide-across-keys glissando doesn't scroll the page. Record button no longer disabled when MIDI is missing — touch is a valid input. Phones without Web MIDI (iOS Safari) now have an end-to-end record loop. |
+| 2026-05-19 | **Studio phase 2 → 6 shipped in one push.** Quantize (RAW + 1/4–1/32 with `startMsRaw` preserved), edit (add/select/drag/delete/length), Supabase save/load (`songs` migration `0008`), multi-track up to 4 with mute/solo + overdub + punch-in, multi-select with rubber-band lasso + group ops, undo/redo (Ctrl+Z, 80-entry ring), X+Y zoom (sqrt-dampened Y, song-aware), time-signature picker, rewind/forward + Home/End, per-track CLEAR. Top-bar redesign: stacked stat pills, round transport buttons, overflow menu, gradient note pills, gesture hint, collapsible touch keyboard, mobile-first wrap throughout. |
+| 2026-05-19 | **Studio → Play integration (Phase 6) shipped — but gameplay rendering open.** Saved Studio songs appear in `play.html` song-select under YOUR SONGS, route through setup + gameplay in SOLO/COUCH and REMOTE LOBBY. `library.js.listSongs` now includes the `data` blob and a new `summarizeSong(row)` helper. `play.js` branches on `song.file.startsWith('studio:')` to fetch from Supabase via `getSong` + `unpackSong` instead of fetching + parsing `.mid`. A field-name mismatch fix (Studio: `pitch`/`velocity`/`durationMs` → engine: `note`/`vel`/`durMs`) is in place. Debug `console.log`s left in `playGame()`'s studio branch — falling notes still don't render and we ran out of time to triage. Next session: collect console output, pin the root cause, remove the logs. |
+| 2026-05-19 | **Home + nav links to Studio.** Top nav gets a STUDIO entry between HISTORY and DEV LAB; home hero gains a small teal-accented "🎹 STUDIO" button paired with the big purple PLAY NOW. Visual hierarchy keeps PLAY as the primary action; Studio reads as a creative side-trip. |
 | TBD | Pricing tiers ($/mo) |
 | TBD | Domain name |
 | TBD | Where to keep the calibration overlay logic — currently duplicated in 3 screens (piano_debug, drum_debug, gameplay). Candidate for a shared `js/ui/calibration-overlay.js`. |
@@ -742,9 +750,25 @@ Lives at `studio.html`. The tool for building songs that feed into the game libr
 
 ### Status (2026-05-19)
 
-**Shipped:** phase 1 (record live MIDI → song model → piano-roll view → playback through `audio.js`) and phase 1.5 (on-screen touch keyboard via `js/render/piano.js` in `keyboardOnly` mode, so phones without Web MIDI can record). New modules: `js/core/song.js`, `js/core/recorder.js`, `js/render/piano-roll.js`. BPM input + tap-tempo + 4-beat count-in are live.
+**Shipped (phases 1 → 6, mostly):**
+- Phase 1 — record / view / playback with on-screen touch keyboard, 4-beat count-in, single-track piano roll (C2–C7), DPR-crisp canvas.
+- Phase 2 — quantize panel (RAW · 1/4 · 1/8 · 1/16 · 1/32) with `startMsRaw` preserved per note so re-quantize is non-destructive. Per-track active grid.
+- Phase 3 — edit operations: click-to-add, click-to-select, drag-to-move, long-press / right-click to delete. Plus 3.5 note-length toolbar (1/32 → 1).
+- Phase 4 — Supabase save / load / delete via the `songs` table (migration `0008_songs.sql`). Per-track metadata round-trips (mute, solo, color, activeGrid, role).
+- Phase 4.5 polish — top-bar consolidation, round transport buttons, stat pills (BPM + SIG), overflow menu, gesture hint strip, collapsible touch keyboard, gradient note pills, time-signature picker (4/4 · 3/4 · 2/4 · 6/8 · 5/4 · 7/8 · 12/8), DAW-style time-ruler with draggable playhead, X+Y zoom (sqrt-dampened Y, song-aware), undo/redo (Ctrl+Z + on-screen ↶/↷), rewind ⏮ / forward ⏭ with Home/End hotkeys, per-track CLEAR (↻).
+- Phase 5a — multi-track foundation (up to 4 tracks, palette, active-track concept, per-track quantize, `song.notes` getter for backward compat with the recorder + ADD callback).
+- Phase 5b — mute/solo per track, multi-track simultaneous playback, **overdub recording** (other tracks play through during REC), **punch-in recording** (REC respects playhead position; notes after the punch get replaced, earlier ones preserved).
+- Multi-select — rubber-band lasso on empty-grid drag, shift+click toggle, group move (single delta applied to all members from anchor), group delete + group arrow-nudge + group set-length.
+- Phase 6 — Studio songs appear in `play.html` song-select under a "YOUR SONGS" section (teal MINE badge), route through setup + gameplay in both SOLO/COUCH and REMOTE LOBBY modes. Saved play_sessions identify Studio songs by `studio:<uuid>` source.
 
-**Next phases (in order):** 2 quantize → 3 edit → 4 Supabase save/load → 5 multi-track + drum view → 6 publish + export + collaboration. Each phase is intended as one focused session.
+**Open issue:** Phase 6 ships the integration but gameplay doesn't render falling notes for Studio songs. A field-name mismatch fix (Studio's `pitch`/`velocity`/`durationMs` → engine's `note`/`vel`/`durMs`) was applied but didn't resolve it. Debug `console.log`s are live in `playGame()`'s studio branch (committed 2026-05-19); next session collects the output and pins the root cause. Likely candidates: stale browser cache of `library.js`, Supabase `data` JSONB shape differing from packSong's output, or a downstream filter (out-of-range pitch, sort order, song-clock timing) clipping the notes.
+
+**Not yet shipped (later phases):**
+- **Phase 5c — Drum view.** Drum-lane piano-roll variant for drum-role tracks. Reuses the existing drum mapping abstraction.
+- **Phase 7 — Sharing.** Friend-collab invites (assign a track to a specific friend), then public Browse / Discover library + remix.
+- **AI Generate / Assist** (§14).
+- **Export to `.mid`** for round-tripping outside the platform.
+- **Real samples** replacing the synth (§18).
 
 **MVP scope and longer-term vision unchanged from the spec below.**
 

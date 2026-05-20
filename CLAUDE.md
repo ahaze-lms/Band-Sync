@@ -43,12 +43,12 @@ Never suggest running a local server unless the user explicitly asks. The live s
 |---|---|
 | `index.html` | Auth-gated SPA shell — login, home, friends, inbox, profile |
 | `play.html` | Real game — live; song-select → setup → game → results, plus full remote-multiplayer lobby (§27 all phases shipped) |
-| `studio.html` | Song Creator — phase 1 + 1.5 shipped (record → view → playback + touch keyboard). Quantize, edit, save, multi-track still to come — see `DESIGN.md §25` |
+| `studio.html` | Song Creator — phases 1 → 6 shipped: record / view / playback / touch keyboard / quantize / edit / Supabase save+load / multi-track + mute/solo + overdub + punch-in / multi-select / undo-redo / X+Y zoom / time-signature / rewind-forward. Drum-view (5c) still pending. Studio songs now appear in play.html song-select, though gameplay rendering for them has an open bug — see `DESIGN.md §25` status |
 | `2player.html` | 2-player prototype — access via Dev Lab |
 | `lab.html` | Dev Lab hub — links to prototype + all debug tools |
 | `js/app.js` | SPA router + nav bar |
 | `js/config.js` | All shared constants — timing, hit windows, scoring, colors |
-| `js/core/` | Engine modules: timing, audio, scoring, midi, calibration, midi-parser, drum-mapping, gameplay-engine, song, recorder |
+| `js/core/` | Engine modules: timing, audio, scoring, midi, calibration, midi-parser, drum-mapping, gameplay-engine, song, recorder, quantizer, history, keyboard-input |
 | `js/render/` | Canvas renderers: `piano.js`, `drums.js`, `piano-roll.js` (factory functions) |
 | `js/screens/` | SPA screens: auth, home, profile-edit, friends, inbox; future: gameplay, results, library, studio |
 | `js/services/` | Supabase clients: auth, profile, social, supabase, device-codes, session-attachments, history, play-sessions, lobbies |
@@ -116,13 +116,16 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
   - Results screen with per-slot stats, identity display, **NEW PERSONAL BEST** badge
   - End-of-song persistence to `play_sessions` + `play_session_slots`
   - PB display under each song on setup (`YOUR BEST: 14,400 · S · 98% · 2d ago`)
-- **`studio.html` — Song Creator** (early but real). Phase 1 + 1.5 shipped:
-  - Transport bar (BPM number + TAP + RECORD/STOP/PLAY + live time display)
-  - MIDI input live-records into a song; on-screen touch keyboard (reuses `js/render/piano.js` in `keyboardOnly` mode) handles phones without MIDI
-  - Piano-roll canvas (`js/render/piano-roll.js`) — C2–C7 range, beat + bar gridlines, purple notes with velocity shading, teal playhead, DPR-crisp at 4K
-  - 4-beat count-in + per-note-scheduled playback via `audio.js`
-  - Mobile-first CSS: full single-column on phones, 44px+ touch targets, shared `heldNotes` lights up keys for MIDI + mouse + touch alike
-  - Not yet: quantize, edit, save to Supabase, multi-track, drum view, export, collaboration
+- **`studio.html` — Song Creator** (essentially feature-complete piano edition). Real DAW-shaped editor:
+  - **Top bar:** stacked BPM/SIG stat pills · TAP · round REC / PLAY / STOP + skip ⏮ / ⏭ · undo (↶) / redo (↷) · SAVE · ⋯ overflow (NEW / OPEN). Title is inline editable; INPUT device picker sub-row wraps below.
+  - **Multi-track** up to 4 with per-track color, mute (M), solo (S), CLEAR (↻), REMOVE (×), per-track quantize cluster. Click a row to make it active (recording + edits route there).
+  - **Recording:** 4-beat count-in, MIDI / touch / QWERTY all dispatch through the same recorder. **Overdub** plays other tracks during REC. **Punch-in** — REC respects the playhead; notes after replace, notes before preserve.
+  - **Edit:** tap empty grid to add, tap/drag notes to select/move, long-press / right-click to delete. **Multi-select** via rubber-band lasso on empty drag + shift-click toggle; group move + arrow nudge + delete + length-set.
+  - **Piano roll:** time ruler with draggable playhead, per-track gradient note pills, X+Y zoom (sqrt-dampened Y, song-aware), time-signature-aware bars.
+  - **Save / load** to Supabase `songs` table (migration `0008`). Multi-track + timeSig + mute/solo + per-track quantize all round-trip.
+  - **Undo / redo** via Ctrl+Z + on-screen buttons; 80-entry ring snapshots the whole song document.
+  - **Studio → Play (Phase 6):** Studio songs now show up in `play.html` song-select under YOUR SONGS with a teal MINE badge. Click → setup → gameplay just like a bundled `.mid`. **Open bug:** falling notes don't render in gameplay yet — debug logs are in `playGame()`'s studio branch in `js/play.js` awaiting next session's triage.
+  - **Not yet:** drum-view (5c), friend sharing, public library, `.mid` export, real samples (still synth).
 - **`2player.html`** — original prototype, still alive as a dev/test harness (reached via Dev Lab). Has unique features: role toggle, test patterns, file picker, calibration overlay. NOT yet ported to the new engine — `js/screens/gameplay.js` duplicates the loop logic (deferred phase 3c).
 - **Player identity (`DESIGN.md §26` + §26 Evolution v2)** — 6-digit device codes for first-time pairing (PAIRING in profile, 10-min TTL, single-use), claimed at play.html setup (6-digit modal). On claim, Supabase also issues a **durable session token** stored in localStorage; reloads call `attach_session(token)` to rehydrate the friend identity without a fresh code (24h TTL, revocable). Previously-paired friends appear in the identity dropdown for one-tap reattach. CONNECTED DEVICES card in profile-edit lists active attachments with Revoke. Opportunistic cleanup runs on every new claim (>30d expired/revoked attachments, >90d used codes).
 - **HISTORY screen** — chronological list of every session you appear in, grouped by date, with PB badges
@@ -135,10 +138,14 @@ Speed is fall duration in seconds (level 3 = 3.0s default). Hit windows are ±ms
 
 ## What's being built next
 
-Primary candidates (no specific order — pick by appetite):
+Top of stack right now (open thread):
 
-- **`studio.html` — Song Creator** (active build). Phase 1 + 1.5 shipped. Remaining phases in suggested order: **phase 2 quantize** (1/4 · 1/8 · 1/16 · 1/32, default 1/16), **phase 3 edit** (click-to-add, drag-to-move, long-press / right-click to delete), **phase 4 Supabase save/load**, **phase 5 multi-track + drum view + mute/solo**, **phase 6 publish + export `.mid` + collaboration**.
-- **Drum-track playback in songs**. Needs a GM drum-map translation in `js/core/midi-parser.js` so drum tracks reach the engine as abstract names. Bundled songs are all piano-only today.
+- **Studio → Play rendering bug.** Saved Studio songs route through `play.html`'s gameplay flow but no falling blocks spawn. `js/play.js` `playGame()` has debug `console.log`s in its `studio:` branch (committed 2026-05-19). Next steps: get console output, fix root cause, remove logs. Likely candidates: stale `library.js` cache, Supabase `data` JSONB shape divergence, downstream filter clipping notes. See `DESIGN.md §25` Status.
+
+Primary candidates after that (no specific order — pick by appetite):
+
+- **Studio Phase 5c — Drum view.** Drum-lane variant of the piano roll for drum-role tracks. Reuses the existing drum-mapping abstraction. Unlocks drum-track playback in songs end-to-end.
+- **Drum-track playback in bundled songs**. Needs a GM drum-map translation pass in `js/core/midi-parser.js` so drum tracks reach the engine as abstract names. Bundled songs are all piano-only today.
 - **Calibration in `play.html`**. The 2player.html prototype has a calibration overlay; extracting it into a shared `js/ui/calibration-overlay.js` module unlocks adding it to play.html too. Flagged as duplicated across 3 screens.
 - **Real piano + drum samples**. Replaces synthesised audio; biggest perceived-quality jump for the least work per `DESIGN.md §18`.
 - **Phase 3c**: port `js/screens/gameplay.js` to use the engine, eliminating the duplicate loop. Pure cleanup, no user-visible payoff — defer unless 2player.html is going to get active changes.
