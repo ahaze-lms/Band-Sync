@@ -25,6 +25,7 @@ import * as lobbies            from './services/lobbies.js';
 import { getFriends, sendPlayInvite } from './services/social.js';
 import { saveSession, createSessionHeader, saveSlot } from './services/play-sessions.js';
 import { getMyPersonalBests } from './services/history.js';
+import { listSongs as listStudioSongs, getSong as getStudioSong, summarizeSong, unpackSong } from './services/library.js';
 import { initMIDI, getInputs, onStateChange,
          attachListener, detachListener }     from './core/midi.js';
 import { parseMIDIFile }      from './core/midi-parser.js';
@@ -138,6 +139,18 @@ async function init() {
       `Failed to fetch songs/manifest.json — ${err.message}.\n` +
       `If you just pulled, regenerate with:  node tools/build-songs.mjs`);
     return;
+  }
+
+  // Studio songs the user has saved. Failure to fetch is non-fatal —
+  // the song-select still works with the bundled library.
+  ctx.studioSongs = [];
+  try {
+    const rows = await listStudioSongs();
+    ctx.studioSongs = (rows || [])
+      .map(summarizeSong)
+      .filter(s => s.trackCount > 0);    // hide empty-shell rows from the list
+  } catch (err) {
+    console.warn('play.js: failed to load studio songs', err);
   }
 
   const invite = new URLSearchParams(location.search).get('invite');
@@ -310,11 +323,35 @@ function renderSongSelect() {
   leaveCurrentState();
   setStateLabel('SONG SELECT');
 
-  const songs = ctx.manifest.songs ?? [];
-  if (!songs.length) {
+  const bundled = ctx.manifest.songs ?? [];
+  if (!bundled.length) {
     renderError('NO SONGS', 'The library is empty. Run: node tools/build-songs.mjs');
     return;
   }
+
+  // Studio songs render with the same songCard() shape — give each a
+  // `file` of "studio:<uuid>" so the load path can branch on it later.
+  const studioSongs = (ctx.studioSongs || []).map(s => ({
+    file:        `studio:${s.id}`,
+    title:       s.title,
+    bpm:         s.bpm,
+    durationSec: s.durationSec,
+    tracks:      s.trackNames.map(name => ({ name })),
+    source:      'studio',
+  }));
+
+  const yourSongsHtml = studioSongs.length
+    ? `
+        <div class="section-label">YOUR SONGS — ${studioSongs.length} FROM STUDIO</div>
+        <div class="song-grid">
+          ${studioSongs.map(songCard).join('')}
+        </div>`
+    : `
+        <div class="section-label">YOUR SONGS</div>
+        <div class="studio-empty">
+          You haven't saved any Studio songs yet.
+          <a href="studio.html">Open Studio</a> to record one.
+        </div>`;
 
   stateEl.innerHTML = `
     <div class="state-inner">
@@ -328,10 +365,11 @@ function renderSongSelect() {
           <span class="mode-opt-sub">Friends on their own devices</span>
         </button>
       </div>
-      <div class="section-label">LIBRARY — ${songs.length} SONGS</div>
+      <div class="section-label">LIBRARY — ${bundled.length} SONGS</div>
       <div class="song-grid">
-        ${songs.map(songCard).join('')}
+        ${bundled.map(songCard).join('')}
       </div>
+      ${yourSongsHtml}
     </div>
   `;
 
@@ -342,10 +380,15 @@ function renderSongSelect() {
     });
   });
 
+  // Unified click path — bundled and Studio songs both use songCard's
+  // [data-song-file]. Studio songs have "studio:<uuid>" so the lookup
+  // and the downstream loader can both branch on the prefix.
+  const allSongs = [...bundled, ...studioSongs];
   stateEl.querySelectorAll('[data-song-file]').forEach(el => {
     el.addEventListener('click', () => {
       const file = el.dataset.songFile;
-      const song = songs.find(s => s.file === file);
+      const song = allSongs.find(s => s.file === file);
+      if (!song) return;
       if (ctx.mode === 'remote') {
         createRemoteLobby(song);
       } else {
@@ -377,13 +420,14 @@ async function createRemoteLobby(song) {
 function songCard(song) {
   const trackCount = song.tracks.length;
   const duet       = trackCount > 1 ? '<span class="badge-duet">DUET</span>' : '';
+  const studio     = song.source === 'studio' ? '<span class="badge-studio">MINE</span>' : '';
   const trackList  = song.tracks.map(t => t.name).join(' + ');
   const mm         = Math.floor(song.durationSec / 60);
   const ss         = String(Math.round(song.durationSec % 60)).padStart(2, '0');
 
   return `
     <button class="song-card" data-song-file="${esc(song.file)}">
-      <div class="song-title">${esc(song.title)}${duet}</div>
+      <div class="song-title">${esc(song.title)}${duet}${studio}</div>
       <div class="song-tracks">${esc(trackList)}</div>
       <div class="song-meta">
         <span class="pill">${song.bpm} BPM</span>
@@ -903,10 +947,25 @@ async function renderGame() {
 
   let parsed;
   try {
-    const res = await fetch('songs/' + song.file, { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    parsed = parseMIDIFile(buf);
+    if (song.file.startsWith('studio:')) {
+      // Phase 6 — Studio songs live in Supabase, not on disk. Fetch
+      // the row, unpack to the in-memory shape, then re-shape to the
+      // exact { tracks: [{ name, notes }] } the engine expects.
+      const id = song.file.slice('studio:'.length);
+      const row = await getStudioSong(id);
+      const unpacked = unpackSong(row);
+      parsed = {
+        tracks: unpacked.tracks.map(t => ({
+          name:  t.name,
+          notes: t.notes,    // { pitch, startMs, durationMs, velocity } — engine-ready
+        })),
+      };
+    } else {
+      const res = await fetch('songs/' + song.file, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = await res.arrayBuffer();
+      parsed = parseMIDIFile(buf);
+    }
   } catch (err) {
     renderError('FAILED TO LOAD SONG', `${song.file}: ${err.message}`);
     return;

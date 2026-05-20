@@ -25,16 +25,40 @@ const PRIMARY_TRACK_COLOR = '#7F77DD';
 
 
 // ── Listing ───────────────────────────────────────────────────────
-// Lightweight list of the caller's saved songs, sorted by most recent
-// edit. Used to populate the SONGS modal. Does NOT include the heavy
-// `data` blob — callers fetch that on demand via getSong(id).
+// Lists the caller's saved songs, sorted by most recent edit. Phase 6
+// includes the `data` blob so play.html can render full song cards
+// (track names, duration) without an extra getSong() per row.
 export async function listSongs() {
   const { data, error } = await supabase
     .from('songs')
-    .select('id, name, bpm, visibility, created_at, updated_at')
+    .select('id, name, bpm, visibility, created_at, updated_at, data')
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+// Pulls the playable-summary fields out of a song row. Used by
+// play.html's song-select to render a Studio song card with the same
+// shape as a bundled .mid card. Returns
+//   { id, title, bpm, durationSec, trackNames, trackCount }
+// — a strict superset of what songCard() reads.
+export function summarizeSong(row) {
+  const tracks = row?.data?.tracks ?? [];
+  let maxEndMs = 0;
+  for (const t of tracks) {
+    for (const n of (t.notes ?? [])) {
+      const end = n.startMs + n.durationMs;
+      if (end > maxEndMs) maxEndMs = end;
+    }
+  }
+  return {
+    id:          row.id,
+    title:       row.name,
+    bpm:         row.bpm,
+    durationSec: maxEndMs / 1000,
+    trackNames:  tracks.map(t => t.name),
+    trackCount:  tracks.length,
+  };
 }
 
 
