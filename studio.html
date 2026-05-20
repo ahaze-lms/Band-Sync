@@ -1422,39 +1422,10 @@
         });
         row.appendChild(sBtn);
 
-        // Active track gets the quantize cluster.
-        const tools = document.createElement('div');
-        tools.className = 'track-tools';
-        const qLabel = document.createElement('span');
-        qLabel.className = 'field-label';
-        qLabel.textContent = 'QUANTIZE';
-        tools.appendChild(qLabel);
-        const qWrap = document.createElement('div');
-        qWrap.className = 'quantize-buttons';
-        const grids = ['raw', '1/4', '1/8', '1/16', '1/32'];
-        for (const grid of grids) {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'q-btn';
-          b.dataset.grid = grid;
-          b.textContent = grid === 'raw' ? 'RAW' : grid;
-          if (grid === (track.activeGrid ?? 'raw')) b.classList.add('active');
-          b.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (track.notes.length === 0) return;
-            quantize(track, song.bpm, grid);
-            track.activeGrid = grid;
-            pushHistory();
-            renderTrackList();
-            updateButtons();
-          });
-          qWrap.appendChild(b);
-        }
-        tools.appendChild(qWrap);
-        row.appendChild(tools);
-
         // CLEAR — wipes this track's notes but keeps the track row.
-        // Quick redo without losing the slot. Undo brings the notes back.
+        // Quick redo without losing the slot. Undo brings the notes
+        // back. Lives on the left next to M/S so the track-operation
+        // cluster reads as one group.
         const cl = document.createElement('button');
         cl.type = 'button';
         cl.className = 'track-row-clear';
@@ -1495,6 +1466,39 @@
           });
           row.appendChild(rm);
         }
+
+        // Active track gets the quantize cluster — pushed right by
+        // margin-left: auto so the left-side cluster (M S CLEAR REMOVE)
+        // stays grouped against the track tag.
+        const tools = document.createElement('div');
+        tools.className = 'track-tools';
+        const qLabel = document.createElement('span');
+        qLabel.className = 'field-label';
+        qLabel.textContent = 'QUANTIZE';
+        tools.appendChild(qLabel);
+        const qWrap = document.createElement('div');
+        qWrap.className = 'quantize-buttons';
+        const grids = ['raw', '1/4', '1/8', '1/16', '1/32'];
+        for (const grid of grids) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'q-btn';
+          b.dataset.grid = grid;
+          b.textContent = grid === 'raw' ? 'RAW' : grid;
+          if (grid === (track.activeGrid ?? 'raw')) b.classList.add('active');
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (track.notes.length === 0) return;
+            quantize(track, song.bpm, grid);
+            track.activeGrid = grid;
+            pushHistory();
+            renderTrackList();
+            updateButtons();
+          });
+          qWrap.appendChild(b);
+        }
+        tools.appendChild(qWrap);
+        row.appendChild(tools);
 
         // Click on an inactive row → make it the active track.
         row.addEventListener('click', () => {
