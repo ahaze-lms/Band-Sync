@@ -938,6 +938,7 @@ function midiStatusClass() {
 async function renderGame() {
   leaveCurrentState();
   setStateLabel('GAME');
+  document.getElementById('app').classList.add('is-game-state');
 
   const song   = ctx.song;
   const setup  = ctx.setup;
@@ -2104,6 +2105,7 @@ function updateRemoteScoreStrip() {
 // ── HELPERS ────────────────────────────────────────────────────────
 
 function leaveCurrentState() {
+  document.getElementById('app').classList.remove('is-game-state');
   if (setupTeardown) { setupTeardown(); setupTeardown = null; }
   if (ctx.activeGame) { ctx.activeGame.destroy(); ctx.activeGame = null; }
   if (ctx.gameChannel) { ctx.gameChannel.unsubscribe(); ctx.gameChannel = null; }

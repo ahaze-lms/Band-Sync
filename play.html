@@ -529,12 +529,40 @@
 
     /* ── GAMEPLAY ──────────────────────────────────────────────── */
     /* Game state takes the full state container; song header sits up
-       top, panels stack vertically. */
+       top, panels stack vertically. Height is driven by the flex chain
+       from #app.is-game-state below — no viewport math here. */
     .game-shell {
       display: grid;
       grid-template-rows: auto auto 1fr auto;   /* header, remote-strip, panels, controls */
       gap: 10px;
-      height: calc(100vh - 80px);
+      min-height: 0;
+    }
+
+    /* ── GAME-STATE FULLSCREEN OVERRIDE ─────────────────────────
+       Toggled by play.js when GAME is active. Kills the #state
+       padding + 980px cap so the gameplay surface uses every
+       available pixel. 100dvh keeps iOS/Android browser chrome
+       from cropping the keyboard. */
+    #app.is-game-state {
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+    }
+    #app.is-game-state #state {
+      padding: 0;
+      min-height: 0;
+    }
+    #app.is-game-state .state-inner {
+      max-width: none;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #app.is-game-state .game-shell {
+      flex: 1;
+      min-height: 0;
+      padding: 10px 14px;
     }
     .game-header {
       display: flex; align-items: center; gap: 18px;
@@ -760,7 +788,8 @@
     */
     @media (max-width: 768px) {
       .top-bar { padding: 10px 14px; gap: 14px; }
-      .game-shell { gap: 6px; height: calc(100vh - 60px); }
+      .game-shell { gap: 6px; }
+      #app.is-game-state .game-shell { padding: 6px 8px; }
       .game-header { padding: 8px 12px; gap: 10px; flex-wrap: wrap; }
       .game-header .game-time { margin-left: auto; }
 
@@ -1160,6 +1189,6 @@
 
   <!-- Supabase UMD bundle, served locally -->
   <script src="js/vendor/supabase.umd.js"></script>
-  <script type="module" src="js/play.js?v=26"></script>
+  <script type="module" src="js/play.js?v=27"></script>
 </body>
 </html>
