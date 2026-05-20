@@ -115,9 +115,26 @@
       text-transform: uppercase;
     }
 
-    /* Round transport buttons (REC / PLAY / STOP) — pro DAW look */
+    /* Round transport buttons (REC / PLAY / STOP) — pro DAW look.
+       Skip buttons (⏮ ⏭) are sized smaller to read as secondary. */
     .transport-buttons {
-      display: flex; gap: 8px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .t-btn-skip {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--bg3); color: var(--text);
+      border: 1px solid var(--bg3);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+      padding: 0;
+    }
+    .t-btn-skip:hover:not(:disabled) { border-color: var(--purple); color: var(--purple2); }
+    .t-btn-skip:active:not(:disabled) { transform: scale(0.92); }
+    .t-btn-skip:disabled { opacity: 0.3; cursor: not-allowed; }
+    .t-btn-skip .icon {
+      font-size: 14px; line-height: 1;
     }
     .t-btn-round {
       width: 48px; height: 48px;
@@ -475,6 +492,20 @@
     .track-row-remove:hover { color: var(--red); background: var(--bg3); }
     .track-row-remove:disabled { opacity: 0.2; cursor: not-allowed; }
 
+    /* CLEAR — wipes the track's notes, keeps the slot. Purple hover
+       to distinguish from the red REMOVE icon (which deletes the slot). */
+    .track-row-clear {
+      background: transparent; color: var(--dim);
+      border: none;
+      width: 28px; height: 28px;
+      font-size: 15px; line-height: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .track-row-clear:hover:not(:disabled) { color: var(--purple2); background: var(--bg3); }
+    .track-row-clear:disabled { opacity: 0.2; cursor: not-allowed; }
+
     /* Mute / Solo toggles per track. Tiny + always visible; click
        state shows lit color (red for M, yellow for S). */
     .ms-toggle {
@@ -694,6 +725,9 @@
     </div>
 
     <div class="transport-buttons">
+      <button id="rewind-btn" class="t-btn-skip" type="button" aria-label="Rewind to start" title="Rewind to start (Home)">
+        <span class="icon">⏮</span>
+      </button>
       <button id="record-btn" class="t-btn-round record" type="button" aria-label="Record">
         <span class="icon"></span>
       </button>
@@ -702,6 +736,9 @@
       </button>
       <button id="stop-btn" class="t-btn-round stop" type="button" disabled aria-label="Stop">
         <span class="icon"></span>
+      </button>
+      <button id="forward-btn" class="t-btn-skip" type="button" aria-label="Forward to end" title="Forward to end (End)">
+        <span class="icon">⏭</span>
       </button>
     </div>
 
@@ -1010,6 +1047,26 @@
     const recordBtn   = document.getElementById('record-btn');
     const stopBtn     = document.getElementById('stop-btn');
     const playBtn     = document.getElementById('play-btn');
+    const rewindBtn   = document.getElementById('rewind-btn');
+    const forwardBtn  = document.getElementById('forward-btn');
+
+    // ── Transport: rewind / forward ───────────────────────────────
+    // Snap the playhead to song start / end. Disabled during
+    // recording or playback so you don't yank the head mid-flight.
+    function rewindToStart() {
+      if (recorder.isRecording() || countingIn || playing) return;
+      playPositionMs = 0;
+      renderer.setPlayhead(0);
+      renderer.setSelected(null);
+    }
+    function forwardToEnd() {
+      if (recorder.isRecording() || countingIn || playing) return;
+      playPositionMs = durationMs(song);
+      renderer.setPlayhead(playPositionMs);
+      renderer.setSelected(null);
+    }
+    rewindBtn .addEventListener('click', rewindToStart);
+    forwardBtn.addEventListener('click', forwardToEnd);
     const timeDisplay = document.getElementById('time-display');
     const trackInput  = document.getElementById('track-input');
     const midiStatus  = document.getElementById('midi-status');
@@ -1396,7 +1453,27 @@
         tools.appendChild(qWrap);
         row.appendChild(tools);
 
-        // Remove (disabled when only 1 track left, or when track has notes).
+        // CLEAR — wipes this track's notes but keeps the track row.
+        // Quick redo without losing the slot. Undo brings the notes back.
+        const cl = document.createElement('button');
+        cl.type = 'button';
+        cl.className = 'track-row-clear';
+        cl.textContent = '↻';
+        cl.title = 'Clear this track’s notes';
+        cl.setAttribute('aria-label', 'Clear track');
+        cl.disabled = track.notes.length === 0;
+        cl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (track.notes.length === 0) return;
+          track.notes.length = 0;
+          if (track.id === song.activeTrackId) renderer.setSelected(null);
+          pushHistory();
+          renderTrackList();
+          updateButtons();
+        });
+        row.appendChild(cl);
+
+        // Remove track — only available when there's more than one.
         if (song.tracks.length > 1) {
           const rm = document.createElement('button');
           rm.type = 'button';
@@ -1799,6 +1876,18 @@
         return;
       }
 
+      // Home / End — rewind to start / forward to end.
+      if (e.code === 'Home') {
+        e.preventDefault();
+        rewindToStart();
+        return;
+      }
+      if (e.code === 'End') {
+        e.preventDefault();
+        forwardToEnd();
+        return;
+      }
+
       // Delete / Backspace — remove every selected note.
       if (e.code === 'Delete' || e.code === 'Backspace') {
         const sel = renderer.getSelectedSet();
@@ -1879,6 +1968,10 @@
       // PLAY enabled whenever ANY track has notes — playback iterates
       // every audible track (Phase 5b multi-track playback).
       playBtn.disabled   = rec || countingIn || !songHasNotes(song);
+
+      // Rewind / forward — disabled while the transport is busy.
+      rewindBtn.disabled  = rec || countingIn || playing;
+      forwardBtn.disabled = rec || countingIn || playing;
 
       // Per-track quantize buttons live in track-list DOM and are
       // (re)rendered by renderTrackList. Nothing to refresh here, but
